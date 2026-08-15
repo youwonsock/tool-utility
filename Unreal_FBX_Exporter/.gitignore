@@ -1,0 +1,34 @@
+# Unreal Engine generated files
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+
+# Unreal-generated project files
+*.sln
+*.sln.docstates
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+
+# Visual Studio / JetBrains Rider local files
+.vs/
+.idea/
+*.suo
+*.user
+*.userosscache
+
+# Native compiler intermediate files
+*.obj
+*.pdb
+*.ilk
+*.exp
+
+# Xcode generated project files
+*.xcodeproj/
+*.xcworkspace/
+*.xcuserstate
+
+# Operating-system files
+.DS_Store
+Thumbs.db
