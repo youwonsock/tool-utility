@@ -10,14 +10,6 @@ Unreal 플러그인과 Unity Editor 도구에서 분리된 기타 작업 편의 
 | --- | --- | --- |
 | Vidio To Image | Windows에서 MP4의 지정 구간을 PNG/JPG 프레임 또는 2×2·3×3 격자 이미지로 추출하는 GUI 도구 | [툴 README](<./Vidio To Image/README.md>) |
 
-## 도구 분류
-
-| 분류 | 저장소 |
-| --- | --- |
-| Unreal Engine 플러그인 | C:\GitRepo\Unreal_Portfolio\Haven\tool-unreal-plugin |
-| Unity Editor 도구 | C:\GitRepo\tool-unity-editor |
-| 기타 도구 | C:\GitRepo\tool-utility |
-
 ## 폴더 운영
 
 - 툴별 소스, 의존성, 실행 방법은 각 툴 폴더 안에서 관리합니다.
