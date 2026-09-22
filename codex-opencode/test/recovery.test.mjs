@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { uid, writeJson, bootId, terminate, sleep, Store, remoteCall, connect } from '../dist/index.mjs';
+import { uid, writeJson, bootId, terminate, sleep, Store, remoteCall, connect, alive } from '../dist/index.mjs';
 import { fixture,task,submit,until,review,ready,git,callOk,cli,fake,readState } from './helpers.mjs';
 
 test('source edits during final verification invalidate it',async t=>{
@@ -35,6 +35,10 @@ test('service restart during cancellation confirms stop and does not dispatch a 
   let r;for(let i=0;i<150;i++){r=readState(f.data).runs[0];if(r?.tasks[0].attempts[0]?.worker?.prompt_intent)break;await sleep(100);}assert.ok(r.tasks[0].attempts[0].worker.prompt_intent);
   const cancel=await remoteCall(f.data,cli,'cancel_run',{request_id:'stop-request',run_id:s.run_id});assert.ok(['cancelling','cancelled'].includes(cancel.state));
   const descriptor=JSON.parse(fs.readFileSync(path.join(f.data,'service.json')));await terminate(descriptor.owner,false);await connect(f.data,cli);
-  for(let i=0;i<150;i++){r=readState(f.data).runs[0];if(r.state==='cancelled')break;await sleep(100);}assert.equal(r.state,'cancelled');
+  // Windows process-tree termination and CIM ownership checks can exceed 15 s
+  // on hosted runners. Await the terminal state, then verify the actual server.
+  const deadline=Date.now()+60000;
+  while(Date.now()<deadline){r=readState(f.data).runs[0];if(r.state==='cancelled')break;await sleep(100);}assert.equal(r.state,'cancelled');
+  const stopped=r.tasks[0].attempts[0].worker;assert.equal(stopped.stopped,true);assert.equal(await alive(stopped.server),false);
   const events=fs.readFileSync(audit,'utf8').trim().split('\n').map(JSON.parse);assert.equal(events.filter(e=>e.event==='prompt').length,1);assert.equal(r.tasks[0].attempts.length,1);
 });
