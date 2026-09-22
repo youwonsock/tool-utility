@@ -15,8 +15,11 @@ const stamp = checksum.digest('hex').slice(0,12);
 const release = path.join(root, 'releases', `${version}-${stamp}`);
 const staging = path.join(root, 'releases', `.stage-${crypto.randomUUID()}`);
 fs.mkdirSync(staging, { recursive: true, mode: 0o700 });
-fs.cpSync(path.join(source, 'plugins'), path.join(staging, 'plugins'), { recursive: true });
-fs.cpSync(path.join(source, '.agents'), path.join(staging, '.agents'), { recursive: true });
+// Keep Node 22 on its JS traversal path: the native cpSync directory fast path
+// mishandles non-ASCII Windows paths (nodejs/node#61950).
+const copyOptions = { recursive: true, filter: () => true };
+fs.cpSync(path.join(source, 'plugins'), path.join(staging, 'plugins'), copyOptions);
+fs.cpSync(path.join(source, '.agents'), path.join(staging, '.agents'), copyOptions);
 const plugin = path.join(staging, 'plugins', 'codex-opencode');
 const pluginManifestFile = path.join(plugin,'.codex-plugin/plugin.json');
 const pluginManifest = JSON.parse(fs.readFileSync(pluginManifestFile));
