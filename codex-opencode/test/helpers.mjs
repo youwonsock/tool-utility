@@ -6,11 +6,15 @@ import { Store, Engine, exec, uid, sleep, remoteCall } from '../dist/index.mjs';
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const cli = path.join(root,'dist/cli.mjs');
 export const fake = path.join(root,'test/fake-opencode.mjs');
+// Windows CI exposes an 8.3 TEMP alias; use its native long path for child Node
+// entry points while preserving Korean names and spaces in every fixture.
+export const temporaryRoot = fs.realpathSync.native(os.tmpdir());
+export const readState = data => JSON.parse(fs.readFileSync(path.join(data,'state.json'),'utf8'));
 export const git = async (repo,...args) => {
   const r = await exec('git',args,{ cwd:repo }); if (r.code !== 0) throw new Error(r.stderr); return r.stdout.trim();
 };
 export async function fixture(t, { service = false } = {}) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(),'위임 test '));
+  const dir = fs.mkdtempSync(path.join(temporaryRoot,'위임 test '));
   const repo = path.join(dir,'한글 project'), data = path.join(dir,'data'); fs.mkdirSync(repo);
   await git(repo,'init','-b','main'); await git(repo,'config','user.name','Test'); await git(repo,'config','user.email','test@localhost');
   fs.writeFileSync(path.join(repo,'.gitignore'),'AGENTS.md\n.specs/\nignored.txt\n'); fs.writeFileSync(path.join(repo,'base.txt'),'base\n');
@@ -23,6 +27,13 @@ export async function fixture(t, { service = false } = {}) {
     for (const run of store.state.runs) if (!['completed','cancelled'].includes(run.state)) { await engine.cancel(run).catch(()=>{}); }
     for (let i=0;i<100;i++) { await engine.serial(()=>engine.tick()).catch(()=>{}); if (!engine.allAttempts().some(a=>['running','cancelling','launching','needs_input','delivery_uncertain'].includes(a.state))) break; await sleep(100); }
     // Temporary evidence is deliberately retained on test failure for diagnosis.
+    if(fs.existsSync(path.join(data,'state.json'))) {
+      const disk=readState(data);
+      for(const run of disk.runs)for(const task of run.tasks)for(const a of task.attempts){
+        if(!a.error && !['orphaned','stop_uncertain'].includes(a.state))continue;
+        t.diagnostic(JSON.stringify({task:task.spec.id,attempt:a.state,error:a.error,phase:a.worker?.phase}));
+      }
+    }
   });
   return { dir,repo,data,store,engine,env, call:(name,args)=>engine.call(name,args) };
 }

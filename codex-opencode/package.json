@@ -10,7 +10,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && node --test --test-concurrency=1 test/*.test.mjs",
+    "test": "npm run build && node --test --test-concurrency=1 --test-timeout=180000 test/*.test.mjs",
     "validate:plugin": "node scripts/validate-plugin.mjs",
     "check": "npm run typecheck && npm test && npm run validate:plugin",
     "install:local": "npm run build && node scripts/install.mjs",

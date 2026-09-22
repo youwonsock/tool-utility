@@ -130,7 +130,7 @@ MCP가 처음 호출될 때 서비스가 시작됩니다. Codex 대화 종료나
 
 프로파일은 연결 설정, `resource_key`, 읽기 전용 probe 명령, 예상 인스턴스 ID를 포함합니다. probe는 실제 시스템을 조회하여 `instance_id`와 프로젝트 종속 도구라면 `project_path`를 JSON으로 반환해야 합니다. 기대값을 그대로 출력하는 스크립트는 운영용 확인 명령으로 사용할 수 없습니다. 잠금을 획득한 후 probe를 실행하며 불일치하면 모델을 호출하지 않습니다.
 
-Unity Editor는 **작업 worktree와 최종 검증 worktree 각각**에 맞게 연결되어야 합니다. 필요한 프로젝트 경로는 실행 상태/오류에서 확인할 수 있습니다. 현재 체크아웃의 Editor가 자동 전환된다고 가정하지 않습니다. 동일 자원에는 항상 같은 `resource_key`를 사용하세요.
+Unity Editor는 **작업 worktree와 최종 검증 worktree 각각**에 맞게 연결되어야 합니다. 필요한 프로젝트 경로는 실행 상태/오류에서 확인할 수 있습니다. 연결 불일치는 `resource_wait` 상태로 같은 worktree에서 대기합니다. Editor를 보고된 경로에 연결한 뒤 `reconcile_run`으로 probe를 다시 확인하면 모델 호출 전의 같은 시도를 이어갑니다. 현재 체크아웃의 Editor가 자동 전환된다고 가정하지 않습니다. 동일 자원에는 항상 같은 `resource_key`를 사용하세요.
 
 이 기능은 같은 서비스가 관리하는 작업을 직렬화합니다. 외부 사용자의 조작을 차단하는 OS 샌드박스가 아니며, Git worktree는 Editor·DB·셸의 외부 부작용을 격리하지 않습니다. worker의 내부 재위임과 이 위임 MCP 호출은 금지됩니다.
 
@@ -160,6 +160,6 @@ npm run check
 
 모의 OpenCode HTTP 서버와 실제 임시 Git 저장소·프로세스로 계약을 검증합니다. 전용 GitHub Actions는 Windows·macOS의 Node 22에서 타입 검사, 자동 테스트, 플러그인 검사를 실행합니다. 로컬 형식 검사는 `plugin-creator`와 `skill-creator`의 공식 검증기로도 수행했습니다. 수행 여부와 결과는 [PROGRESS.md](PROGRESS.md)에 기록합니다.
 
-실제 모델 검증을 시작하려면 `npm run test:live`를 실행합니다. 임시 프로젝트와 병렬 작업 2개를 만들고 실행 ID를 출력합니다. 이 스크립트는 자동 승인하지 않습니다. Codex가 증거 검수 → 수정 요청 → 승인 → 통합 검증 → 최종 승인 순서로 이어가야 합니다. 실제 공급자 사용료가 발생할 수 있습니다.
+실제 모델 검증을 시작하려면 `npm run test:live`를 실행합니다. 임시 프로젝트와 병렬 작업 2개를 만들고 실행 ID를 출력합니다. 명시적으로 모델을 선택하려면 `npm run test:live -- --model providerID/modelID`를 사용합니다. 이 스크립트는 자동 승인하지 않습니다. Codex가 증거 검수 → 수정 요청 → 승인 → 통합 검증 → 최종 승인 순서로 이어가야 합니다. 실제 공급자 사용료가 발생할 수 있습니다.
 
 구현 근거: [확정 스펙](docs/spec.md), [OpenCode 서버 API](https://opencode.ai/docs/server/), [OpenCode 설정](https://opencode.ai/docs/config/), [OpenCode 1.18.30 SDK](https://www.npmjs.com/package/@opencode-ai/sdk/v/1.18.30), [Codex 플러그인 문서](https://developers.openai.com/plugins/build/plugins).

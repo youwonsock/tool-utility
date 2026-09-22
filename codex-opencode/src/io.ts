@@ -50,7 +50,9 @@ export function inside(root: string, relative: string): string {
   return file;
 }
 export function samePath(a: string, b: string): boolean {
-  const norm = (p: string) => { const v = path.resolve(p); return process.platform === 'win32' ? v.toLowerCase() : v; };
+  // Native realpath expands Windows 8.3 aliases (for example RUNNER~1), which
+  // Git reports using the long spelling. Resolve existing paths before compare.
+  const norm = (p: string) => { const v = fs.existsSync(p) ? fs.realpathSync.native(p) : path.resolve(p); return process.platform === 'win32' ? v.toLowerCase() : v; };
   return norm(a) === norm(b);
 }
 export type ExecResult = { stdout: string; stderr: string; code: number | null };
@@ -71,7 +73,7 @@ export async function processIdentity(pid: number): Promise<ProcessIdentity | un
   try { process.kill(pid, 0); } catch (e) { if ((e as NodeJS.ErrnoException).code === 'ESRCH') return undefined; throw e; }
   const r = process.platform === 'win32'
     ? await exec('powershell.exe', ['-NoProfile','-NonInteractive','-Command', `(Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}").CreationDate.ToUniversalTime().ToString('o')`])
-    : await exec('ps', ['-p', String(pid), '-o', 'lstart=', '-o', 'stat=']);
+    : await exec('ps', ['-p', String(pid), '-o', 'lstart=', '-o', 'stat='], { env: { ...process.env, TZ: 'UTC' } });
   if (r.code !== 0 || !r.stdout.trim() || /\bZ\w*$/.test(r.stdout.trim())) return undefined;
   // Unix process state changes; only the creation timestamp forms the identity.
   return { pid, birth: process.platform === 'win32' ? r.stdout.trim() : r.stdout.trim().replace(/\s+\S+$/, '') };

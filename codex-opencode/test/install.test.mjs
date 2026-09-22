@@ -4,16 +4,17 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { exec } from '../dist/index.mjs';
-import { root } from './helpers.mjs';
+import { root, temporaryRoot } from './helpers.mjs';
 
 test('installer updates its own marketplace, retains old releases, and rolls back failed registration',async()=>{
-  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'업데이트 검증 ')),source=path.join(dir,'source'),install=path.join(dir,'install'),data=path.join(dir,'data');fs.mkdirSync(source);
+  const dir=fs.mkdtempSync(path.join(temporaryRoot,'업데이트 검증 ')),source=path.join(dir,'source'),install=path.join(dir,'install'),data=path.join(dir,'data');fs.mkdirSync(source);
   for(const entry of ['dist','plugins','.agents','scripts','package.json'])fs.cpSync(path.join(root,entry),path.join(source,entry),{recursive:true});
+  assert.ok(fs.existsSync(path.join(source,'scripts/install.mjs')), `Copied installer missing: ${JSON.stringify(fs.readdirSync(source))}`);
   const stateFile=path.join(dir,'fake-codex-state.json');fs.writeFileSync(stateFile,JSON.stringify({marketplaces:[]}));
   const fakeScript=path.join(dir,'fake-codex.mjs');
   fs.writeFileSync(fakeScript,`import fs from 'node:fs';import path from 'node:path';const file=process.env.FAKE_CODEX_STATE;const state=JSON.parse(fs.readFileSync(file));const a=process.argv.slice(2);const save=()=>fs.writeFileSync(file,JSON.stringify(state));if(a[1]==='marketplace'&&a[2]==='list')console.log(JSON.stringify(state));else if(a[1]==='marketplace'&&a[2]==='remove'){state.marketplaces=state.marketplaces.filter(m=>m.name!==a[3]);save();}else if(a[1]==='marketplace'&&a[2]==='add'){const name=JSON.parse(fs.readFileSync(path.join(a[3],'.agents/plugins/marketplace.json'))).name;if(state.marketplaces.some(m=>m.name===name&&m.root!==a[3]))process.exit(1);state.marketplaces=[{name,root:a[3]}];save();}else if(a[1]==='add'){if(state.fail_next_add){state.fail_next_add=false;save();process.exit(1);}state.pluginRoot=state.marketplaces[0].root;save();}else process.exit(2);`);
   const fakeExe=path.join(dir,process.platform==='win32'?'fake codex.cmd':'fake codex');
-  fs.writeFileSync(fakeExe,process.platform==='win32'?`@"${process.execPath}" "${fakeScript}" %*\r\n`:`#!/bin/sh\nexec "${process.execPath}" "${fakeScript}" "$@"\n`,{mode:0o755});
+  fs.writeFileSync(fakeExe,process.platform==='win32'?`@"${process.execPath}" "%~dp0fake-codex.mjs" %*\r\n`:`#!/bin/sh\nexec "${process.execPath}" "${fakeScript}" "$@"\n`,{mode:0o755});
   const env={...process.env,CODEX_EXECUTABLE:fakeExe,FAKE_CODEX_STATE:stateFile,CODEX_OPENCODE_INSTALL_ROOT:install,CODEX_OPENCODE_HOME:data};
   const run=()=>exec(process.execPath,[path.join(source,'scripts/install.mjs')],{env,timeout:30000});
   let result=await run();assert.equal(result.code,0,result.stderr);const first=JSON.parse(fs.readFileSync(path.join(install,'current.json')));

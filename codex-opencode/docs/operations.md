@@ -21,6 +21,7 @@
 | worker 종료, OpenCode 생존 | `orphaned`; 자원 잠금 유지; 기존 세션을 조회하고 명시적으로 취소 후 수정 결정 |
 | 재부팅으로 이전 프로세스 소멸 | `interrupted`; 기존 요청 재전송 금지; Codex 수정 지시로 새 시도 |
 | 시작 여부/프로세스 소유권 불명 | `orphaned`/`stop_uncertain`; 자원 재할당 금지 |
+| 자원 연결 불일치 | `resource_wait`; 동일 worktree와 자원 잠금 유지. 연결을 맞춘 뒤 `reconcile_run`으로 최초 실행을 이어감 |
 | 모델/검증 실패 | `needs_review`; Codex 지시 전 재시도 없음 |
 | 범위·문맥 위반 | 결과 증거 보존, 승인 차단 |
 | 통합 도중 서비스 종료 | 실제 HEAD·부모·diff를 대조; 입증되지 않으면 재검수 |

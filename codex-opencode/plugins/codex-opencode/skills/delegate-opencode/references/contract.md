@@ -37,7 +37,7 @@ A resource profile is supplied on initial `submit_tasks`:
 }
 ```
 
-The probe must query the actual tool, returning `{"instance_id":"editor-01","project_path":"/actual/project"}`. Echoing expected values is not a valid operational probe. `{{worktree}}` expands in connection/probe values. After rebinding an Editor, request a correction/retry; do not remove the identity check.
+The probe must query the actual tool, returning `{"instance_id":"editor-01","project_path":"/actual/project"}`. Echoing expected values is not a valid operational probe. `{{worktree}}` expands in connection/probe values. After rebinding an Editor to the reported directory, call `reconcile_run` to recheck the same waiting attempt; no new worktree or model request has been started. Do not remove the identity check.
 
 `get_run` includes attempt ID, commit, input requests, observed checks and artifact IDs. Page tasks using `next_cursor`. `wait_run` returns event deltas and the next `after` value. `get_artifact` uses byte offsets at UTF-8 boundaries and `next_offset`. Normal MCP responses stay within 4 KiB; artifact responses within 16 KiB.
 

@@ -19,11 +19,11 @@ export async function clean(cwd: string, excluded: string[] = []) {
   invariant(changes.length === 0, 'DIRTY_WORKTREE', 'Working tree contains source changes.', changes);
 }
 export async function repository(directory: string) {
-  const repo = fs.realpathSync((await git(directory, ['rev-parse','--show-toplevel'])).stdout.trim());
-  invariant(samePath(repo, fs.realpathSync(directory)), 'REPO_ROOT', 'Supply the checkout root, not a subdirectory.');
+  const repo = fs.realpathSync.native((await git(directory, ['rev-parse','--show-toplevel'])).stdout.trim());
+  invariant(samePath(repo, directory), 'REPO_ROOT', 'Supply the checkout root, not a subdirectory.', { supplied: directory, resolved: repo });
   const name = await branch(repo); invariant(name, 'DETACHED_HEAD', 'Start from a named checked-out branch.');
   await clean(repo);
-  const common = fs.realpathSync(path.resolve(repo, (await git(repo, ['rev-parse','--git-common-dir'])).stdout.trim()));
+  const common = fs.realpathSync.native(path.resolve(repo, (await git(repo, ['rev-parse','--git-common-dir'])).stdout.trim()));
   return { repo, branch: name, base: await head(repo), common_dir: common };
 }
 export async function worktree(repo: string, directory: string, commit: string, name?: string) {
