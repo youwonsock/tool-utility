@@ -36,7 +36,7 @@ test('authenticated daemon survives MCP disconnect and restart without duplicate
 
 test('installed bundle works after its source is moved, without source node_modules',async t=>{
   const dir=fs.mkdtempSync(path.join(temporaryRoot,'설치 경로 space ')); const source=path.join(dir,'개발 source'),install=path.join(dir,'설치본'),data=path.join(dir,'state');fs.mkdirSync(source);
-  for(const entry of ['dist','plugins','.agents','scripts','package.json'])fs.cpSync(path.join(root,entry),path.join(source,entry),{recursive:true});
+  for(const entry of ['dist','plugins','.agents','scripts','package.json'])fs.cpSync(path.join(root,entry),path.join(source,entry),{recursive:true,filter:()=>true});
   assert.ok(fs.existsSync(path.join(source,'scripts/install.mjs')), `Copied installer missing: ${JSON.stringify(fs.readdirSync(source))}`);
   const env={...process.env,CODEX_OPENCODE_INSTALL_ROOT:install,CODEX_OPENCODE_HOME:data,CODEX_OPENCODE_EXECUTABLE:process.execPath,CODEX_OPENCODE_EXECUTABLE_ARGS:JSON.stringify([fake])};
   const installed=await exec(process.execPath,[path.join(source,'scripts/install.mjs'),'--no-register'],{env,timeout:30000});assert.equal(installed.code,0,installed.stderr);

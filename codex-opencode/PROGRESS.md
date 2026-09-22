@@ -32,4 +32,4 @@
 - The user removed that provider. A replacement model is awaiting explicit selection for a fresh live verification run.
 - Windows live model access has not been tested.
 - Published the branch through the repository owner's GitHub connection after Git CLI credentials lacked permission. `main` is unchanged.
-- Initial remote macOS Node 22 CI passed. Windows CI exposed path alias handling (`RUNNER~1` versus the actual user directory) and an unclosed MCP test client after failure; these are being corrected and rerun. Windows success is not claimed until the updated run completes.
+- Remote macOS Node 22 CI passed. Windows path alias handling (`RUNNER~1` versus the actual user directory) and test-client cleanup were corrected; the updated Windows run passed all 20 execution/state/Git tests, with one Unix process-group test skipped. Its two installation tests exposed Node 22's native `cpSync` Unicode-directory issue, so installation now explicitly uses JS traversal ([Node fix](https://github.com/nodejs/node/pull/61950)). The complete Windows rerun is pending.

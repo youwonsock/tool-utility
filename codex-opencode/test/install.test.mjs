@@ -8,7 +8,7 @@ import { root, temporaryRoot } from './helpers.mjs';
 
 test('installer updates its own marketplace, retains old releases, and rolls back failed registration',async()=>{
   const dir=fs.mkdtempSync(path.join(temporaryRoot,'업데이트 검증 ')),source=path.join(dir,'source'),install=path.join(dir,'install'),data=path.join(dir,'data');fs.mkdirSync(source);
-  for(const entry of ['dist','plugins','.agents','scripts','package.json'])fs.cpSync(path.join(root,entry),path.join(source,entry),{recursive:true});
+  for(const entry of ['dist','plugins','.agents','scripts','package.json'])fs.cpSync(path.join(root,entry),path.join(source,entry),{recursive:true,filter:()=>true});
   assert.ok(fs.existsSync(path.join(source,'scripts/install.mjs')), `Copied installer missing: ${JSON.stringify(fs.readdirSync(source))}`);
   const stateFile=path.join(dir,'fake-codex-state.json');fs.writeFileSync(stateFile,JSON.stringify({marketplaces:[]}));
   const fakeScript=path.join(dir,'fake-codex.mjs');
