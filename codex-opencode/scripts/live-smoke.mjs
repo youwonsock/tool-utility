@@ -4,6 +4,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { exec, remoteCall, uid } from '../dist/index.mjs';
 const tool = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const selected = process.argv[process.argv.indexOf('--model') + 1];
+const explicitModel = process.argv.includes('--model') ? (() => { const [providerID,...parts]=String(selected||'').split('/'); if(!providerID||!parts.length||!parts.join('/'))throw new Error('Use --model providerID/modelID');return {providerID,modelID:parts.join('/')}; })() : undefined;
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'OpenCode 실제 검증 '));
 const repo = path.join(directory, 'project'), data = path.join(directory,'data'); fs.mkdirSync(repo);
 const git = async args => { const r = await exec('git',args,{cwd:repo}); if(r.code!==0) throw new Error(r.stderr); };
@@ -19,8 +21,8 @@ const check = (file,name,result) => `"${node}" --input-type=module -e "import {$
 const submitted = await remoteCall(data,path.join(tool,'dist/cli.mjs'),'submit_tasks',{
   request_id:uid('live'),repo,context_files:['AGENTS.md','.specs/spec.md'],
   tasks:[
-    {id:'add',goal:'Create add.mjs exporting add(a,b) that returns a+b. Read supplied rules. Only edit add.mjs.',scope:['add.mjs'],acceptance:['add(2,3) equals 5'],verification:[{command:check('add.mjs','add',5)}]},
-    {id:'multiply',goal:'Create multiply.mjs exporting multiply(a,b) that returns a*b. Read supplied rules. Only edit multiply.mjs.',scope:['multiply.mjs'],acceptance:['multiply(2,3) equals 6'],verification:[{command:check('multiply.mjs','multiply',6)}]},
+    {id:'add',goal:'Create add.mjs exporting add(a,b) that returns a+b. Read supplied rules. Only edit add.mjs.',scope:['add.mjs'],acceptance:['add(2,3) equals 5'],verification:[{command:check('add.mjs','add',5)}],model:explicitModel},
+    {id:'multiply',goal:'Create multiply.mjs exporting multiply(a,b) that returns a*b. Read supplied rules. Only edit multiply.mjs.',scope:['multiply.mjs'],acceptance:['multiply(2,3) equals 6'],verification:[{command:check('multiply.mjs','multiply',6)}],model:explicitModel},
   ],
   final_verification:[{command:`${check('add.mjs','add',5)} && ${check('multiply.mjs','multiply',6)}`}],
 });

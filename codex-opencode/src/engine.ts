@@ -7,7 +7,8 @@ import { uid, digest, readJson, writeJson, mkdir, exec, alive, terminate, sleep,
 import { branch, clean, git, head, repository, worktree, snapshot, materialize, validateScope, resultCommit, integrate, targetReady, checkContext, contextHash } from './git.js';
 import { probeResources, resolvedConfig, launchOpenCode, inspectSession } from './opencode.js';
 
-const active = new Set(['launching','running','needs_input','delivery_uncertain','cancelling','orphaned','stop_uncertain']);
+const active = new Set(['launching','running','needs_input','resource_wait','delivery_uncertain','cancelling','orphaned','stop_uncertain']);
+const occupiesSlot = (a: Attempt) => active.has(a.state) && a.state !== 'resource_wait';
 export class Engine {
   private tail: Promise<unknown> = Promise.resolve();
   private timer?: NodeJS.Timeout;
@@ -66,9 +67,9 @@ export class Engine {
   view(run: Run, cursor?: string) {
     return this.store.page(run.tasks.map(t => {
       const a = t.attempts.at(-1);
-      return { task_id: t.spec.id, state: t.state, dependencies: t.spec.dependencies, attempt: a && { id: a.id, number: a.number, state: a.state, commit: a.commit, model: a.model, verification: a.verification, artifacts: a.artifacts, inputs: a.inputs, error: a.error, integrated_commit: a.integrated_commit } };
+      return { task_id: t.spec.id, state: t.state, dependencies: t.spec.dependencies, attempt: a && { id: a.id, number: a.number, state: a.state, directory: a.directory, commit: a.commit, model: a.model, verification: a.verification, artifacts: a.artifacts, inputs: a.inputs, error: a.error, integrated_commit: a.integrated_commit } };
     }), cursor, { run_id: run.id, state: run.state, revision: run.revision, base: run.base, integration_commit: run.integration_commit,
-      validation: run.validation && { id: run.validation.id, state: run.validation.state, commit: run.validation.commit, revision: run.validation.revision, attempt_id: run.validation.attempt.id, artifacts: run.validation.attempt.artifacts, verification: run.validation.attempt.verification, inputs: run.validation.attempt.inputs }, error: run.error,
+      validation: run.validation && { id: run.validation.id, state: run.validation.state, commit: run.validation.commit, revision: run.validation.revision, attempt_id: run.validation.attempt.id, directory: run.validation.attempt.directory, artifacts: run.validation.attempt.artifacts, verification: run.validation.attempt.verification, inputs: run.validation.attempt.inputs, error: run.validation.attempt.error }, error: run.error,
       event_cursor: this.store.state.events.filter(e => e.run_id === run.id).at(-1)?.seq ?? 0,
     });
   }
@@ -150,15 +151,15 @@ export class Engine {
   lockedResources() { return new Set(this.allAttempts().filter(a => active.has(a.state)).flatMap(a => a.resources)); }
   async tick() {
     for (const run of this.store.state.runs) await this.collect(run);
-    let count = this.allAttempts().filter(a => active.has(a.state)).length;
+    let count = this.allAttempts().filter(occupiesSlot).length;
     for (const run of this.store.state.runs) {
       if (run.state !== 'active') continue;
       for (const task of run.tasks) {
         if (count >= this.options.concurrency) break;
-        if (this.allAttempts(run).filter(a => active.has(a.state)).length >= run.settings.concurrency) break;
+        if (this.allAttempts(run).filter(occupiesSlot).length >= run.settings.concurrency) break;
         if (task.state !== 'queued' || !task.spec.dependencies.every(dep => run.tasks.find(t => t.spec.id === dep)?.state === 'integrated')) continue;
         const locks = this.lockedResources(); if (task.spec.resources.some(key => locks.has(key))) continue;
-        await this.launch(run, task); count = this.allAttempts().filter(a => active.has(a.state)).length;
+        await this.launch(run, task); count = this.allAttempts().filter(occupiesSlot).length;
       }
     }
   }
@@ -182,7 +183,7 @@ export class Engine {
       await probeResources(this.resources(run, attempt), attempt.directory);
       const goal = `${task.spec.goal}${attempt.feedback ? `\n\nCodex correction instructions:\n${attempt.feedback}` : ''}`;
       await this.spawn(run, attempt, { goal, acceptance: task.spec.acceptance, verification: task.spec.verification, scope: task.spec.scope, model: task.spec.model ?? prior?.model, validation: false });
-    } catch (e) { await this.launchFailure(run, attempt, e); task.state = 'needs_review'; }
+    } catch (e) { await this.launchFailure(run, attempt, e); task.state = attempt.state === 'resource_wait' ? 'needs_input' : 'needs_review'; }
     this.store.event(run.id, 'attempt_started', { task_id: task.spec.id, attempt_id: id, state: attempt.state });
   }
   resources(run: Run, attempt: Attempt): Resource[] { return attempt.resources.map(key => run.resources.find(r => r.resource_key === key)!); }
@@ -204,17 +205,18 @@ export class Engine {
   async launchFailure(run: Run, attempt: Attempt, e: unknown) {
     attempt.error = (e as Error).message;
     attempt.artifacts.push(this.store.artifact(run.id, 'error.json', JSON.stringify({ message: (e as Error).message, details: e instanceof Fault ? e.details : undefined })));
-    attempt.state = fs.existsSync(path.join(attempt.job_dir, 'spec.json')) ? 'orphaned' : 'failed'; this.store.save();
+    attempt.state = e instanceof Fault && e.code.startsWith('RESOURCE_') ? 'resource_wait' : fs.existsSync(path.join(attempt.job_dir, 'spec.json')) ? 'orphaned' : 'failed'; this.store.save();
   }
   async collect(run: Run) {
     for (const attempt of this.allAttempts(run).filter(a => active.has(a.state))) {
       const state = readJson<WorkerState>(path.join(attempt.job_dir, 'worker.json'));
       if (!state) continue;
-      const prior = digest({ phase: attempt.worker?.phase, inputs: attempt.inputs });
+      const progress = (w?: WorkerState) => digest(w && { phase: w.phase, inputs: w.inputs, session_id: w.session_id, prompt_intent: w.prompt_intent, prompt_accepted: w.prompt_accepted, model: w.model, shell_intent: w.shell_intent, verification: w.verification });
+      const prior = progress(attempt.worker);
       attempt.worker = state; attempt.model = state.model; attempt.inputs = state.inputs;
       if (!state.stopped) {
         attempt.state = ['needs_input','delivery_uncertain','cancelling','stop_uncertain'].includes(state.phase) ? state.phase : 'running';
-        if (prior !== digest({ phase: state.phase, inputs: state.inputs })) this.store.event(run.id, 'worker_state', { attempt_id: attempt.id, phase: state.phase, input_ids: state.inputs.map(i => i.id) });
+        if (prior !== progress(state)) this.store.event(run.id, 'worker_state', { attempt_id: attempt.id, phase: state.phase, input_ids: state.inputs.map(i => i.id), prompt_dispatched: !!state.prompt_intent, verified_commands: state.verification.length });
         continue;
       }
       if (state.server && await treeAlive(state.server)) { attempt.state = 'stop_uncertain'; continue; }
@@ -298,11 +300,29 @@ export class Engine {
     invariant(run.state !== 'completed' && run.state !== 'finalizing', 'RUN_FROZEN', 'Cannot cancel a completed/finalizing run.');
     run.state = 'cancelling';
     for (const task of run.tasks) if (task.state === 'queued') task.state = 'cancelled';
-    for (const a of this.allAttempts(run)) if (active.has(a.state)) { writeJson(path.join(a.job_dir, 'cancel.json'), { at: Date.now() }); a.state = 'cancelling'; }
+    for (const a of this.allAttempts(run)) if (active.has(a.state)) {
+      if (a.state === 'resource_wait') { a.state = 'cancelled'; const task = run.tasks.find(t => t.attempts.includes(a)); if (task) task.state = 'cancelled'; if (run.validation?.attempt === a) run.validation.state = 'cancelled'; }
+      else { writeJson(path.join(a.job_dir, 'cancel.json'), { at: Date.now() }); a.state = 'cancelling'; }
+    }
     this.store.event(run.id, 'cancel_requested', {}); await this.reconcile(run); return { run_id: run.id, state: run.state };
   }
   async reconcile(run: Run) {
     for (const attempt of this.allAttempts(run).filter(a => active.has(a.state))) {
+      if (attempt.state === 'resource_wait') {
+        if (this.allAttempts().filter(occupiesSlot).length >= this.options.concurrency || this.allAttempts(run).filter(occupiesSlot).length >= run.settings.concurrency) continue;
+        const task = run.tasks.find(t => t.attempts.includes(attempt));
+        try {
+          checkContext(run.repo, attempt.context); checkContext(attempt.directory, attempt.context);
+          await probeResources(this.resources(run, attempt), attempt.directory);
+          invariant(!fs.existsSync(path.join(attempt.job_dir, 'spec.json')), 'DISPATCH_UNCERTAIN', 'An execution intent already exists; it cannot be dispatched again.');
+          const spec = task ? { goal: `${task.spec.goal}${attempt.feedback ? `\n\nCodex correction instructions:\n${attempt.feedback}` : ''}`, acceptance: task.spec.acceptance, verification: task.spec.verification, scope: task.spec.scope, model: task.spec.model ?? task.attempts.at(-2)?.model, validation: false }
+            : { goal: 'Execute the frozen final verification commands.', acceptance: [], verification: run.final_verification, scope: [], model: run.tasks.at(-1)?.attempts.at(-1)?.model, validation: true };
+          await this.spawn(run, attempt, spec); attempt.error = undefined;
+          if (task) task.state = 'running'; else if (run.validation) run.validation.state = 'running';
+          this.store.event(run.id, 'resource_binding_verified', { attempt_id: attempt.id, directory: attempt.directory });
+        } catch (e) { await this.launchFailure(run, attempt, e); if (attempt.state !== 'resource_wait') { if (task) task.state = 'needs_review'; else if (run.validation) { run.validation.state = 'failed'; run.state = 'active'; } } }
+        continue;
+      }
       const state = readJson<WorkerState>(path.join(attempt.job_dir, 'worker.json'));
       if (attempt.launch_boot && attempt.launch_boot !== await bootId() && !state?.stopped) {
         attempt.state = run.state === 'cancelling' ? 'cancelled' : 'interrupted'; attempt.error = 'The computer rebooted; prior processes cannot still be running. No model request was replayed.';
@@ -352,7 +372,7 @@ export class Engine {
     invariant(run.state === 'active' || run.state === 'waiting_final_review', 'RUN_FROZEN', 'Run cannot enter validation.');
     invariant(run.tasks.length && run.tasks.every(t => t.state === 'integrated'), 'TASKS_PENDING', 'All tasks must be reviewed and integrated.');
     invariant(run.final_verification.length > 0, 'VALIDATION_COMMANDS', 'At least one explicit final verification command is required.');
-    invariant(this.allAttempts().filter(a => active.has(a.state)).length < this.options.concurrency, 'CAPACITY', 'Wait for a free worker slot before final validation.');
+    invariant(this.allAttempts().filter(occupiesSlot).length < this.options.concurrency, 'CAPACITY', 'Wait for a free worker slot before final validation.');
     const resources = [...new Set(run.tasks.flatMap(t => t.spec.resources))]; const locks = this.lockedResources();
     invariant(!resources.some(key => locks.has(key)), 'RESOURCE_BUSY', 'A shared resource is in use.');
     await clean(run.integration_dir); invariant(await head(run.integration_dir) === run.integration_commit, 'INTEGRATION_MOVED', 'Integration branch changed.');
@@ -367,7 +387,7 @@ export class Engine {
       await worktree(run.repo, attempt.directory, run.integration_commit); await materialize(this.store, attempt.directory, context);
       await probeResources(this.resources(run, attempt), attempt.directory);
       await this.spawn(run, attempt, { goal: 'Execute only the frozen final verification commands.', acceptance: [], verification: run.final_verification, scope: [], validation: true, model: run.tasks.at(-1)?.attempts.at(-1)?.model });
-    } catch (e) { await this.launchFailure(run, attempt, e); run.validation.state = 'failed'; run.state = 'active'; }
+    } catch (e) { await this.launchFailure(run, attempt, e); run.validation.state = attempt.state === 'resource_wait' ? 'awaiting_resource' : 'failed'; if (attempt.state !== 'resource_wait') run.state = 'active'; }
     this.store.event(run.id, 'validation_started', { validation_id: id, commit: run.integration_commit, revision: run.revision });
     return { validation_id: id, commit: run.integration_commit, revision: run.revision, state: run.state };
   }

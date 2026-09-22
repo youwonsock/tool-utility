@@ -43,7 +43,7 @@ export async function serve(root: string, executableFile: string) {
       invariant(input.protocol === PROTOCOL, 'UPDATE_PENDING', 'Protocol mismatch. Keep the active release until its work finishes.');
       if (req.url === '/stop') {
         await engine.serial(async () => {
-          const running = engine.allAttempts().filter(a => ['launching','running','needs_input','delivery_uncertain','orphaned','stop_uncertain','cancelling'].includes(a.state));
+          const running = engine.allAttempts().filter(a => ['launching','running','needs_input','resource_wait','delivery_uncertain','orphaned','stop_uncertain','cancelling'].includes(a.state));
           if (running.length && input.cancel === true) for (const run of store.state.runs.filter(r => !['completed','cancelled'].includes(r.state))) await engine.cancel(run);
           invariant(!running.length, 'JOBS_ACTIVE', 'Jobs are active. Cancellation has been requested if --cancel was supplied; wait for confirmed termination before stopping.');
           engine.stop(); store.save();

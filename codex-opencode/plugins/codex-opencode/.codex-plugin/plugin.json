@@ -1,6 +1,6 @@
 {
   "name": "codex-opencode",
-  "version": "1.0.0+codex.20260922075323",
+  "version": "1.0.0+codex.20260922083320",
   "description": "Codex plans and reviews; persistent OpenCode workers implement and verify.",
   "author": {
     "name": "youwonsock"

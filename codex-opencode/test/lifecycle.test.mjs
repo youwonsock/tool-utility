@@ -63,9 +63,9 @@ test('global resource serialization and actual project identity check',async t=>
   await until(f,two.run_id,r=>r.tasks[0].state==='needs_review');
   const bad={...profile,resource_key:'wrong',expected_instance:'other'};
   const three=await submit(f,[task('c',{}, {resources:['wrong']})],{resources:[bad]});
-  const r=await until(f,three.run_id,r=>r.tasks[0].state==='needs_review'); assert.match(r.tasks[0].attempts[0].error,/Wrong or unverified/); assert.ok(!r.tasks[0].attempts[0].worker);
+  const r=await until(f,three.run_id,r=>r.tasks[0].state==='needs_input'); assert.match(r.tasks[0].attempts[0].error,/Wrong or unverified/); assert.ok(!r.tasks[0].attempts[0].worker);
   const wrongPath={...profile,resource_key:'wrongpath',probe:{...profile.probe,args:['-e','console.log(JSON.stringify({instance_id:"editor-1",project_path:process.argv[1]}))',f.repo]}};
-  const four=await submit(f,[task('d',{}, {resources:['wrongpath']})],{resources:[wrongPath]}); const p=await until(f,four.run_id,r=>r.tasks[0].state==='needs_review'); assert.match(p.tasks[0].attempts[0].error,/must bind/);
+  const four=await submit(f,[task('d',{}, {resources:['wrongpath']})],{resources:[wrongPath]}); const p=await until(f,four.run_id,r=>r.tasks[0].state==='needs_input'); assert.match(p.tasks[0].attempts[0].error,/must bind/);
 });
 
 test('validation freezes tasks, rejects changed source/commands and invalidates on append',async t=>{
@@ -114,4 +114,16 @@ test('cancellation confirms termination before releasing resource leases',async 
   const f=await fixture(t); const s=await submit(f,[task('a',{delay:60000})]); const r=await until(f,s.run_id,r=>r.tasks[0].attempts[0]?.worker?.prompt_intent);
   const out=await callOk(f,'cancel_run',{request_id:uid('r'),run_id:r.id}); assert.equal(out.state,'cancelling');
   await until(f,r.id,r=>r.state==='cancelled'); assert.equal(r.tasks[0].attempts[0].worker.stopped,true);
+});
+
+test('project-bound resource can be rebound to the same waiting task and final-validation worktree',async t=>{
+  const f=await fixture(t), editorState=path.join(f.dir,'editor.json');fs.writeFileSync(editorState,JSON.stringify({instance_id:'editor',project_path:f.repo}));
+  const profile={resource_key:'editor-rebind',connection:{name:'editor',config:{type:'remote',url:'http://127.0.0.1:59998/mcp'}},probe:{executable:process.execPath,args:['-e','console.log(require("fs").readFileSync(process.argv[1],"utf8"))',editorState],read_only:true},expected_instance:'editor',project_bound:true};
+  const s=await submit(f,[task('a',{files:{'a.txt':'a'}},{resources:['editor-rebind']})],{resources:[profile]});
+  const r=await until(f,s.run_id,r=>r.tasks[0].state==='needs_input'),a=r.tasks[0].attempts[0];assert.equal(a.state,'resource_wait');assert.ok(!a.worker);
+  fs.writeFileSync(editorState,JSON.stringify({instance_id:'editor',project_path:a.directory}));await callOk(f,'reconcile_run',{request_id:uid('r'),run_id:r.id});
+  await until(f,r.id,r=>r.tasks[0].state==='needs_review');assert.equal(r.tasks[0].attempts.length,1);assert.equal(r.tasks[0].attempts[0].id,a.id);await review(f,r,'a');
+  await callOk(f,'validate_run',{request_id:uid('r'),run_id:r.id});assert.equal(r.validation.state,'awaiting_resource');const validationID=r.validation.id;
+  fs.writeFileSync(editorState,JSON.stringify({instance_id:'editor',project_path:r.validation.attempt.directory}));await callOk(f,'reconcile_run',{request_id:uid('r'),run_id:r.id});
+  await until(f,r.id,r=>r.state==='waiting_final_review');assert.equal(r.validation.id,validationID);assert.equal((await finalize(f,r)).state,'completed');
 });

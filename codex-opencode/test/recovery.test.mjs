@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { uid, writeJson, bootId, terminate, sleep, Store, remoteCall, connect } from '../dist/index.mjs';
-import { fixture,task,submit,until,review,ready,git,callOk,cli,fake } from './helpers.mjs';
+import { fixture,task,submit,until,review,ready,git,callOk,cli,fake,readState } from './helpers.mjs';
 
 test('source edits during final verification invalidate it',async t=>{
   const f=await fixture(t); const s=await submit(f,[task('a',{files:{'a.txt':'a'}})],{final_verification:[{command:'node -e "require(\'fs\').writeFileSync(\'base.txt\',\'modified\')"'}]});
@@ -32,9 +32,9 @@ test('service restart during cancellation confirms stop and does not dispatch a 
   const f=await fixture(t,{service:true}),audit=path.join(f.dir,'audit.jsonl'),saved={...process.env};Object.assign(process.env,f.env,{FAKE_AUDIT:audit});
   t.after(async()=>{try{await remoteCall(f.data,cli,'',{},'/stop');}catch{}for(const k of Object.keys(process.env))if(!(k in saved))delete process.env[k];Object.assign(process.env,saved);});
   const s=await remoteCall(f.data,cli,'submit_tasks',{request_id:'cancel-case',repo:f.repo,tasks:[task('a',{delay:60000})]});
-  let r;for(let i=0;i<150;i++){r=new Store(f.data).state.runs[0];if(r?.tasks[0].attempts[0]?.worker?.prompt_intent)break;await sleep(100);}assert.ok(r.tasks[0].attempts[0].worker.prompt_intent);
+  let r;for(let i=0;i<150;i++){r=readState(f.data).runs[0];if(r?.tasks[0].attempts[0]?.worker?.prompt_intent)break;await sleep(100);}assert.ok(r.tasks[0].attempts[0].worker.prompt_intent);
   const cancel=await remoteCall(f.data,cli,'cancel_run',{request_id:'stop-request',run_id:s.run_id});assert.ok(['cancelling','cancelled'].includes(cancel.state));
   const descriptor=JSON.parse(fs.readFileSync(path.join(f.data,'service.json')));await terminate(descriptor.owner,false);await connect(f.data,cli);
-  for(let i=0;i<150;i++){r=new Store(f.data).state.runs[0];if(r.state==='cancelled')break;await sleep(100);}assert.equal(r.state,'cancelled');
+  for(let i=0;i<150;i++){r=readState(f.data).runs[0];if(r.state==='cancelled')break;await sleep(100);}assert.equal(r.state,'cancelled');
   const events=fs.readFileSync(audit,'utf8').trim().split('\n').map(JSON.parse);assert.equal(events.filter(e=>e.event==='prompt').length,1);assert.equal(r.tasks[0].attempts.length,1);
 });
