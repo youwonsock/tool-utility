@@ -1,0 +1,19 @@
+{
+  "name": "codex-opencode",
+  "version": "1.0.0+codex.20260922075323",
+  "description": "Codex plans and reviews; persistent OpenCode workers implement and verify.",
+  "author": {
+    "name": "youwonsock"
+  },
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Codex\u2013OpenCode Delegation",
+    "shortDescription": "Delegate implementation to persistent OpenCode workers.",
+    "longDescription": "Plan and review in Codex while OpenCode edits, tests and builds in isolated Git worktrees, with durable evidence and guarded final integration.",
+    "developerName": "youwonsock",
+    "category": "Productivity",
+    "capabilities": [],
+    "defaultPrompt": "Use $delegate-opencode to plan, delegate, review and integrate this change."
+  }
+}

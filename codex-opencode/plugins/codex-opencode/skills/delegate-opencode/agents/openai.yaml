@@ -1,0 +1,4 @@
+interface:
+  display_name: "OpenCode 위임"
+  short_description: "Plan, delegate to OpenCode, review evidence and integrate"
+  default_prompt: "Use $delegate-opencode to plan the change, delegate implementation to OpenCode, and review the evidence."
