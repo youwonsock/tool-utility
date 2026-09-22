@@ -13,7 +13,7 @@ const mcp=JSON.parse(fs.readFileSync(path.join(plugin,'.mcp.json'))); assert.ok(
 const market=JSON.parse(fs.readFileSync(path.join(root,'.agents/plugins/marketplace.json')));
 const entry=market.plugins.find(p=>p.name===manifest.name); assert.equal(entry.source.path,'./plugins/codex-opencode');
 assert.equal(entry.policy.installation,'AVAILABLE'); assert.equal(entry.policy.authentication,'ON_INSTALL');
-const skill=fs.readFileSync(path.join(plugin,'skills/delegate-opencode/SKILL.md'),'utf8');
+const skill=fs.readFileSync(path.join(plugin,'skills/delegate-opencode/SKILL.md'),'utf8').replaceAll('\r\n','\n');
 assert.match(skill,/^---\nname: delegate-opencode\ndescription: .+\n---\n/); assert.ok(!skill.includes('TODO')); assert.ok(skill.split('\n').length<500);
 for(const name of ['doctor','submit_tasks','list_runs','get_run','wait_run','get_artifact','review_task','respond_to_request','reconcile_run','cancel_run','validate_run','finalize_run']) assert.ok(skill.includes(name),name);
 const interfaceFile=fs.readFileSync(path.join(plugin,'skills/delegate-opencode/agents/openai.yaml'),'utf8'); assert.ok(interfaceFile.includes('$delegate-opencode'));
