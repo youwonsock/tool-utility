@@ -9,6 +9,7 @@ Unreal 플러그인과 Unity Editor 도구에서 분리된 기타 작업 편의 
 | 툴 | 요약 | 문서 |
 | --- | --- | --- |
 | Vidio To Image | Windows에서 MP4의 지정 구간을 PNG/JPG 프레임 또는 2×2·3×3 격자 이미지로 추출하는 GUI 도구 | [툴 README](<./Vidio To Image/README.md>) |
+| Codex–OpenCode | Codex의 계획·검수와 OpenCode의 구현·테스트를 분리하는 로컬 플러그인 및 MCP 서비스 | [툴 README](./codex-opencode/README.md) |
 
 ## 폴더 운영
 
