@@ -1,6 +1,6 @@
 import unittest
 
-from video_to_image import (
+from video_to_image_domain import (
     PREVIEW_SAMPLE_CELL_SIZE,
     PreviewPlan,
     SIZE_MODES,
@@ -13,6 +13,8 @@ from video_to_image import (
     parse_positive_int,
     resolve_preview_plan,
     resolve_size_plan,
+    format_time,
+    parse_time,
 )
 
 
@@ -56,7 +58,7 @@ class VideoToImageGeometryTests(unittest.TestCase):
         plan = resolve_size_plan(SIZE_MODES[1], None, False, (1, 1))
         self.assertEqual(plan, SizePlan(None, None, None))
         video_filter = build_video_filter(2, False, (1, 1), plan)
-        self.assertEqual(video_filter, "fps=0.5")
+        self.assertIn("fps=0.5:start_time=0:round=up:eof_action=pass", video_filter)
         self.assertNotIn("tile=", video_filter)
 
     def test_grid_filter_uses_interval_and_auto_cell_size(self) -> None:
@@ -100,6 +102,11 @@ class VideoToImageGeometryTests(unittest.TestCase):
         self.assertEqual(calculate_expected_output_count(0, 4, 0.5, True, (2, 2)), 2)
         self.assertEqual(calculate_expected_output_count(0, 4.1, 1, True, (3, 3)), 1)
 
+    def test_time_format_carries_into_minutes(self) -> None:
+        self.assertEqual(format_time(59.9995), "00:01:00")
+        self.assertEqual(parse_time(format_time(119.9995)), 120)
+
 
 if __name__ == "__main__":
     unittest.main()
+
