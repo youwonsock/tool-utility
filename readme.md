@@ -8,7 +8,7 @@ Unreal 플러그인과 Unity Editor 도구에서 분리된 기타 작업 편의 
 
 | 툴 | 요약 | 문서 |
 | --- | --- | --- |
-| Vidio To Image | 영상 이미지 추출 GUI 및 에이전트용 로컬 영상 편집 MCP 서버 | [툴 README](<./Vidio To Image/README.md>) · [MCP 설정](<./Vidio To Image/MCP_README.md>) |
+| Vidio To Image | 영상 이미지 추출 GUI 및 에이전트용 로컬 영상 편집 MCP 도구 9개 제공 | [툴 README](<./Vidio To Image/README.md>) · [MCP 설정 및 사용](<./Vidio To Image/README.md#mcp-설정-및-사용>) |
 
 ## 폴더 운영
 
