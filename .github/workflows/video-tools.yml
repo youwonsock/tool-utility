@@ -1,0 +1,44 @@
+name: Video tools tests
+on:
+  push:
+    paths:
+      - "Vidio To Image/**"
+      - ".github/workflows/video-tools.yml"
+  pull_request:
+    paths:
+      - "Vidio To Image/**"
+      - ".github/workflows/video-tools.yml"
+permissions:
+  contents: read
+jobs:
+  regression:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: Vidio To Image
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: python -m pip install -r requirements-mcp.txt
+      - name: Unit, real FFmpeg and MCP stdio tests
+        run: python -m unittest discover -v
+      - name: Check Windows installation and generated configuration
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ./install_mcp.ps1 -Workspace (Join-Path $env:RUNNER_TEMP "video-workspace")
+          $config = Get-Content mcp-config.local.json -Raw | ConvertFrom-Json
+          if (-not (Test-Path $config.mcpServers.'video-tools'.command)) { throw "Missing Python" }
+          if (-not (Test-Path $config.mcpServers.'video-tools'.args[0])) { throw "Missing MCP entry point" }
+      - name: Build Windows GUI package
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./package.ps1
+

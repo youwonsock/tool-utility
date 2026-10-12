@@ -35,3 +35,8 @@ sample.mp4
 *.log
 .DS_Store
 Thumbs.db
+
+# Machine-specific MCP paths and generated media
+mcp-config.local.json
+.video-to-image-*/
+.video-edit-*/
