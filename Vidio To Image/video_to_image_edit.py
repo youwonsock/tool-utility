@@ -107,7 +107,10 @@ def build_edit_command(request: EditRequest, info: VideoInfo, output_path: Path)
     command = [request.ffmpeg_path, "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
                "-ss", f"{request.start:.9f}", "-protocol_whitelist", "file,pipe",
                "-i", str(request.video_path), "-map", f"0:{info.stream_index}", "-vf", ",".join(filters),
-               "-c:v", "libx264", "-preset", "medium", "-crf", str(request.crf)]
+               "-c:v", "libx264", "-preset", "medium", "-crf", str(request.crf),
+               # Explicit CFR avoids version-dependent fallback rates and
+               # missing duration on the final video packet.
+               "-r", f"{info.fps or 30:.12g}", "-fps_mode", "cfr"]
     if info.has_audio and not request.mute:
         command += ["-map", "0:a:0", "-af",
                     f"atrim=start=0:end={duration:.9f},asetpts=PTS-STARTPTS,{_tempo_chain(request.speed)}",
