@@ -141,6 +141,9 @@ class MediaIntegrationTests(unittest.TestCase):
                        input=frame*10, check=True, capture_output=True, timeout=15)
         flipped = self.output / "flipped.mp4"
         edit_video(EditRequest(self.ffmpeg, source, flipped, flip_horizontal=True, mute=True))
+        metadata = probe_video(self.ffmpeg, flipped)
+        self.assertAlmostEqual(metadata.fps, 10, delta=0.01)
+        self.assertAlmostEqual(metadata.duration, 1, delta=0.02)
         image = extract_images(self.request(video_path=flipped, end=1)).files[0]
         self.assertGreater(self.pixel(image, (8, 18))[0], 160)
         self.assertLess(self.pixel(image, (56, 18))[0], 40)
