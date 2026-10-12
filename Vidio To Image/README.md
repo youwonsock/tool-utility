@@ -1,10 +1,15 @@
-# MP4 → 이미지 추출기
+# Vidio To Image — 영상 이미지 추출 및 MCP 영상 편집
 
-Windows에서 동영상의 원하는 구간을 일정한 간격으로 캡처해 PNG 또는 JPG로 저장하는 Tkinter GUI 도구입니다. 프레임을 개별 이미지로 저장하거나 2×2·3×3 격자 이미지로 합칠 수 있으며, FFmpeg는 `imageio-ffmpeg`를 통해 준비합니다.
+Vidio To Image는 **Windows용 이미지 추출 GUI와 에이전트용 MCP 서버를 함께 제공하는 영상 처리 도구**입니다. 동영상의 원하는 구간에서 PNG/JPG 프레임이나 2×2·3×3 격자 이미지를 추출하고, MCP를 연결한 에이전트는 영상 정보 조회부터 구간 자르기·크롭·회전·반전·크기 조절·배속·음소거까지 수행할 수 있습니다.
 
-에이전트용 로컬 MCP 서버도 제공합니다. 영상 정보 조회, 이미지 추출, 영상 구간 자르기·크롭·크기 조절·회전·반전·배속·음소거와 작업 취소를 지원합니다. **[MCP 설치 및 사용 안내](MCP_README.md)**를 참고하세요. GUI는 이미지 추출 화면을 유지하며, 영상 편집은 MCP에서 사용합니다.
+| 제공 방식 | 지원 기능 | 시작하기 |
+| --- | --- | --- |
+| Windows GUI | 화면에서 이미지 추출 설정, 합성 샘플 미리보기, 추출·취소 | [GUI 설치 및 실행](#gui-설치-및-실행), [GUI 사용 방법](#gui-사용-방법) |
+| 로컬 MCP 서버 (`video-tools`, stdio) | 에이전트가 9개 도구로 영상 분석·이미지 추출·영상 편집·작업 관리·결과 이미지 확인 | [MCP 설정 및 사용](#mcp-설정-및-사용), [MCP 도구 명세](#mcp-도구-명세) |
 
-## 주요 기능
+GUI와 MCP는 같은 프레임 추출 로직을 사용합니다. GUI는 Tkinter 기반의 이미지 추출 화면이며, 영상 편집 기능은 MCP 도구로 제공합니다. 이 문서에서 두 사용 방식의 설치, 설정, 사용법을 함께 안내합니다.
+
+## GUI 주요 기능
 
 - 시작 시간, 끝 시간, 양의 실수 초 단위 추출 간격 지정
 - 개별 이미지 저장 또는 `2 × 2`, `3 × 3` 격자 합성
@@ -15,7 +20,7 @@ Windows에서 동영상의 원하는 구간을 일정한 간격으로 캡처해 
 - FFmpeg 작업 진행률 표시와 추출 취소
 - 설정을 `%APPDATA%\VideoToImage\settings.json`에 저장
 
-## 실행 방법
+## GUI 설치 및 실행
 
 ### 간편 실행
 
@@ -33,7 +38,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 
 `install.ps1`은 현재 PATH에 등록된 Python으로 `.venv`를 만들고 `requirements.txt`를 설치합니다. 소스 실행에는 Python 3.10 이상을 권장합니다.
 
-## 사용 방법
+## GUI 사용 방법
 
 ### 1. 동영상 선택
 
@@ -116,7 +121,164 @@ FFmpeg 결과는 임시 폴더에 먼저 생성한 뒤 파일별로 저장합니
 
 인코딩 중 취소하면 임시 결과를 정리합니다. 결과 파일 저장 단계가 이미 시작되었다면 저장을 마친 뒤 완료로 보고합니다. FFmpeg가 실패하면 원인 로그를 오류 메시지에 포함합니다.
 
-## EXE 및 ZIP 패키지 만들기
+## MCP 설정 및 사용
+
+이 툴에 포함된 `video_to_image_mcp.py`는 **MCP(Model Context Protocol) 서버**입니다. 에이전트는 MCP 클라이언트에 `video-tools` 서버를 등록한 뒤 아래의 9개 도구를 호출할 수 있습니다. 영상 파일에 접근할 수 있는 같은 컴퓨터에서 로컬 stdio 서버를 실행할 수 있는 클라이언트가 필요합니다.
+
+Python 3.10 이상을 설치하고, 아래 명령은 저장소의 `Vidio To Image` 폴더에서 실행합니다. `--workspace`는 에이전트가 읽고 쓸 영상 작업 폴더입니다. 편집할 원본 영상을 이 폴더 안에 넣으세요.
+
+### Windows 설치
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install_mcp.ps1 -Workspace "D:\VideoWorkspace"
+```
+
+설치 스크립트는 프로젝트의 `.venv`에 GUI 및 MCP 의존성을 설치하고, 현재 Python·서버·작업 폴더의 절대 경로가 담긴 `mcp-config.local.json`을 생성합니다. 생성 후에는 아래 [클라이언트 연결](#클라이언트-연결)을 진행합니다.
+
+### Linux/macOS 설치
+
+GUI의 공식 대상은 Windows이며, 공통 처리 계층과 MCP 서버는 다음과 같이 설치할 수 있습니다.
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements-mcp.txt
+.venv/bin/python configure_mcp.py --workspace "$PWD/media" --output mcp-config.local.json
+```
+
+### 클라이언트 연결
+
+1. 생성된 `mcp-config.local.json`을 엽니다.
+2. `mcpServers.video-tools` 항목을 사용하는 MCP 클라이언트의 설정에 합칩니다. 기존 다른 서버 항목은 유지합니다. 클라이언트가 `command`/`args` 입력 방식을 제공하면 생성된 JSON의 두 값을 그대로 사용합니다.
+3. 클라이언트에서 MCP 서버를 다시 로드하거나 클라이언트를 다시 시작합니다.
+4. 도구 목록에 아래의 9개 도구가 표시되는지 확인하고, `server_info`로 작업 폴더와 `transport: "stdio"`를 확인합니다. `list_media`로 작업 폴더의 영상을 조회할 수 있습니다.
+
+생성되는 설정의 형식은 다음과 같습니다. 경로는 예시이므로 직접 복사하기보다 설치 스크립트나 `configure_mcp.py`가 생성한 실제 경로를 사용하세요.
+
+```json
+{
+  "mcpServers": {
+    "video-tools": {
+      "command": "C:\\tools\\tool-utility\\Vidio To Image\\.venv\\Scripts\\python.exe",
+      "args": [
+        "C:\\tools\\tool-utility\\Vidio To Image\\video_to_image_mcp.py",
+        "--workspace",
+        "D:\\VideoWorkspace"
+      ]
+    }
+  }
+}
+```
+
+설치 스크립트는 연결용 설정 파일을 생성하며, 클라이언트에 등록하는 단계는 해당 앱의 설정 화면/파일에서 수행합니다. 저장소를 내려받거나 GUI를 실행하는 것만으로 에이전트에 MCP 도구가 자동 등록되지는 않습니다. GUI용 EXE/ZIP과 별도로 위 Python 환경과 서버 실행 설정을 사용합니다.
+
+### 서버 직접 실행 및 FFmpeg 설정
+
+일반적인 MCP 사용에서는 클라이언트가 설정의 `command`와 `args`로 서버를 실행합니다. 직접 실행하려면 다음 명령을 사용합니다.
+
+```powershell
+.\run_mcp.bat --workspace "D:\VideoWorkspace"
+```
+
+Linux/macOS에서는 다음과 같이 실행합니다.
+
+```bash
+.venv/bin/python video_to_image_mcp.py --workspace "$PWD/media"
+```
+
+stdio 서버는 클라이언트의 프로토콜 입력을 기다리므로 실행 후 일반 메뉴가 표시되지 않습니다. MCP 전용 서버의 stdout은 프로토콜 전용이며 설치 로그를 출력하지 않습니다.
+
+FFmpeg는 PATH의 실행 파일을 우선 사용하며 없으면 `imageio-ffmpeg`의 실행 파일을 사용합니다. 특정 버전을 사용하려면 MCP 설정의 `args`에 `--ffmpeg`와 실행 파일 경로를 추가하세요. ffprobe가 있으면 JSON 메타데이터를 사용하고, 없으면 FFmpeg의 정보 출력을 사용합니다. FFmpeg만 있는 환경에서는 영상 길이 표시의 정밀도가 낮을 수 있습니다.
+
+서버는 공식 MCP Python SDK의 `mcp==1.30.0`을 사용하며, 버전은 `requirements-mcp.txt`에 고정되어 있습니다. [공식 v1 문서](https://py.sdk.modelcontextprotocol.io/v1/)
+
+### MCP 도구 명세
+
+| 도구 | 주요 입력 | 역할 및 반환 내용 |
+| --- | --- | --- |
+| `server_info` | 없음 | 작업 폴더, 전송 방식, 기능, 처리 제한 확인 |
+| `list_media` | `directory="."`, `limit=100` | 지정 폴더 바로 아래의 하위 폴더·영상·이미지 목록과 목록 잘림 여부 |
+| `inspect_video` | `video_path` | 길이, 크기, FPS, 오디오, 회전 메타데이터 |
+| `start_frame_extraction` | `video_path`, `output_directory`, 추출 옵션 | 개별 프레임 또는 2×2·3×3 격자 추출 작업 시작, `job_id` 반환 |
+| `start_video_edit` | `video_path`, `output_path`, 편집 옵션 | 구간·크롭·회전·반전·크기·배속·음소거 편집 작업 시작, `job_id` 반환 |
+| `get_job` | `job_id` | 작업 상태, 진행률, 오류, 결과 경로 조회 |
+| `list_jobs` | 없음 | 최근 작업 목록 |
+| `cancel_job` | `job_id` | 작업 취소 요청 및 현재 상태 반환 |
+| `read_image` | `image_path`, `max_width=1280` | 에이전트가 확인할 수 있도록 PNG/JPG 파일의 미리보기를 MCP 이미지 콘텐츠로 반환 |
+
+공통 시간 옵션은 초 단위 `start=0`, `end=null`이며, `end`를 생략하면 영상 끝까지 처리합니다. `width`와 `height`는 함께 지정하거나 둘 다 생략합니다. `overwrite=false`가 기본값입니다.
+
+- 이미지 추출 옵션: `interval=1`, `grid_size=1`(개별), `2`(2×2), `3`(3×3), `width`, `height`, `image_format="png"` 또는 `"jpg"`, `prefix="frame"`. 크기를 생략하면 원본 프레임/셀 크기를 사용합니다.
+- 영상 편집 옵션: `crop=[x,y,width,height]`, `rotation=0`/`90`/`180`/`270`, `flip_horizontal=false`, `flip_vertical=false`, `width`, `height`, `speed=1`, `mute=false`, `crf=20`.
+
+### 작업 상태와 결과 확인
+
+`start_*`는 완료 파일 대신 `job_id`를 즉시 반환합니다. `get_job`을 1~2초 간격으로 조회하고 `status`가 `completed`이면 `result`를 사용하세요. `failed`이면 `error`에 FFmpeg 원인 로그 또는 입력 오류가 들어갑니다.
+
+이미지 추출의 `result.files`는 이번에 저장한 이미지 경로 목록이며, `saved_count`와 `skipped_count`로 저장/건너뛰기 개수를 구분합니다. 영상 편집 결과 경로는 `result.output_path`입니다. 결과 경로는 작업 폴더 기준이며, 다음 도구 호출의 입력으로 사용할 수 있습니다.
+
+작업 상태는 `queued → running → completed/failed`이며 취소 요청 시 `cancelling → cancelled`가 될 수 있습니다. 파일 저장 단계가 이미 시작된 작업은 완료로 끝날 수 있습니다. 서버 종료 시 대기·실행 작업을 취소하고 자식 프로세스를 정리합니다. 작업 기록은 메모리에 최대 100개 보관하며 재시작하면 초기화됩니다. 완성된 결과 파일은 남습니다.
+
+### 에이전트 사용 예시
+
+작업 폴더에 `input.mp4`를 넣고 다음과 같이 요청할 수 있습니다.
+
+> input.mp4의 10초부터 25초까지를 잘라서 시계 방향 90도 회전하고, 1280×720에 비율을 유지해 맞춰줘. 소리는 제거하고 edited/clip.mp4로 저장한 다음, 결과에서 2초 간격의 3×3 요약 이미지를 만들어 확인해줘.
+
+에이전트의 호출 순서는 다음과 같습니다.
+
+1. `inspect_video`로 구간과 영상 크기를 확인합니다.
+2. `start_video_edit`를 호출합니다.
+3. `get_job`으로 완료 여부와 `result.output_path`를 확인합니다.
+4. 결과 영상에 `start_frame_extraction`을 실행하고, 해당 `job_id`를 `get_job`으로 조회해 완료를 기다립니다.
+5. `result.files`의 이미지 경로를 `read_image`에 전달해 확인합니다.
+
+`start_video_edit` 요청 인자:
+
+```json
+{
+  "video_path": "input.mp4",
+  "output_path": "edited/clip.mp4",
+  "start": 10,
+  "end": 25,
+  "rotation": 90,
+  "width": 1280,
+  "height": 720,
+  "mute": true,
+  "overwrite": false
+}
+```
+
+`start_frame_extraction` 요청 인자:
+
+```json
+{
+  "video_path": "edited/clip.mp4",
+  "output_directory": "captures",
+  "interval": 2,
+  "grid_size": 3,
+  "width": 1920,
+  "height": 1080,
+  "prefix": "clip_summary",
+  "image_format": "jpg"
+}
+```
+
+실제 영상 길이에 맞춰 `start`/`end`를 지정하세요. 위 예시는 원본 길이가 25초 이상일 때 사용할 수 있습니다.
+
+### MCP 동작 기준 및 제한
+
+- 모든 입력·출력 경로는 설정한 작업 폴더 안에 있어야 합니다. 상대 경로는 작업 폴더 기준이며, 폴더 바깥을 가리키는 절대 경로·상위 이동·심볼릭 링크는 거부합니다.
+- 영상 편집 결과는 H.264/AAC MP4입니다. 원본 경로에 저장할 수 없습니다. 기존 결과를 바꾸려면 `overwrite=true`를 명시합니다.
+- 이미지 추출의 `overwrite=false`는 기존 이름을 건너뛰며 `saved_count`, `skipped_count`로 구분합니다. `files`에는 이번에 저장한 파일만 들어갑니다.
+- 편집 순서는 구간 자르기 → 크롭 → 시계 방향 회전 → 반전 → 크기 조절 → 배속입니다. `crop=[x,y,width,height]`는 입력 영상의 회전 메타데이터 적용 후 좌표를 사용합니다.
+- `width`/`height`는 최종 출력 크기입니다. 비율을 유지하고 남는 영역을 여백으로 채웁니다. MP4의 지정 크기는 짝수여야 하며, 미지정 시 홀수 원본/크롭 크기는 다음 짝수로 패딩합니다.
+- 배속은 0.25~4배이고 오디오 템포도 같이 변경합니다. `mute=true`는 오디오를 제거합니다. CRF 기본값은 20이며 낮을수록 화질과 파일 크기가 커집니다.
+- 편집 영상은 원본 FPS 기준의 고정 프레임률로 저장합니다. FPS를 읽을 수 없으면 30FPS를 사용합니다. 영상 길이는 출력 프레임 간격 단위로 반올림될 수 있습니다.
+- 프레임 추출은 끝 시점을 제외합니다. 목표 시각 이전의 가장 최근 프레임을 선택하고, 시작 경계에서는 구간 안의 첫 프레임을 사용합니다. 마지막 격자의 남는 칸은 밝은 회색입니다.
+- `read_image`는 `max_width`(64~2048, 기본 1280)를 가로·세로 상한으로 삼아 축소한 미리보기를 반환하며 원본 이미지를 수정하지 않습니다. `list_media`의 `limit`은 1~500입니다.
+- 최대 동시 작업 2개, 대기 포함 8개, 추출 샘플 10,000개, 이미지/영상 프레임당 64메가픽셀, FFmpeg 실행 시간 1시간으로 제한합니다.
+
+## GUI EXE 및 ZIP 패키지 만들기
 
 PyInstaller로 FFmpeg를 포함한 폴더형 실행 파일을 만들려면 다음을 실행합니다.
 
@@ -145,6 +307,8 @@ ZIP 파일은 `dist\VideoToImage-win64.zip`에 생성됩니다.
 - 동영상 분석이 실패하면 FFmpeg가 읽을 수 있는 파일인지, 파일 경로에 접근할 수 있는지 확인합니다.
 - 기존 파일을 덮어쓰지 않으려면 `기존 파일 덮어쓰기`를 끈 상태로 실행합니다. 이 경우 새로 생성된 파일만 완료 수에 포함됩니다.
 - 출력 폴더를 저장소 안에 지정하면 생성된 이미지가 많아질 수 있으므로, 개발 저장소에서는 `test-output`, `resolution-test`, `mosaic-test`, `packaging-feature-test` 같은 테스트 출력 폴더를 사용합니다.
+- MCP 도구가 표시되지 않으면 `mcp-config.local.json`의 Python 경로가 이 프로젝트의 가상환경인지 확인하고, [클라이언트 연결](#클라이언트-연결)에 따라 설정을 등록한 뒤 서버를 다시 시작합니다.
+- MCP에서 파일을 찾지 못하거나 작업 폴더 오류가 나면 `server_info`의 `workspace`와 입력 경로를 확인합니다. 상대 경로는 저장소가 아니라 해당 작업 폴더를 기준으로 해석합니다.
 
 ## 개발자 확인
 
@@ -158,6 +322,8 @@ ZIP 파일은 `dist\VideoToImage-win64.zip`에 생성됩니다.
 | `video_to_image_edit.py` | MP4 구간·크롭·회전·크기·배속·오디오 편집 |
 | `video_to_image_jobs.py` | 작업 ID, 진행 상태, 취소, 제한된 작업 큐 |
 | `video_to_image_mcp.py` | 에이전트용 stdio MCP 도구 9개 |
+| `configure_mcp.py` | 현재 Python 환경의 절대 경로를 사용하는 MCP 클라이언트 설정 생성 |
+| `install_mcp.ps1`, `run_mcp.bat` | Windows MCP 의존성 설치·설정 생성 및 서버 실행 |
 | `video_to_image_preview.py` | 결과물 미리보기 Canvas 렌더링 |
 
 회귀 테스트는 다음 명령으로 실행합니다.
@@ -166,5 +332,5 @@ ZIP 파일은 `dist\VideoToImage-win64.zip`에 생성됩니다.
 python -m unittest discover -v
 ```
 
-실제 FFmpeg 및 MCP 연결 테스트까지 실행하려면 먼저 `python -m pip install -r requirements-mcp.txt`를 실행하세요. 합성 영상으로 추출 시점, 끝 구간, 덮어쓰기, JPG 크기, 편집 결과와 stdio 클라이언트의 도구 호출을 검사합니다. 의존성이 없는 MCP/이미지 통합 테스트는 건너뜁니다. GitHub Actions에서는 Windows와 Linux 양쪽에서 전체 테스트를 실행합니다.
+실제 FFmpeg 및 MCP 연결 테스트까지 실행하려면 먼저 `python -m pip install -r requirements-mcp.txt`를 실행하세요. 합성 영상과 MCP stdio 클라이언트로 파일 보존, 특수문자 접두사, 추출 시점, 끝 구간·부분 격자, JPG 크기, 영상 편집·오디오, 취소, 작업 폴더 제한, 도구 목록·호출·이미지 반환을 검사합니다. 의존성이 없는 MCP/이미지 통합 테스트는 건너뜁니다. GitHub Actions에서는 Windows와 Linux 양쪽에서 전체 테스트를 실행합니다.
 
