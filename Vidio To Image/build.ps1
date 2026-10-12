@@ -29,6 +29,9 @@ Write-Host "Building VideoToImage.exe..."
     --onedir `
     --windowed `
     --name VideoToImage `
+    --distpath (Join-Path $projectRoot "dist") `
+    --workpath (Join-Path $projectRoot "build") `
+    --specpath $projectRoot `
     --add-binary "$ffmpegPath;ffmpeg" `
     $scriptPath
 $pyinstallerExitCode = $LASTEXITCODE
@@ -42,3 +45,4 @@ if (-not (Test-Path -LiteralPath $exePath -PathType Leaf)) {
 }
 
 Write-Host "Build complete: dist\VideoToImage\VideoToImage.exe" -ForegroundColor Green
+
