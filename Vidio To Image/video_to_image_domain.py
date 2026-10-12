@@ -188,11 +188,21 @@ def build_video_filter(
     group_mode: bool,
     grid_size: tuple[int, int],
     size_plan: SizePlan,
+    duration: Optional[float] = None,
 ) -> str:
     """선택값을 FFmpeg 비디오 필터 문자열로 변환한다."""
 
     frame_rate = 1 / interval
-    video_filter = f"fps={frame_rate:.12g}"
+    # Input seeking leaves timestamps relative to the requested start. Trim
+    # before fps/tile so the last sheet cannot consume out-of-range frames.
+    video_filter = f"trim=start=0:end={duration:.9f}," if duration is not None else ""
+    video_filter += f"fps={frame_rate:.12g}:start_time=0:round=up:eof_action=pass"
+    if duration is not None:
+        count = calculate_expected_output_count(0, duration, interval, False, (1, 1))
+        video_filter += f",trim=end_frame={count}"
+    # RGB geometry supports odd cell sizes; JPEG conversion happens only after
+    # padding and tiling, avoiding chroma-subsampling alignment failures.
+    video_filter += ",format=rgb24"
     if size_plan.frame_size is not None:
         width, height = size_plan.frame_size
         video_filter += (
@@ -263,13 +273,12 @@ def parse_time(value: str) -> float:
 def format_time(seconds: float) -> str:
     """초를 읽기 쉬운 HH:MM:SS 형식으로 표시한다."""
 
-    seconds = max(0, float(seconds))
-    hours = int(seconds // 3600)
-    minutes = int((seconds % 3600) // 60)
-    remaining = seconds % 60
-    if abs(remaining - round(remaining)) < 0.001:
-        return f"{hours:02d}:{minutes:02d}:{int(round(remaining)):02d}"
-    return f"{hours:02d}:{minutes:02d}:{remaining:06.3f}"
+    milliseconds = max(0, round(float(seconds) * 1000))
+    hours, remainder = divmod(milliseconds, 3_600_000)
+    minutes, remainder = divmod(remainder, 60_000)
+    whole_seconds, fraction = divmod(remainder, 1000)
+    suffix = f".{fraction:03d}" if fraction else ""
+    return f"{hours:02d}:{minutes:02d}:{whole_seconds:02d}{suffix}"
 
 
 def safe_prefix(value: str, fallback: str) -> str:
@@ -279,3 +288,4 @@ def safe_prefix(value: str, fallback: str) -> str:
     prefix = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", prefix)
     prefix = prefix.strip(" .")
     return prefix or "frame"
+

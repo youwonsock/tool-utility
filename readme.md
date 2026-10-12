@@ -8,10 +8,11 @@ Unreal 플러그인과 Unity Editor 도구에서 분리된 기타 작업 편의 
 
 | 툴 | 요약 | 문서 |
 | --- | --- | --- |
-| Vidio To Image | Windows에서 MP4의 지정 구간을 PNG/JPG 프레임 또는 2×2·3×3 격자 이미지로 추출하는 GUI 도구 | [툴 README](<./Vidio To Image/README.md>) |
+| Vidio To Image | 영상 이미지 추출 GUI 및 에이전트용 로컬 영상 편집 MCP 서버 | [툴 README](<./Vidio To Image/README.md>) · [MCP 설정](<./Vidio To Image/MCP_README.md>) |
 
 ## 폴더 운영
 
 - 툴별 소스, 의존성, 실행 방법은 각 툴 폴더 안에서 관리합니다.
 - 엔진 생성물, 가상환경, 빌드 결과물, 테스트 출력물은 각 폴더의 무시 규칙으로 제외합니다.
 - 새로운 기타 툴은 독립 실행에 필요한 README와 전용 무시 규칙을 갖춘 최상위 폴더로 추가합니다.
+

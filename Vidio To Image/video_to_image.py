@@ -1,4 +1,4 @@
-"""MP4 동영상의 지정한 시간 구간을 1초 간격의 이미지로 추출하는 GUI 프로그램."""
+"""동영상의 지정 구간을 일정한 간격의 이미지로 추출하는 GUI 프로그램."""
 
 from __future__ import annotations
 
@@ -238,7 +238,7 @@ class VideoToImageApp(tk.Tk):
         ttk.Label(card, textvariable=self.info_var, style="CardText.TLabel").grid(
             row=1, column=0, columnspan=2, sticky="w", pady=(4, 9)
         )
-        self.video_entry = ttk.Entry(card, textvariable=self.video_var, style="Card.TEntry")
+        self.video_entry = ttk.Entry(card, textvariable=self.video_var, style="Card.TEntry", state="readonly")
         self.video_entry.grid(row=2, column=0, sticky="ew")
         self.video_button = ttk.Button(card, text="찾아보기", style="Secondary.TButton", command=self._choose_video)
         self.video_button.grid(row=2, column=1, padx=(10, 0))
@@ -422,7 +422,7 @@ class VideoToImageApp(tk.Tk):
     def _sync_output_controls(self) -> None:
         if not hasattr(self, "grid_size_combo"):
             return
-        state = "normal" if self.output_mode_var.get() == GRID_OUTPUT_MODE else "disabled"
+        state = "readonly" if self.output_mode_var.get() == GRID_OUTPUT_MODE else "disabled"
         self.grid_size_combo.configure(state=state)
         self._update_output_summary()
 
@@ -567,6 +567,8 @@ class VideoToImageApp(tk.Tk):
 
         sample_count = preview_plan.grid_size[0] * preview_plan.grid_size[1]
         sample_times = [start + index * interval for index in range(sample_count)]
+        if end is not None:
+            sample_times = [sample_time for sample_time in sample_times if sample_time < end]
         self.preview_renderer.draw(preview_plan, sample_times)
 
     def _choose_video(self) -> None:
@@ -579,6 +581,9 @@ class VideoToImageApp(tk.Tk):
 
         path = Path(selected)
         self.video_path = path
+        self.duration = None
+        self.ffmpeg_path = None
+        self.start_var.set("00:00:00")
         self.video_var.set(str(path))
         self.info_var.set("영상 정보를 분석하는 중...")
         self.start_button.configure(state="disabled")
@@ -713,7 +718,7 @@ class VideoToImageApp(tk.Tk):
                 elif isinstance(event, ExtractionFinished):
                     self.progress_var.set(100)
                     if event.count:
-                        completion_message = f"이미지 {event.count}장을 저장했습니다.\n\n{event.output_dir}"
+                        completion_message = f"이미지 {event.count}장을 저장했습니다. 기존 파일 {event.skipped}장 건너뜀.\n\n{event.output_dir}"
                         self.status_var.set(f"완료 · {event.count}장 저장됨")
                     else:
                         completion_message = (
@@ -765,6 +770,9 @@ class VideoToImageApp(tk.Tk):
             except tk.TclError:
                 pass
         if state == "normal":
+            self.video_entry.configure(state="readonly")
+            for combo in (self.format_combo, self.output_mode_combo, self.size_mode_combo):
+                combo.configure(state="readonly")
             self._sync_output_controls()
             self._sync_size_controls()
 
@@ -849,3 +857,4 @@ class VideoToImageApp(tk.Tk):
 if __name__ == "__main__":
     app = VideoToImageApp()
     app.mainloop()
+
