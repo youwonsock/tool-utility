@@ -17,7 +17,8 @@ test('authenticated daemon survives MCP disconnect and restart without duplicate
   t.after(()=>client.close());
   const transport=new StdioClientTransport({command:process.execPath,args:[cli,'mcp'],env:{...process.env},stderr:'pipe'}); await client.connect(transport);
   assert.equal((await client.listTools()).tools.length,12);
-  const result=await client.callTool({name:'submit_tasks',arguments:{request_id:'single',repo:f.repo,tasks:[task('a',{files:{'a.txt':'a'},delay:8000,drop_response:true})]}});
+  const gate=path.join(f.dir,'complete-implementation'),args={request_id:'single',repo:f.repo,tasks:[task('a',{files:{'a.txt':'a'},wait_file:gate,drop_response:true})]};
+  const result=await client.callTool({name:'submit_tasks',arguments:args});
   const submitted=JSON.parse(result.content[0].text); assert.ok(submitted.run_id); await client.close();
   let state;
   for(let i=0;i<100;i++){state=readState(f.data);if(state.runs[0].tasks[0].attempts[0]?.worker?.prompt_intent)break;await sleep(100);}
@@ -28,10 +29,13 @@ test('authenticated daemon survives MCP disconnect and restart without duplicate
   if(process.platform==='win32') await terminate(descriptor.owner); else process.kill(descriptor.owner.pid,'SIGKILL');
   for(let i=0;i<100;i++){try{process.kill(descriptor.owner.pid,0);}catch{break;}await sleep(30);}
   await connect(f.data,cli);
-  for(let i=0;i<150;i++){state=readState(f.data);if(state.runs[0].tasks[0].state==='needs_review')break;await sleep(100);}
+  fs.writeFileSync(gate,'complete');
+  const deadline=Date.now()+90000;
+  do{state=readState(f.data);if(state.runs[0].tasks[0].state==='needs_review')break;await sleep(100);}while(Date.now()<deadline);
   assert.equal(state.runs[0].tasks[0].state,'needs_review');
+  assert.equal(state.runs[0].tasks[0].attempts[0].worker.stopped,true);
   const events=fs.readFileSync(audit,'utf8').trim().split('\n').map(JSON.parse); assert.equal(events.filter(e=>e.event==='prompt').length,1);
-  const repeat=await remoteCall(f.data,cli,'submit_tasks',{request_id:'single',repo:f.repo,tasks:[task('a',{files:{'a.txt':'a'},delay:8000,drop_response:true})]}); assert.equal(repeat.run_id,submitted.run_id);
+  const repeat=await remoteCall(f.data,cli,'submit_tasks',args); assert.equal(repeat.run_id,submitted.run_id);
 });
 
 test('installed bundle works after its source is moved, without source node_modules',async t=>{
