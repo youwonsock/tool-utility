@@ -5,6 +5,9 @@ import spawn from 'cross-spawn';
 import { createOpencodeClient } from '@opencode-ai/sdk/v2/client';
 import { BASELINE, Fault, invariant, type Model, type Resource, type WorkerSpec, type WorkerState } from './types.js';
 import { exec, readJson, samePath, sleep, processIdentity, writeJson, terminate, digest } from './io.js';
+import { beginProcess, registerProcess } from './backends/process.js';
+import { workerEnvironment } from './profiles.js';
+import { connection } from './backends/policy.js';
 
 export async function resolvedConfig(executable: string, args: string[], directory: string, env = process.env) {
   const r = await exec(executable, [...args, 'debug','config','--pure'], { cwd: directory, env, timeout: 60000 });
@@ -28,13 +31,16 @@ export function restrictions(config: Record<string, any>, resources: Resource[],
   const mcp: Record<string, any> = Object.fromEntries(Object.keys(config.mcp ?? {}).map(name => [name, { enabled: false }]));
   const permission: Record<string, any> = {
     '*': 'deny', read: 'allow', edit: 'allow', glob: 'allow', grep: 'allow', list: 'allow',
-    bash: { '*': 'allow', '*codex-opencode*': 'deny', '*codex *': 'deny', '*opencode *': 'deny', 'git push*': 'deny', 'git reset*': 'deny', 'git checkout*': 'deny', 'git switch*': 'deny', 'git commit*': 'deny' },
+    bash: { '*': 'allow', '*codex-opencode*': 'deny', '*codex *': 'deny', '*opencode *': 'deny', '*claude *':'deny', '*kilo *':'deny', 'git push*': 'deny', 'git reset*': 'deny', 'git checkout*': 'deny', 'git switch*': 'deny', 'git commit*': 'deny' },
     question: 'allow', webfetch: 'ask', external_directory: 'ask', task: 'deny', skill: 'deny',
   };
   for (const r of resources) {
     invariant(!/codex|delegat|opencode/i.test(r.connection.name + JSON.stringify(r.connection.config)), 'RECURSION', 'Delegation MCP connections cannot be exposed to workers.');
     const expand = (value: unknown): unknown => typeof value === 'string' ? value.replaceAll('{{worktree}}', directory) : Array.isArray(value) ? value.map(expand) : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([key, item]) => [key, expand(item)])) : value;
-    mcp[r.connection.name] = expand({ ...r.connection.config, enabled: true });
+    const portable=connection(r,directory);
+    const native=portable.type==='stdio'?{type:'local',command:[portable.command,...portable.args],...(portable.env?{environment:portable.env}:{})}
+      :{type:'remote',url:portable.url,...(portable.headers?{headers:portable.headers}:{})};
+    mcp[r.connection.name] = expand({ ...r.connection.config,...native, enabled: true });
     permission[`${r.connection.name}_*`] = 'ask';
   }
   return { mcp, permission, share: 'disabled', autoupdate: false, snapshot: false,
@@ -44,6 +50,7 @@ export function restrictions(config: Record<string, any>, resources: Resource[],
 }
 export async function selectModel(client: ReturnType<typeof createOpencodeClient>, config: Record<string, any>, spec: Pick<WorkerSpec, 'model'|'executable'|'executable_args'|'directory'>): Promise<Model> {
   const providers = (await client.provider.list({}, { throwOnError: true })).data!;
+  invariant(spec.model===undefined || typeof spec.model==='object','MODEL','OpenCode requires providerID/modelID.');
   let model = spec.model;
   const configured = config.model ?? config.agent?.build?.model;
   if (!model && configured) { const [providerID, ...rest] = String(configured).split('/'); model = { providerID: providerID!, modelID: rest.join('/') }; }
@@ -67,18 +74,18 @@ export async function launchOpenCode(spec: WorkerSpec, state: WorkerState, save:
   invariant(version.code === 0 && version.stdout.trim() === BASELINE, 'OPENCODE_VERSION', `Expected OpenCode ${BASELINE}; found ${version.stdout.trim()}. Validate a newer version before changing the baseline.`);
   const initial = await resolvedConfig(spec.executable, spec.executable_args, spec.directory);
   const overlay = restrictions(initial, spec.resources, spec.directory);
-  const env = { ...process.env, OPENCODE_SERVER_PASSWORD: spec.password, OPENCODE_SERVER_USERNAME: 'opencode', OPENCODE_CONFIG_CONTENT: JSON.stringify(overlay), CODEX_OPENCODE_WORKER: '1' };
+  const env = { ...(spec.worker?workerEnvironment(spec.worker):process.env), OPENCODE_SERVER_PASSWORD: spec.password, OPENCODE_SERVER_USERNAME: 'opencode', OPENCODE_CONFIG_CONTENT: JSON.stringify(overlay), CODEX_OPENCODE_WORKER: '1' };
   // Resolve twice before starting the server, so managed config cannot silently re-enable a connection.
   const effective = await resolvedConfig(spec.executable, spec.executable_args, spec.directory, env);
   const allowed = new Set(spec.resources.map(r => r.connection.name));
   invariant(Object.entries(effective.mcp ?? {}).every(([name, cfg]) => (cfg as any).enabled === false || allowed.has(name)), 'MCP_POLICY', 'Managed configuration enables an unregistered MCP connection.');
   for (const name of allowed) for (const [key, value] of Object.entries(overlay.mcp[name])) invariant(digest(effective.mcp?.[name]?.[key]) === digest(value), 'MCP_POLICY', `Effective MCP connection differs from the verified profile: ${name}.${key}`);
   invariant(effective.agent?.['delegate-worker']?.permission?.task === 'deny' && effective.tools?.task === false, 'MCP_POLICY', 'Managed configuration overrides worker restrictions.');
-  writeJson(path.join(spec.job_dir, 'server-intent.json'), { at: Date.now() });
+  const context={spec,state,save},intent=beginProcess(context);
   const child: ChildProcess = spawn(spec.executable, [...spec.executable_args, 'serve', '--hostname=127.0.0.1','--port=0','--pure'], { cwd: spec.directory, env, detached: true, windowsHide: true, stdio: ['ignore','pipe','pipe'] });
   child.on('error', error => { state.error = error.message; save(); });
   invariant(child.pid, 'SPAWN', 'OpenCode failed to start.');
-  state.server = await processIdentity(child.pid); save();
+  await registerProcess(context,child,intent);
   let output = '';
   const log = fs.createWriteStream(path.join(spec.job_dir, 'server.log'), { flags: 'a', mode: 0o600 });
   child.stdout!.on('data', data => { log.write(data); output = (output + data.toString()).slice(-65536); });
@@ -96,7 +103,9 @@ export async function launchOpenCode(spec: WorkerSpec, state: WorkerState, save:
   });
   const health = (await client.global.health({ throwOnError: true })).data!;
   invariant(health.healthy && health.version === BASELINE, 'OPENCODE_HEALTH', 'Unexpected OpenCode API version.');
-  state.model = await selectModel(client, initial, spec); save();
+  try {state.model = await selectModel(client, initial, spec);}
+  catch(e){if(!spec.diagnostic||spec.model!==undefined||!(e instanceof Fault)||e.code!=='MODEL_UNAVAILABLE')throw e;}
+  save();
   return { client, child, log };
 }
 

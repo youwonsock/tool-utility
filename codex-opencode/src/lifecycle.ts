@@ -1,4 +1,4 @@
-import { invariant, runStates, taskStates, attemptStates, validationStates, workerPhases,
+import { invariant, platforms, workerSchema, WORKER_FORMAT, runStates, taskStates, attemptStates, validationStates, workerPhases,
   type Run, type Task, type Attempt, type Validation, type WorkerState, type State,
   type RunState, type TaskState, type AttemptState, type ValidationState, type WorkerPhase } from './types.js';
 
@@ -34,8 +34,8 @@ const validationGraph: Graph<ValidationState> = {
   passed: ['invalidated'], failed: ['invalidated'], cancelled: ['invalidated'], invalidated: [],
 };
 const workerGraph: Graph<WorkerPhase> = {
-  doctor: [], starting: ['creating_session','failed','cancelled'],
-  creating_session: ['implementing','verifying','failed','cancelled'],
+  doctor: [], starting: ['creating_session','cancelling','failed','cancelled'],
+  creating_session: ['implementing','verifying','cancelling','failed','cancelled'],
   implementing: ['needs_input','reconciling_delivery','delivery_uncertain','verifying','cancelling','failed','cancelled'],
   reconciling_delivery: ['needs_input','delivery_uncertain','verifying','cancelling','failed','cancelled'],
   delivery_uncertain: ['needs_input','reconciling_delivery','verifying','cancelling','failed','cancelled'],
@@ -82,6 +82,8 @@ function known(value: unknown, choices: readonly string[], entity: string) {
 }
 export function validateWorkerState(worker: WorkerState) {
   known(worker?.phase, workerPhases, 'worker');
+  invariant(worker.protocol===1||worker.protocol===WORKER_FORMAT,'STATE_CORRUPT','Unknown worker record format.');
+  if(worker.backend!==undefined)known(worker.backend,platforms,'backend');
 }
 function validateAttempt(a: Attempt) {
   known(a?.state, attemptStates, 'attempt'); if (a.worker) validateWorkerState(a.worker);
@@ -89,7 +91,8 @@ function validateAttempt(a: Attempt) {
 export function validateStoredState(state: State) {
   for (const run of state.runs) {
     known(run.state, runStates, 'run');
-    for (const task of run.tasks) { known(task.state, taskStates, 'task'); for (const a of task.attempts) validateAttempt(a); }
+    if(state.protocol===2)invariant(run.worker&&workerSchema.safeParse({platform:run.worker.platform,model:run.worker.model,profile:run.worker.profile}).success,'STATE_CORRUPT','Unknown stored run worker selection.');
+    for (const task of run.tasks) { known(task.state, taskStates, 'task');if(state.protocol===2)invariant(task.worker&&workerSchema.safeParse({platform:task.worker.platform,model:task.worker.model,profile:task.worker.profile}).success,'STATE_CORRUPT','Unknown stored task worker selection.');for (const a of task.attempts) validateAttempt(a); }
     for (const v of [...(run.validation ? [run.validation] : []), ...(run.validation_history ?? [])]) { known(v.state, validationStates, 'validation'); validateAttempt(v.attempt); }
   }
 }

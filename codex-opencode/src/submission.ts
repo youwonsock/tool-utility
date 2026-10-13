@@ -1,10 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { PROTOCOL, Fault, invariant, idSchema, type Run, type TaskSpec, type ContextFile, type SubmitArgs } from './types.js';
+import { STORE_FORMAT, Fault, invariant, idSchema, type Run, type TaskSpec, type ContextFile, type SubmitArgs, type WorkerConfig, type WorkerSelection, type Model } from './types.js';
 import { uid, hash, digest, inside, mkdir, readJson, writeJson, durableWrite } from './io.js';
 import { repository, captureContext, checkContext, worktree, clean, head, branch, git } from './git.js';
 import { moveRun, moveValidation } from './lifecycle.js';
 import type { Store } from './store.js';
+import { resolveWorker } from './profiles.js';
+import { connection } from './backends/policy.js';
 
 type Manifest = {
   protocol: number; request_id: string; request_hash: string; run_id: string; repo: string; base: string;
@@ -17,7 +19,7 @@ function syncDirectory(directory: string) {
   const fd = fs.openSync(directory,'r'); try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
 }
 function validateManifest(store: Store, m: Manifest, requestID: string) {
-  invariant(m.protocol === PROTOCOL && m.request_id === requestID && idSchema.safeParse(m.run_id).success, 'STATE_CORRUPT','Invalid submission preparation record.');
+  invariant(m.protocol === STORE_FORMAT && m.request_id === requestID && idSchema.safeParse(m.run_id).success, 'STATE_CORRUPT','Invalid submission preparation record.');
   invariant(m.result?.run_id===m.run_id && Array.isArray(m.result.tasks) && m.result.tasks.every(id=>idSchema.safeParse(id).success) && Array.isArray(m.files) && typeof m.new_run==='boolean' && typeof m.repo==='string' && typeof m.base==='string','STATE_CORRUPT','Invalid prepared submission fields.');
   invariant(store.state.requests[requestID]?.hash === m.request_hash, 'STATE_CORRUPT','Submission request does not match its durable intent.');
   invariant(m.integration_dir === path.join(store.root,'worktrees',m.run_id,'integration') && m.integration_branch === `codex/opencode-${m.run_id}`, 'STATE_CORRUPT','Invalid prepared worktree identity.');
@@ -93,21 +95,22 @@ export async function recoverSubmissions(store: Store) {
   }
 }
 
-export async function submitTasks(store: Store, args: SubmitArgs, validateGraph: (specs:TaskSpec[])=>void) {
+export async function submitTasks(store: Store, args: SubmitArgs, validateGraph: (specs:TaskSpec[])=>void,
+  resolve:(selection?:WorkerSelection,legacyModel?:Model)=>WorkerConfig=(selection,model)=>resolveWorker(store.root,selection,model)) {
   const specs=structuredClone(args.tasks);
   let existing: Run | undefined, candidate: Run;
   if (args.run_id) {
     existing=store.state.runs.find(r=>r.id===args.run_id); invariant(existing,'NOT_FOUND','Run not found.');
     invariant(['active','waiting_final_review'].includes(existing.state),'RUN_FROZEN','Run does not accept new tasks in its current state.');
     invariant(!args.repo || args.repo===existing.repo,'REPO','Cannot change run repository.');
-    invariant(!args.settings && !args.resources.length && !args.context_files.length,'RUN_CONFIG','Run settings, resources and shared context are immutable.');
+    invariant(!args.worker && !args.settings && !args.resources.length && !args.context_files.length,'RUN_CONFIG','Run worker, settings, resources and shared context are immutable.');
     candidate={...existing,tasks:[...existing.tasks]};
     checkContext(existing.repo,existing.context);
   } else {
     invariant(args.repo,'REPO','A repository root is required for a new run.');
     const repo=await repository(args.repo), id=uid('run');
     candidate={id,...repo,integration_branch:`codex/opencode-${id}`,integration_dir:path.join(store.root,'worktrees',id,'integration'),integration_commit:repo.base,
-      state:'active',revision:1,created:Date.now(),tasks:[],context:[],resources:args.resources,final_verification:args.final_verification??[],
+      state:'active',revision:1,created:Date.now(),tasks:[],context:[],resources:args.resources,final_verification:args.final_verification??[],worker:resolve(args.worker),
       settings:{concurrency:2,timeout_ms:3600000,max_retries:3,...args.settings}};
     const keys=candidate.resources.map(r=>r.resource_key);
     invariant(new Set(keys).size===keys.length,'RESOURCE','Duplicate resource key.');
@@ -119,6 +122,21 @@ export async function submitTasks(store: Store, args: SubmitArgs, validateGraph:
   }
   validateGraph([...candidate.tasks.map(t=>t.spec),...specs]);
   for (const spec of specs) invariant(spec.resources.every(key=>candidate.resources.some(r=>r.resource_key===key)),'RESOURCE',`Task ${spec.id} references an unregistered resource.`);
+  const workers=new Map<string,WorkerConfig>();
+  for(const spec of specs) {
+    let worker=spec.worker?resolve(spec.worker,spec.model):structuredClone(candidate.worker);
+    if(!spec.worker && spec.model) {
+      invariant(worker.platform==='opencode','MODEL','Legacy task.model applies only to OpenCode.');
+      worker={...worker,model:spec.model};
+    }
+    workers.set(spec.id,worker);
+    for(const key of spec.resources) {
+      const normalized=connection(candidate.resources.find(r=>r.resource_key===key)!,candidate.integration_dir);
+      invariant(worker.platform!=='codex'||normalized.type!=='sse','MCP_POLICY','Codex resources must use stdio or streamable HTTP.');
+      const config=candidate.resources.find(r=>r.resource_key===key)!.connection.config;
+      invariant(!['codex','claude-code'].includes(worker.platform)||config.oauth===undefined&&config.timeout===undefined,'MCP_POLICY','This platform cannot express resource oauth/timeout settings. Use native authentication or a compatible connection.');
+    }
+  }
   const shared=existing ? existing.context.map(c=>c.path) : args.context_files;
   const captures=await captureContext(candidate.repo,[...shared,...specs.flatMap(s=>s.context_files)]);
   const files: {path:string;hash:string;data:Buffer}[]=[];
@@ -135,9 +153,10 @@ export async function submitTasks(store: Store, args: SubmitArgs, validateGraph:
   for (const spec of specs) {
     spec.context_files=[...new Set([...shared,...spec.context_files])].sort();
     const context=spec.context_files.map(p=>contexts.get(p)!);
-    const data=Buffer.from(JSON.stringify({spec,context}));
+    const worker=workers.get(spec.id)!;
+    const data=Buffer.from(JSON.stringify({spec,context,worker}));
     files.push({path:`runs/${candidate.id}/${spec.id}.json`,hash:hash(data),data});
-    candidate.tasks.push({spec,state:'queued',attempts:[],revision:1});
+    candidate.tasks.push({spec,state:'queued',attempts:[],revision:1,worker});
   }
   if (existing) {
     candidate.revision++;
@@ -154,7 +173,7 @@ export async function submitTasks(store: Store, args: SubmitArgs, validateGraph:
     invariant((await git(candidate.repo,['show-ref','--verify',`refs/heads/${candidate.integration_branch}`],true)).code!==0,'SUBMISSION_COLLISION','Prepared branch already exists.');
   }
   const result={run_id:candidate.id,revision:candidate.revision,tasks:specs.map(s=>s.id)};
-  const m: Manifest={protocol:PROTOCOL,request_id:args.request_id,request_hash:store.state.requests[args.request_id]!.hash,run_id:candidate.id,
+  const m: Manifest={protocol:STORE_FORMAT,request_id:args.request_id,request_hash:store.state.requests[args.request_id]!.hash,run_id:candidate.id,
     repo:candidate.repo,base:candidate.base,new_run:!existing,integration_dir:candidate.integration_dir,integration_branch:candidate.integration_branch,
     files:files.map(({data,...file})=>file),result};
   const directory=inside(path.join(store.root,'submissions'),args.request_id);

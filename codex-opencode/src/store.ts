@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { PROTOCOL, Fault, invariant, type State } from './types.js';
+import { STORE_FORMAT, Fault, invariant, type State } from './types.js';
 import { digest, mkdir, readJson, writeJson, durableWrite, uid, inside } from './io.js';
 import { validateStoredState } from './lifecycle.js';
 
@@ -11,8 +11,9 @@ export class Store {
   uncertain = false;
   constructor(public root: string) {
     mkdir(root);
-    this.state = readJson<State>(path.join(root, 'state.json')) ?? { protocol: PROTOCOL, revision: 0, runs: [], requests: {}, events: [], metrics: { responses: 0, response_bytes: 0, mutations: 0 } };
-    invariant(this.state.protocol === PROTOCOL, 'UPDATE_PENDING', 'Storage format differs. Keep the previous release until its jobs finish.');
+    invariant(!readJson(path.join(root,'migration.json')),'UPDATE_PENDING','Storage migration is in progress. Resume migration before starting the service.');
+    this.state = readJson<State>(path.join(root, 'state.json')) ?? { protocol: STORE_FORMAT, revision: 0, runs: [], requests: {}, events: [], metrics: { responses: 0, response_bytes: 0, mutations: 0 } };
+    invariant(this.state.protocol === STORE_FORMAT, 'UPDATE_PENDING', 'Storage format differs. Stop owned processes and explicitly migrate the previous format.');
     // The durable journal is authoritative if a crash occurred between journal and snapshot.
     const journal = path.join(root, 'journal.jsonl');
     if (fs.existsSync(journal)) {
@@ -23,10 +24,11 @@ export class Store {
         if (!line) continue;
         const item = JSON.parse(line) as { hash: string; state: State };
         invariant(item.hash === digest(item.state), 'JOURNAL_CORRUPT', 'A committed journal record failed its checksum.');
+        invariant(item.state.protocol===STORE_FORMAT,'UPDATE_PENDING','Journal contains another format. Complete the explicit migration first.');
         if (item.state.revision > this.state.revision) this.state = item.state;
       }
     }
-    invariant(this.state.protocol === PROTOCOL, 'UPDATE_PENDING', 'Journal format differs.');
+    invariant(this.state.protocol === STORE_FORMAT, 'UPDATE_PENDING', 'Journal format differs.');
     validateStoredState(this.state);
     this.state.metrics = readJson<State['metrics']>(path.join(root, 'metrics.json')) ?? this.state.metrics;
     this.state.metrics.mutations = Object.keys(this.state.requests).length;

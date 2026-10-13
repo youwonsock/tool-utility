@@ -42,8 +42,18 @@ test('installed bundle works after its source is moved, without source node_modu
   const installed=await exec(process.execPath,[path.join(source,'scripts/install.mjs'),'--no-register'],{env,timeout:30000});assert.equal(installed.code,0,installed.stderr);
   const current=JSON.parse(fs.readFileSync(path.join(install,'current.json')));
   fs.renameSync(source,path.join(dir,'moved source'));
+  const nativeRoot=path.join(path.dirname(current.cli),'node_modules');
+  const runtimeManifest=JSON.parse(fs.readFileSync(path.join(path.dirname(current.cli),'runtime-manifest.json')));
+  const native=runtimeManifest.packages.find(p=>p.name===`@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}`);assert.ok(native);
+  const binaryFolder=path.join(nativeRoot,native.path),binary=fs.readdirSync(binaryFolder).find(name=>/^claude(?:\.exe)?$/.test(name));assert.ok(binary);
+  const version=await exec(path.join(binaryFolder,binary),['--version'],{timeout:30000});assert.equal(version.code,0,version.stderr);assert.match(version.stdout,/2\.1\.296/);
+  const mockClaude=path.join(dir,'mock-claude.mjs');fs.copyFileSync(path.join(root,'test','fake-claude.mjs'),mockClaude);
+  fs.mkdirSync(data,{recursive:true});fs.writeFileSync(path.join(data,'profiles.json'),JSON.stringify({profiles:{'installed-claude':{platform:'claude-code',executable:process.execPath,args:[mockClaude]}}}));
   const client=new Client({name:'installed-test',version:'1'});const transport=new StdioClientTransport({command:process.execPath,args:[current.cli,'mcp'],env,stderr:'pipe'});await client.connect(transport);
-  try{const result=await client.callTool({name:'doctor',arguments:{}});const doctor=JSON.parse(result.content[0].text);assert.equal(doctor.connection.healthy,true);assert.equal(doctor.opencode,'1.18.30');}finally{await client.close();await exec(process.execPath,[current.cli,'stop'],{env});}
+  try{const result=await client.callTool({name:'doctor',arguments:{}});const doctor=JSON.parse(result.content[0].text);assert.equal(doctor.connection.healthy,true);assert.equal(doctor.opencode,'1.18.30');
+    const external=JSON.parse((await client.callTool({name:'doctor',arguments:{worker:{platform:'claude-code',profile:'installed-claude',model:'fake-model'}}})).content[0].text);assert.equal(external.connection.healthy,true,JSON.stringify(external));
+    for(const platform of ['opencode','codex','claude-code','kilo'])assert.ok(fs.existsSync(path.join(current.release,'hosts',platform,'binding.json')));
+  }finally{await client.close();await exec(process.execPath,[current.cli,'stop'],{env});}
   assert.ok(!fs.readFileSync(path.join(current.release,'plugins/codex-opencode/.mcp.json'),'utf8').includes(source));
 });
 

@@ -3,8 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { exec as shell } from 'node:child_process';
 const argv = process.argv.slice(2);
-const overlay = JSON.parse(process.env.OPENCODE_CONFIG_CONTENT || '{}');
-if (argv.includes('--version')) { console.log('1.18.30'); process.exit(0); }
+const kilo=argv.includes('--kilo'),version=kilo?'7.4.23':'1.18.30',username=kilo?'kilo':'opencode';
+const overlay = JSON.parse((kilo?process.env.KILO_CONFIG_CONTENT:process.env.OPENCODE_CONFIG_CONTENT) || '{}');
+if (argv.includes('--version')) { console.log(version); process.exit(0); }
 if (argv.includes('debug')) {
   if (argv.includes('paths')) console.log(`state      ${process.cwd()}`);
   else console.log(JSON.stringify({ model: 'fake/test', mcp: { inherited: { enabled: true, type: 'remote', url: 'http://never-connect.invalid' }, ...overlay.mcp }, ...overlay }));
@@ -22,12 +23,12 @@ const finish = () => {
   messages.push({ info, parts: [{ type: 'text', text: action?.summary || 'Model claims checks passed.' }] }); busy = false; audit({ event: 'finished' });
 };
 const server = http.createServer(async (req,res) => {
-  if (req.headers.authorization !== `Basic ${Buffer.from(`opencode:${process.env.OPENCODE_SERVER_PASSWORD}`).toString('base64')}`) { res.writeHead(401); res.end(); return; }
+  if (req.headers.authorization !== `Basic ${Buffer.from(`${username}:${kilo?process.env.KILO_SERVER_PASSWORD:process.env.OPENCODE_SERVER_PASSWORD}`).toString('base64')}`) { res.writeHead(401); res.end(); return; }
   const url = new URL(req.url, 'http://localhost');
   let body = ''; for await (const chunk of req) body += chunk;
   const input = body ? JSON.parse(body) : {};
   const send = (data, code = 200) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(data)); };
-  if (url.pathname === '/global/health') return send({ healthy: true, version: '1.18.30' });
+  if (url.pathname === '/global/health') return send({ healthy: true, version });
   if (url.pathname === '/provider') return send({ all: [{ id: 'fake', models: { test: { id: 'test' } } }], connected: ['fake'], default: { fake: 'test' } });
   if (url.pathname === '/config') return send(overlay);
   if (url.pathname === '/session' && req.method === 'POST') { audit({ event: 'session' }); return send(session); }

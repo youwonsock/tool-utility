@@ -235,20 +235,26 @@ test('a diagnostic collection failure does not replace the original scope violat
   assert.equal(report.code,'SCOPE_VIOLATION');assert.match(report.collection_errors[0],/injected evidence failure/);
 });
 
-test('a final-verification question resumes verification rather than implementation', async t=>{
+test('answered implementation input and service recovery cannot restart implementation during final verification', async t=>{
   const f=await controlled(t);
-  const s=await submit(f,[task('a',{files:{'a.txt':'ok'}})],{final_verification:[
+  const s=await submit(f,[task('a',{files:{'a.txt':'ok'},input:'question'})],{final_verification:[
     {command:'node -e "process.exit(0)"'},
     {command:'node -e "const fs=require(\'fs\');const timer=setInterval(()=>{if(fs.existsSync(\'ignored.txt\'))clearInterval(timer)},50)"'},
   ]});
-  const run=await tickUntil(f,s.run_id,r=>r.tasks[0].state==='needs_review');await review(f,run,'a');
+  let run=await tickUntil(f,s.run_id,r=>r.tasks[0].attempts[0]?.inputs.length);
+  const implementation=run.tasks[0].attempts[0];
+  await callOk(f,'respond_to_request',{request_id:uid('answer'),run_id:run.id,attempt_id:implementation.id,input_id:implementation.inputs[0].id,decision:'answer',answers:[['Proceed']]});
+  run=await tickUntil(f,run.id,r=>r.tasks[0].state==='needs_review');await review(f,run,'a');
   const previous=process.env.FAKE_SHELL_QUESTION;process.env.FAKE_SHELL_QUESTION='1';
   t.after(()=>{if(previous===undefined)delete process.env.FAKE_SHELL_QUESTION;else process.env.FAKE_SHELL_QUESTION=previous;});
   await callOk(f,'validate_run',{request_id:uid('validation'),run_id:run.id});
-  await tickUntil(f,run.id,r=>r.validation.attempt.inputs.length>0);
+  await tickUntil(f,run.id,r=>r.validation.attempt.worker?.phase==='verifying' && r.validation.attempt.worker.verification.length===1 && r.validation.attempt.worker.shell_intent?.index===1);
   const a=run.validation.attempt;
-  await callOk(f,'respond_to_request',{request_id:uid('answer'),run_id:run.id,attempt_id:a.id,input_id:a.inputs[0].id,decision:'answer',answers:[['Proceed']]});
-  await tickUntil(f,run.id,r=>r.validation.attempt.worker?.phase==='verifying' && r.validation.attempt.worker.verification.length===1);
+  assert.equal(a.worker.session_id,undefined);assert.equal(a.inputs.length,0);
+  const recovered={...f,store:new Store(f.data)};recovered.engine=new Engine(recovered.store,cli,f.engine.options);
+  await recovered.engine.reconcile(recovered.store.state.runs[0]);
+  assert.equal(recovered.store.state.runs[0].validation.attempt.id,a.id);
+  assert.equal(recovered.store.state.runs[0].tasks[0].attempts.length,1);
   fs.writeFileSync(path.join(a.directory,'ignored.txt'),'release');
   await tickUntil(f,run.id,r=>r.state==='waiting_final_review');
   assert.equal(run.validation.state,'passed');

@@ -20,7 +20,7 @@ export async function fixture(t, { service = false } = {}) {
   fs.writeFileSync(path.join(repo,'.gitignore'),'AGENTS.md\n.specs/\nignored.txt\n'); fs.writeFileSync(path.join(repo,'base.txt'),'base\n');
   await git(repo,'add','.'); await git(repo,'commit','-m','initial');
   const store = new Store(data); const engine = new Engine(store,cli,{ opencode:process.execPath, opencode_args:[fake], concurrency:2 });
-  const env = { ...process.env, CODEX_OPENCODE_HOME:data, CODEX_OPENCODE_EXECUTABLE:process.execPath, CODEX_OPENCODE_EXECUTABLE_ARGS:JSON.stringify([fake]) };
+  const env = { ...process.env, CODEX_OPENCODE_WORKER:'0', CODEX_OPENCODE_HOME:data, CODEX_OPENCODE_EXECUTABLE:process.execPath, CODEX_OPENCODE_EXECUTABLE_ARGS:JSON.stringify([fake]) };
   if (!service) engine.start();
   t.after(async () => {
     engine.stop();
