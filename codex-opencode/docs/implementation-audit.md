@@ -45,6 +45,7 @@ No paid model invocation or installed-plugin activation is part of this work.
 | MP-22 | doctor compared an external Claude CLI version with its SDK baseline and reported a valid runtime as incompatible. | Compare external CLI and SDK baselines separately; assert compatible in the source-relocated SDK test. | Regression assertion added to installation validation. |
 | MP-23 | Authless Codex initialization returns a null configured model, which was treated as an explicit selection. | Resolve absent/null defaults from thread/start while retaining strict checks for explicit models. | Native CI reproduced the error after all 73 regressions passed; a null-default regression was added. |
 | MP-24 | Windows npm CLI wrappers passed version checks but produced no persistent server/STDIO responses, while the direct Claude binary initialized. | Keep POSIX process groups; avoid detaching Windows wrapper roots and continue owned taskkill /T termination. | Reproduced in native Windows CI after 71 passing regressions; native connection recheck required. |
+| MP-25 | The daemon-restart fixture waited only 15 seconds after an arbitrary 8-second model delay; Windows CIM/verification completion exceeded that bound. | Use a physical completion gate, bounded state convergence and confirmed stop; retain exactly one prompt and cached retransmission checks. | Windows exposed the short timing assumption; deterministic fixture repair added. |
 
 ## Goal/result comparison (current evidence)
 

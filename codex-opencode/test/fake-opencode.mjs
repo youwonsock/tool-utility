@@ -15,6 +15,7 @@ const session = { id: 'ses_test', title: 'test' };
 let messages = [], busy = false, timer, pending, action, current, askedShell = false, resumeShell;
 const audit = event => { if (process.env.FAKE_AUDIT) fs.appendFileSync(process.env.FAKE_AUDIT, `${JSON.stringify({ ...event, cwd: process.cwd(), time: Date.now(), pid: process.pid })}\n`); };
 const finish = () => {
+  if(action?.wait_file&&!fs.existsSync(action.wait_file)){timer=setTimeout(finish,100);return;}
   for (const [file, value] of Object.entries(action?.files || {})) { fs.mkdirSync(path.dirname(path.resolve(file)), { recursive: true }); fs.writeFileSync(file, value); }
   if (action?.require_context) {
     for (const [file, expected] of Object.entries(action.require_context)) if (fs.readFileSync(file,'utf8') !== expected) throw new Error(`Missing context ${file}`);
