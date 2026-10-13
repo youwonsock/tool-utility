@@ -26,7 +26,7 @@ flowchart LR
 ## 설치
 
 ```sh
-git clone --branch codex/opencode-delegation https://github.com/youwonsock/tool-utility.git
+git clone --branch codex/delegation-platform-backends https://github.com/youwonsock/tool-utility.git
 cd tool-utility/codex-opencode
 ```
 

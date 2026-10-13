@@ -6,9 +6,10 @@ import { createBackend, resolveWorker, uid, sleep, connection, restrictions } fr
 import { fixture, cli } from './helpers.mjs';
 import { mockProfiles, selection } from './native-helpers.mjs';
 
-async function native(t,platform,model) {
+async function native(t,platform,model,extraArgs=[]) {
   const f=await fixture(t);f.engine.stop();mockProfiles(f);
-  const worker=resolveWorker(f.data,{...selection(platform),...(model?{model}:{})});
+  if(extraArgs.length){const file=path.join(f.data,'profiles.json'),profiles=JSON.parse(fs.readFileSync(file));profiles.profiles[`mock-${platform}`].args.push(...extraArgs);fs.writeFileSync(file,JSON.stringify(profiles));}
+  const worker=resolveWorker(f.data,{...selection(platform),...(model===null?{model:undefined}:model?{model}:{})});
   const id=uid('native'),job_dir=path.join(f.data,'jobs',id);fs.mkdirSync(job_dir,{recursive:true});
   const spec={protocol:2,id,job_dir,directory:f.repo,goal:'',acceptance:[],scope:['a.txt'],verification:[],resources:[],context:[],timeout_ms:60000,validation:false,host_executable:cli,worker,model:worker.model,executable:worker.executable,executable_args:worker.executable_args,password:uid('secret')};
   const state={protocol:2,id,phase:'starting',updated:Date.now(),prompt_id:uid('msg'),verification:[],inputs:[],replies:{}};
@@ -20,6 +21,10 @@ async function native(t,platform,model) {
 test('Codex rejects a native model substitution before implementation dispatch',async t=>{
   const {backend}=await native(t,'codex','unavailable-model');
   await assert.rejects(()=>backend.createSession(),e=>e.code==='MODEL_UNAVAILABLE');
+});
+
+test('Codex resolves its native default when the configuration model is null',async t=>{
+  const {backend,state}=await native(t,'codex',null,['--default-model-null']);await backend.createSession();assert.equal(state.model,'fake-model');
 });
 
 test('Claude rejects an advertised alias resolved to a different model family',async t=>{
