@@ -21,7 +21,9 @@ export async function commandHost(intentFile:string) {
   const intent=readJson<CommandIntent>(intentFile)!;
   invariant(intent&&path.isAbsolute(intent.directory)&&path.isAbsolute(intent.receipt),'COMMAND_SPEC','Invalid command intent.');
   const fd=fs.openSync(intent.log,'wx',0o600);let written=0,total=0,error:string|undefined;
-  const child=spawn(intent.shell.executable,[...intent.shell.args,intent.command.command],{cwd:intent.directory,env:process.env,windowsHide:true,stdio:['ignore','pipe','pipe']});
+  const cmd=process.platform==='win32'&&/(?:^|[\\/])cmd(?:\.exe)?$/i.test(intent.shell.executable);
+  const command=cmd?`"${intent.command.command}"`:intent.command.command;
+  const child=spawn(intent.shell.executable,[...intent.shell.args,command],{cwd:intent.directory,env:process.env,windowsHide:true,windowsVerbatimArguments:cmd,stdio:['ignore','pipe','pipe']});
   const collect=(data:Buffer)=>{total+=data.length;const part=data.subarray(0,Math.max(0,16*1024*1024-written));if(part.length){fs.writeSync(fd,part);written+=part.length;}};
   child.stdout?.on('data',collect);child.stderr?.on('data',collect);child.on('error',e=>{error=e.message;});
   await new Promise<void>(resolve=>child.once('close',()=>resolve()));

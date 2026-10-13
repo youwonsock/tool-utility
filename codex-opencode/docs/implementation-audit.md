@@ -30,6 +30,8 @@ No paid model invocation or installed-plugin activation is part of this work.
 | MP-07 | Codex added default fields to its effective hook configuration. | Compare required command/matcher/synchronous semantics. | Real Codex 0.146.0 initialization passed after correction. |
 | MP-08 | A regression depended on the removed native final-verification question mechanism. | Test answered implementation input, verification command continuation and service recovery using real process gates. | Rewritten regression passed without fixed sleeps deciding success. |
 | MP-09 | macOS CI hit the old 30-second installer timeout after adding native SDK assets. | Use copy-on-write cloning where available and a 120-second bounded install check. | Two CI installation failures reproduced; repair validation in progress. |
+| MP-10 | Windows cmd re-quoted command text: exit(7) appeared as exit 0, and source-changing/gated scripts did not execute correctly. | Use cmd's outer command quoting with verbatim Windows arguments; keep exit/source-change regressions mandatory. | Reproduced in Windows CI; repair validation in progress. |
+| MP-11 | The installer fixture performs several large immutable-release copies and exceeded the old file-level 180-second test deadline. | Keep per-install 120-second bounds and raise file-level integration deadline to 600 seconds. | CI evidence distinguishes cumulative install duration from scheduler/process races. |
 
 ## Goal/result comparison (current evidence)
 
