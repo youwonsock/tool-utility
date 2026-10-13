@@ -30,7 +30,7 @@ export async function registerProcess(context:BackendContext,child:ChildProcess,
 }
 export async function spawnRuntime(context:BackendContext,executable:string,args:string[],env:NodeJS.ProcessEnv) {
   const intent=beginProcess(context);
-  const child=spawn(executable,args,{cwd:context.spec.directory,env,detached:true,windowsHide:true,stdio:['pipe','pipe','pipe']});
+  const child=spawn(executable,args,{cwd:context.spec.directory,env,detached:process.platform!=='win32',windowsHide:true,stdio:['pipe','pipe','pipe']});
   child.on('error',error=>{context.state.error=error.message;context.save();});
   await registerProcess(context,child,intent);
   const log=fs.createWriteStream(path.join(context.spec.job_dir,'server.log'),{flags:'a',mode:0o600});
