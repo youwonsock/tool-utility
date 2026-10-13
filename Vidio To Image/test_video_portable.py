@@ -21,7 +21,7 @@ class PortableTests(unittest.TestCase):
     def test_core_imports_no_gui_or_sdk(self):
         result = subprocess.run([sys.executable, '-c',
             'import video_to_image_service, sys; assert not any(n == "tkinter" or n.startswith("mcp") for n in sys.modules)'],
-            capture_output=True, text=True, timeout=10)
+            capture_output=True, text=True, encoding="utf-8", timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_platform_settings_and_mouse_wheel(self):
@@ -83,7 +83,7 @@ class PortableTests(unittest.TestCase):
             executable = os.environ.get('VIDEO_TOOLS_TEST_MCP')
             command = [executable] if executable else [sys.executable, 'video_to_image_mcp.py']
             result = subprocess.run(command + ['--workspace', workspace], input=json.dumps(message)+'\n',
-                                    capture_output=True, text=True, timeout=30)
+                                    capture_output=True, text=True, encoding="utf-8", timeout=30)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertNotIn('Traceback', result.stderr)
             self.assertEqual(json.loads(result.stdout.splitlines()[0])['id'], 1)
@@ -93,8 +93,8 @@ class PortableTests(unittest.TestCase):
         from portable_selftest import run_gui_test
         with tempfile.TemporaryDirectory() as directory:
             report = Path(directory) / 'gui.json'
-            self.assertEqual(run_gui_test(report), 0, report.read_text())
-            self.assertEqual(json.loads(report.read_text())['status'], 'passed')
+            self.assertEqual(run_gui_test(report), 0, report.read_text(encoding="utf-8"))
+            self.assertEqual(json.loads(report.read_text(encoding="utf-8"))['status'], 'passed')
 
     @unittest.skipUnless(os.environ.get('VIDEO_TOOLS_GUI_TESTS'), 'GUI tests require a native window server or Xvfb')
     def test_gui_invalid_edit_and_disabled_tab_callbacks(self):
@@ -110,6 +110,19 @@ class PortableTests(unittest.TestCase):
                 app._set_controls('disabled'); app.update()
                 app._set_controls('normal'); app.update()
                 self.assertEqual(callbacks, [])
+                app.deiconify(); app.update()
+                app.scroll_canvas.yview_moveto(0)
+                before = app.scroll_canvas.yview()[0]
+                app.output_mode_combo.event_generate('<MouseWheel>', delta=-120)
+                app.update()
+                self.assertGreater(app.scroll_canvas.yview()[0], before)
+                self.assertEqual(app.output_mode_var.get(), '격자 합치기')
+                if app.tk.call('info', 'commands', 'tk::PreciseScrollDeltas'):
+                    app.scroll_canvas.yview_moveto(0)
+                    app.output_mode_combo.event_generate('<TouchpadScroll>', delta=65516)
+                    app.update()
+                    self.assertGreater(app.scroll_canvas.yview()[0], 0)
+                    self.assertEqual(app.output_mode_var.get(), '격자 합치기')
                 source = root / 'input.mp4'
                 make_video(source, app.service.ffmpeg)
                 app.video_path = source

@@ -29,6 +29,11 @@ Implementation started on `codex/video-tools-portable-gui`. No completion is cla
 | GUI self-test passed despite Tk callback exceptions | Record callback errors and assert none occurred | Fix applied; revalidation pending |
 | Frozen MCP exited successfully but emitted an I/O-on-closed-stdout traceback | Give the SDK owned duplicate stdio handles and test clean shutdown | Fix applied; source and native revalidation pending |
 
+| Windows CI read UTF-8 MCP/report output as cp1252 | Explicitly decode protocol and reports as UTF-8 | Fix applied; native CI revalidation pending |
+| GUI acceptance manually invoked its polling callback and left a second timer chain behind | Use the same scheduled event flow as real GUI use | Fix applied; revalidation pending |
+
 ## Requirement evidence
+
+| Mac Tk 9 uses precise touchpad events; scrolling over native controls can change values/tabs | Bind an application scroll tag before widget classes, handle precise deltas in OS adapter, add keyboard traversal | Fix applied; visual and native revalidation pending |
 
 Pending implementation and verification.

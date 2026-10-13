@@ -42,7 +42,10 @@ def run_gui_test(report: Path):
                 assert str(app.cancel_button.cget('state')) == 'disabled'
                 return job['result']
             with patch('video_to_image.messagebox.showinfo'), patch('video_to_image.messagebox.showerror') as errors:
-                app._drain_messages()
+                deadline = time.monotonic() + 5
+                while app.video_info is None and time.monotonic() < deadline:
+                    app.update(); time.sleep(.02)
+                assert app.video_info is not None, 'GUI metadata probe did not arrive'
                 app.output_mode_var.set('개별 이미지 저장')
                 app.size_mode_var.set('격자 셀 이미지 크기')
                 app.size_preset_var.set('원본')

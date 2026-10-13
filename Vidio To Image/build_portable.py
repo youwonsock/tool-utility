@@ -35,8 +35,8 @@ def prepare():
     media.mkdir(parents=True, exist_ok=True)
     target = media / ('ffmpeg.exe' if sys.platform == 'win32' else 'ffmpeg')
     shutil.copy2(vendor, target)
-    version = run([str(target), '-version'], capture_output=True, text=True).stdout
-    encoders = run([str(target), '-hide_banner', '-encoders'], capture_output=True, text=True).stdout
+    version = run([str(target), '-version'], capture_output=True, text=True, encoding="utf-8").stdout
+    encoders = run([str(target), '-hide_banner', '-encoders'], capture_output=True, text=True, encoding="utf-8").stdout
     if 'libx264' not in encoders or 'aac' not in encoders:
         raise SystemExit('Bundled FFmpeg requires libx264 and AAC encoders.')
     legal = ROOT / 'build/legal'
@@ -53,7 +53,7 @@ def prepare():
     python_license = Path(sysconfig.get_path('stdlib')) / 'LICENSE.txt'
     if python_license.is_file():
         shutil.copy2(python_license, legal / 'Python-LICENSE.txt')
-    (legal / 'FFmpeg-license.txt').write_text(run([str(target), '-L'], capture_output=True, text=True).stdout)
+    (legal / 'FFmpeg-license.txt').write_text(run([str(target), '-L'], capture_output=True, text=True, encoding="utf-8").stdout)
     (legal / 'FFmpeg-provenance.txt').write_text(
         'Provider: imageio-ffmpeg 0.6.0 platform wheel\n'
         'Provider source/build information: https://github.com/imageio/imageio-ffmpeg/tree/v0.6.0\n'
@@ -63,7 +63,7 @@ def prepare():
                 'architecture': platform.machine(), 'dependencies': packages,
                 'ffmpeg_original_sha256': hashlib.sha256(vendor.read_bytes()).hexdigest(),
                 'ffmpeg_version': version, 'required_encoders': ['libx264', 'aac'],
-                'source_commit': run(['git', 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()}
+                'source_commit': run(['git', 'rev-parse', 'HEAD'], capture_output=True, text=True, encoding="utf-8").stdout.strip()}
     (legal / 'build-manifest.json').write_text(json.dumps(manifest, indent=2))
 
 def main():
