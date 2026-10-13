@@ -122,6 +122,7 @@ export async function submitTasks(store: Store, args: SubmitArgs, validateGraph:
   }
   validateGraph([...candidate.tasks.map(t=>t.spec),...specs]);
   for (const spec of specs) invariant(spec.resources.every(key=>candidate.resources.some(r=>r.resource_key===key)),'RESOURCE',`Task ${spec.id} references an unregistered resource.`);
+  for(const resource of candidate.resources)connection(resource,candidate.integration_dir);
   const workers=new Map<string,WorkerConfig>();
   for(const spec of specs) {
     let worker=spec.worker?resolve(spec.worker,spec.model):structuredClone(candidate.worker);

@@ -44,6 +44,9 @@ No paid model invocation or installed-plugin activation is part of this work.
 | MP-19 | Unused invalid resources could be persisted, and portable args/env keys leaked into strict HTTP-runtime native config. | Validate every resource before preparation and construct only supported native fields. | Added complete-preflight and canonical-translation regressions. |
 | MP-20 | Resuming an interrupted migration did not recheck newly created diagnostic processes. | Recheck owned processes for both apply and rollback before writing targets. | Added a real current-process ownership regression; startup remains fenced. |
 
+| MP-21 | A source-only migration fixture could observe terminal task state before its scheduler tick finished collecting evidence. | Stop scheduling and await the serial tick before freezing the legacy fixture. | Reproduced on macOS CI; deterministic barrier added without success-by-sleep. |
+| MP-22 | doctor compared an external Claude CLI version with its SDK baseline and reported a valid runtime as incompatible. | Compare external CLI and SDK baselines separately; assert compatible in the source-relocated SDK test. | Regression assertion added to installation validation. |
+
 ## Goal/result comparison (current evidence)
 
 | Requirement | Evidence | Status |
