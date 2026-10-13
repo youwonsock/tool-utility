@@ -4,11 +4,12 @@ import { createKiloClient } from '@kilocode/sdk/v2/client';
 import { createOpencodeClient } from '@opencode-ai/sdk/v2/client';
 import { invariant, type Model, type InputRequest, type WorkerSpec } from '../types.js';
 import { exec, readJson, sleep, writeJson, digest } from '../io.js';
-import { launchOpenCode, resolvedConfig, restrictions } from '../opencode.js';
+import { launchOpenCode, resolvedConfig, restrictions, enforceHttpPolicy } from '../opencode.js';
 import { workerEnvironment } from '../profiles.js';
 import { spawnRuntime, stopOwned } from './process.js';
 import type { Answer, BackendContext, Observation, WorkerBackend } from './contract.js';
 import { permissionKey } from './policy.js';
+import { verificationShell } from '../shell.js';
 
 // Each generated SDK remains owned by its corresponding native runtime.
 export class HttpBackend implements WorkerBackend {
@@ -26,13 +27,14 @@ export class HttpBackend implements WorkerBackend {
     const version=await exec(spec.executable,[...spec.executable_args,'--version']);
     invariant(version.code===0&&version.stdout.trim()===worker.baseline,'BACKEND_VERSION',`Expected Kilo ${worker.baseline}; found ${version.stdout.trim()}.`);
     const initial=await resolvedConfig(spec.executable,spec.executable_args,spec.directory,workerEnvironment(worker));
+    state.verification_shell=verificationShell(worker.shell,initial.shell);save();
     const overlay=restrictions(initial,spec.resources,spec.directory);
     const env={...workerEnvironment(worker),KILO_SERVER_PASSWORD:spec.password,KILO_SERVER_USERNAME:'kilo',KILO_NO_DAEMON:'1',KILO_CONFIG_CONTENT:JSON.stringify(overlay)};
     const effective=await resolvedConfig(spec.executable,spec.executable_args,spec.directory,env);
     const allowed=new Set(spec.resources.map(r=>r.connection.name));
     invariant(Object.entries(effective.mcp??{}).every(([name,cfg])=>(cfg as any).enabled===false||allowed.has(name)),'MCP_POLICY','Inherited MCP connection remains enabled.');
     for(const name of allowed)for(const [key,value]of Object.entries(overlay.mcp[name]))invariant(digest(effective.mcp?.[name]?.[key])===digest(value),'MCP_POLICY','Effective resource connection differs.');
-    invariant(effective.tools?.task===false&&effective.agent?.['delegate-worker']?.permission?.task==='deny','MCP_POLICY','Managed configuration overrides worker policy.');
+    enforceHttpPolicy(effective,overlay);
     const runtime=await spawnRuntime(this.context,spec.executable,[...spec.executable_args,'serve','--hostname=127.0.0.1','--port=0','--pure'],env);
     this.log=runtime.log;let output='';
     runtime.child.stdout!.on('data',data=>{this.log!.write(data);output=(output+data.toString()).slice(-65536);});

@@ -4,6 +4,7 @@ import { STORE_FORMAT, Fault, invariant, idSchema, type State, type WorkerSpec, 
 import { readJson, writeJson, durableWrite, mkdir, uid, hash, digest, inside, alive, processIdentity, treeAlive } from './io.js';
 import { validateStoredState, validateWorkerState, holdsResources } from './lifecycle.js';
 import { resolveWorker, type LegacyOptions } from './profiles.js';
+import { confirmedStopped } from './backends/process.js';
 
 type MigrationFile={path:string;original_hash:string|null;converted_hash:string};
 type MigrationRecord={id:string;from:1;to:2;phase:'prepared'|'committing'|'committed'|'rolling_back';files:MigrationFile[]};
@@ -33,16 +34,29 @@ async function inactive(root:string,state:State) {
     invariant(['active','waiting_final_review','completed','cancelled'].includes(run.state),'UPDATE_PENDING','Resolve cancellation, validation or finalization before migration.');
     invariant(run.tasks.every(t=>['queued','needs_review','integrated','cancelled'].includes(t.state)),'UPDATE_PENDING','A task still has an unresolved execution state.');
   }
-  for(const attempt of attempts(state)) {
-    invariant(!holdsResources(attempt)&&attempt.state!=='integrating','UPDATE_PENDING','An attempt still holds resources or has an integration intent.');
-    invariant(attempt.job_dir===path.join(root,'jobs',attempt.id),'STATE_CORRUPT','Attempt ownership path differs from the data directory.');
-    const worker=readJson<Attempt['worker']>(path.join(attempt.job_dir,'worker.json'))??attempt.worker;
+  const inspected=new Set<string>();
+  const checkJob=async(jobDir:string,stored?:Attempt['worker'])=>{
+    inspected.add(jobDir);
+    const worker=readJson<Attempt['worker']>(path.join(jobDir,'worker.json'))??stored;
     if(worker) {
       validateWorkerState(worker);
       invariant(!await alive(worker.host)&&!await alive(worker.server),'UPDATE_PENDING','An owned worker or server is still alive.');
-      if(worker.server)invariant(!await treeAlive(worker.server),'UPDATE_PENDING','An owned process group is still alive.');
-      invariant(worker.stopped===true||!fs.existsSync(path.join(attempt.job_dir,'server-intent.json')),'UPDATE_PENDING','Owned process termination is uncertain.');
-    }else invariant(!fs.existsSync(path.join(attempt.job_dir,'server-intent.json')),'UPDATE_PENDING','A launch intent has no confirmed owner.');
+      invariant(await confirmedStopped({job_dir:jobDir} as WorkerSpec,worker),'UPDATE_PENDING','An owned process group or launch remains unresolved.');
+      invariant(worker.stopped===true||fs.existsSync(path.join(jobDir,'process-intents'))||!fs.existsSync(path.join(jobDir,'server-intent.json')),'UPDATE_PENDING','Owned process termination is uncertain.');
+    }else invariant(!fs.existsSync(path.join(jobDir,'server-intent.json'))&&!fs.existsSync(path.join(jobDir,'process-intents')),'UPDATE_PENDING','A launch intent has no confirmed owner.');
+  };
+  for(const attempt of attempts(state)) {
+    invariant(!holdsResources(attempt)&&attempt.state!=='integrating','UPDATE_PENDING','An attempt still holds resources or has an integration intent.');
+    invariant(attempt.job_dir===path.join(root,'jobs',attempt.id),'STATE_CORRUPT','Attempt ownership path differs from the data directory.');
+    await checkJob(attempt.job_dir,attempt.worker);
+  }
+  // Diagnostics and unreferenced jobs can also own native children. A missing
+  // identity is uncertainty, including legacy diagnostic launches.
+  for(const name of ['jobs','diagnostics']){
+    const folder=path.join(root,name);if(!fs.existsSync(folder))continue;
+    for(const entry of fs.readdirSync(folder,{withFileTypes:true}))if(entry.isDirectory()){
+      const jobDir=path.join(folder,entry.name);if(!inspected.has(jobDir))await checkJob(jobDir);
+    }
   }
 }
 async function acquire(root:string) {
@@ -99,6 +113,7 @@ function unchanged(root:string,record:MigrationRecord) {
 async function finish(root:string,record:MigrationRecord,options:MigrationOptions) {
   validateRecord(record);unchanged(root,record);
   const stage=directory(root,record.id),marker=path.join(root,'migration.json');
+  const stagedState=readJson<State>(path.join(stage,'converted','state.json'))!;validateStoredState(stagedState);await inactive(root,stagedState);
   record.phase='committing';writeJson(marker,record);
   // Snapshot version is the old release's guard, so publish it before journal/manifests.
   const files=[...record.files].sort((a,b)=>a.path==='state.json'?-1:b.path==='state.json'?1:a.path.localeCompare(b.path));
@@ -112,7 +127,9 @@ async function finish(root:string,record:MigrationRecord,options:MigrationOption
 }
 async function rollback(root:string,record:MigrationRecord,options:MigrationOptions) {
   validateRecord(record);unchanged(root,record);
-  const stage=directory(root,record.id),marker=path.join(root,'migration.json');record.phase='rolling_back';writeJson(marker,record);
+  const stage=directory(root,record.id),marker=path.join(root,'migration.json');
+  const originalState=readJson<State>(path.join(stage,'backup','state.json'))??readJson<State>(path.join(stage,'converted','state.json'))!;validateStoredState(originalState);await inactive(root,originalState);
+  record.phase='rolling_back';writeJson(marker,record);
   const files=[...record.files].sort((a,b)=>a.path==='state.json'?1:b.path==='state.json'?-1:a.path.localeCompare(b.path));
   for(const file of files) {
     if(file.original_hash===null)fs.rmSync(inside(root,file.path),{force:true});

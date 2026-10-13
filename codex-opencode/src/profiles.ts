@@ -53,7 +53,7 @@ export function publicWorker(worker?:WorkerConfig) {
 export function workerEnvironment(worker:WorkerConfig):NodeJS.ProcessEnv {
   const env:NodeJS.ProcessEnv={...process.env,CODEX_OPENCODE_WORKER:'1'};
   for(const [name,from]of Object.entries(worker.env_refs??{})) {
-    invariant(name!=='CODEX_OPENCODE_WORKER','WORKER_PROFILE','Execution profiles cannot disable the worker recursion guard.');
+    invariant(name.toUpperCase()!=='CODEX_OPENCODE_WORKER','WORKER_PROFILE','Execution profiles cannot disable the worker recursion guard.');
     invariant(/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)&&/^[A-Za-z_][A-Za-z0-9_]*$/.test(from),'WORKER_PROFILE','Invalid environment reference.');
     invariant(process.env[from]!==undefined,'WORKER_PROFILE',`Required environment reference is unavailable: ${from}`);
     env[name]=process.env[from];

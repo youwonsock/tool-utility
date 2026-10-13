@@ -8,6 +8,7 @@ import { exec, readJson, samePath, sleep, processIdentity, writeJson, terminate,
 import { beginProcess, registerProcess } from './backends/process.js';
 import { workerEnvironment } from './profiles.js';
 import { connection } from './backends/policy.js';
+import { verificationShell } from './shell.js';
 
 export async function resolvedConfig(executable: string, args: string[], directory: string, env = process.env) {
   const r = await exec(executable, [...args, 'debug','config','--pure'], { cwd: directory, env, timeout: 60000 });
@@ -40,13 +41,19 @@ export function restrictions(config: Record<string, any>, resources: Resource[],
     const portable=connection(r,directory);
     const native=portable.type==='stdio'?{type:'local',command:[portable.command,...portable.args],...(portable.env?{environment:portable.env}:{})}
       :{type:'remote',url:portable.url,...(portable.headers?{headers:portable.headers}:{})};
-    mcp[r.connection.name] = expand({ ...r.connection.config,...native, enabled: true });
+    mcp[r.connection.name] = expand({ ...native,...(r.connection.config.timeout===undefined?{}:{timeout:r.connection.config.timeout}),...(r.connection.config.oauth===undefined?{}:{oauth:r.connection.config.oauth}), enabled: true });
     permission[`${r.connection.name}_*`] = 'ask';
   }
   return { mcp, permission, share: 'disabled', autoupdate: false, snapshot: false,
-    agent: { 'delegate-worker': { description: 'Implementation worker supervised by Codex', mode: 'primary', permission } },
+    agent: { 'delegate-worker': { description: 'Implementation worker supervised by the current planning agent', mode: 'primary', permission } },
     default_agent: 'delegate-worker', tools: { task: false },
   };
+}
+export function enforceHttpPolicy(effective:Record<string,any>,overlay:ReturnType<typeof restrictions>) {
+  invariant(effective.tools?.task===false&&effective.default_agent==='delegate-worker','MCP_POLICY','Managed configuration overrides the selected worker or enables delegation.');
+  for(const [key,value]of Object.entries(overlay.permission)) {
+    invariant(digest(effective.permission?.[key])===digest(value)&&digest(effective.agent?.['delegate-worker']?.permission?.[key])===digest(value),'MCP_POLICY',`Managed configuration changes worker permission: ${key}`);
+  }
 }
 export async function selectModel(client: ReturnType<typeof createOpencodeClient>, config: Record<string, any>, spec: Pick<WorkerSpec, 'model'|'executable'|'executable_args'|'directory'>): Promise<Model> {
   const providers = (await client.provider.list({}, { throwOnError: true })).data!;
@@ -72,7 +79,8 @@ export async function selectModel(client: ReturnType<typeof createOpencodeClient
 export async function launchOpenCode(spec: WorkerSpec, state: WorkerState, save: () => void) {
   const version = await exec(spec.executable, [...spec.executable_args, '--version']);
   invariant(version.code === 0 && version.stdout.trim() === BASELINE, 'OPENCODE_VERSION', `Expected OpenCode ${BASELINE}; found ${version.stdout.trim()}. Validate a newer version before changing the baseline.`);
-  const initial = await resolvedConfig(spec.executable, spec.executable_args, spec.directory);
+  const initial = await resolvedConfig(spec.executable, spec.executable_args, spec.directory,spec.worker?workerEnvironment(spec.worker):process.env);
+  state.verification_shell=verificationShell(spec.worker?.shell,initial.shell);save();
   const overlay = restrictions(initial, spec.resources, spec.directory);
   const env = { ...(spec.worker?workerEnvironment(spec.worker):process.env), OPENCODE_SERVER_PASSWORD: spec.password, OPENCODE_SERVER_USERNAME: 'opencode', OPENCODE_CONFIG_CONTENT: JSON.stringify(overlay), CODEX_OPENCODE_WORKER: '1' };
   // Resolve twice before starting the server, so managed config cannot silently re-enable a connection.
@@ -80,7 +88,7 @@ export async function launchOpenCode(spec: WorkerSpec, state: WorkerState, save:
   const allowed = new Set(spec.resources.map(r => r.connection.name));
   invariant(Object.entries(effective.mcp ?? {}).every(([name, cfg]) => (cfg as any).enabled === false || allowed.has(name)), 'MCP_POLICY', 'Managed configuration enables an unregistered MCP connection.');
   for (const name of allowed) for (const [key, value] of Object.entries(overlay.mcp[name])) invariant(digest(effective.mcp?.[name]?.[key]) === digest(value), 'MCP_POLICY', `Effective MCP connection differs from the verified profile: ${name}.${key}`);
-  invariant(effective.agent?.['delegate-worker']?.permission?.task === 'deny' && effective.tools?.task === false, 'MCP_POLICY', 'Managed configuration overrides worker restrictions.');
+  enforceHttpPolicy(effective,overlay);
   const context={spec,state,save},intent=beginProcess(context);
   const child: ChildProcess = spawn(spec.executable, [...spec.executable_args, 'serve', '--hostname=127.0.0.1','--port=0','--pure'], { cwd: spec.directory, env, detached: true, windowsHide: true, stdio: ['ignore','pipe','pipe'] });
   child.on('error', error => { state.error = error.message; save(); });

@@ -47,3 +47,14 @@
 - Added 18 regression tests to the original 23. Local macOS / Node 25.2.1: `npm run check` passed strict type checking, all 41 tests, and plugin validation. Tests use mock OpenCode HTTP plus real temporary Git repositories and processes; no paid model calls or installed-plugin deployment were performed.
 - Prepared Node 22 CI for `macos-15` and `windows-latest`, scoped to the delegation tool and its workflow. Remote results are recorded separately once observed.
 - Initial remote Node 22 macOS CI passed all 41 tests. Windows exposed a regression-fixture restoration assumption: its checked-out file may use CRLF. The fixture now restores the exact captured bytes, preserving the production rule that changed prepared checkouts must never be removed.
+
+## 2026-10-14 — platform extension
+
+- Acceptance reference: docs/platform-plan.md. The supervisor remains the user's current conversation, with four host exports and four interchangeable local implementation backends.
+- Added frozen platform/profile/model settings, durable native dispatch/reply/process evidence, platform permissions/questions/cancellation and a common verification runner. RPC 1 remains compatible; explicit offline migration handles storage/worker format 2.
+- Added SDK/native runtime packaging and source-relocated installation checks, with root SDK/Zod pins and plugin/data paths preserved. Installed-plugin activation and paid-model work remain excluded.
+- Four scripted host bindings exercise all 16 mock-backend MCP combinations. Mixed-worker scheduler/resource/correction tests and rich migration/evidence tests expand coverage beyond the original 41 regressions.
+- Node 22 local full suite reached 69 passes. The final suite adds alias, resume-quiescence and complete resource-preflight checks (73 total); exact final results are recorded in the PR validation evidence after completion.
+- Real model-free connections passed for OpenCode 1.18.30, Codex 0.146.0, Claude bundled 2.1.296 and Kilo 7.4.23. Default model resolution is not provider authentication or model-task validation.
+- Actions run 38417136124 passed macOS automated/native checks. Windows functional command/recovery checks passed, while two installation errors identified Node 22 Unicode overwrite behavior. The fix replaces owned generated-skill targets and reduces repeated package copies. Final-source Windows/macOS checks remain mandatory.
+- Issues MP-01 through MP-18 and goal/result comparison are recorded in docs/implementation-audit.md. Native IDE/desktop GUI and model-task behavior remain explicitly unconfirmed; no authored GUI was introduced.

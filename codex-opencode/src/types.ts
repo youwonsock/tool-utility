@@ -59,7 +59,7 @@ export type ToolName = keyof typeof schemas;
 export type Model = z.infer<typeof modelSchema>;
 export type WorkerModel = Model | string;
 export type WorkerSelection = z.infer<typeof workerSchema>;
-export type ShellSpec = { executable:string; args:string[] };
+export type ShellSpec = { executable:string; args:string[]; baseline?:boolean };
 export type WorkerConfig = {
   platform:Platform; profile:string; executable:string; executable_args:string[];
   baseline:string; config_hash:string; model?:WorkerModel; native_profile?:string;
@@ -91,6 +91,7 @@ export type WorkerState = {
   backend?:Platform; backend_version?:string; processes?:ProcessIdentity[];
   prompt_id: string; prompt_intent?: number; prompt_accepted?: boolean;
   native_request_id?:string; turn_id?:string; permission_grants?:string[];
+  verification_shell?:ShellSpec;
   verification: Evidence[]; shell_intent?: { index: number; message_id: string; command: string; process?:ProcessIdentity };
   inputs: InputRequest[]; replies: Record<string, 'intent' | 'sent' | 'uncertain'>;
   summary?: string; transcript?: string; usage?: unknown; error?: string; stopped?: boolean;

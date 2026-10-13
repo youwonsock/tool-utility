@@ -69,3 +69,9 @@
 `cleanup`은 서비스가 만든 완료/취소 실행 worktree만 제거합니다. 적용된 사용자 브랜치와 원래 checkout은 제거하지 않습니다. 원본 로그에는 코드·모델 대화·도구 출력 등 프로젝트 정보가 있으므로 Git에 추가하거나 공유할 때 주의해야 합니다.
 
 서비스를 제거할 때는 먼저 실행 상태를 확인하고 필요한 작업을 완료/취소한 뒤 `stop`을 호출합니다. `codex plugin remove codex-opencode@personal`로 플러그인을 제거할 수 있습니다. 데이터와 과거 설치본 삭제는 사용자 관리 대상입니다.
+
+## 셸 호환성과 이전 진단 기록
+
+검증 셸의 선택·Bash/Zsh 초기화는 [OpenCode 1.18.30 소스](https://github.com/anomalyco/opencode/blob/v1.18.30/packages/core/src/shell.ts)를 기준으로 합니다. 실행 기록에는 실제 argv와 종료 코드가 남습니다. 네이티브 플러그인의 shell.env 훅은 공통 검증기에서 실행하지 않으므로 필요한 환경 값은 신뢰한 프로필의 env_refs로 명시합니다. 수정 시도와 최종 검증은 이미 확정한 셸을 유지합니다.
+
+마이그레이션은 실행에 연결되지 않은 jobs와 diagnostics도 검사합니다. 종료 증거가 없는 구형 진단 실행 의도는 UPDATE_PENDING으로 보존하며 임의로 무시하지 않습니다. Claude 모델 별칭의 실제 모델 계열을 확인할 수 없으면 MODEL_UNAVAILABLE을 반환합니다. 이 경우 정확한 네이티브 모델 ID를 지정합니다.

@@ -107,7 +107,7 @@ export class Engine {
       await backend.start();await backend.createSession();
       connection = { healthy: true, model: state.model };
     } catch (e) { connection.error = (e as Error).message; }
-    finally { const stopped=await backend.confirmStopped();if(!stopped){connection.healthy=false;connection.error='Diagnostic runtime termination could not be confirmed.';} }
+    finally { const stopped=await backend.confirmStopped();state.stopped=stopped;writeJson(path.join(jobDir,'worker.json'),state);if(!stopped){connection.healthy=false;connection.error='Diagnostic runtime termination could not be confirmed.';} }
     return { version: VERSION, protocol: PROTOCOL, node: process.versions.node, platform: process.platform,
       storage_format:STORE_FORMAT,worker_format:WORKER_FORMAT,worker:publicWorker(selected),backend_version:state.backend_version,
       opencode: selected.platform==='opencode'?version.stdout.trim():undefined, baseline:selected.baseline, compatible:version.code===0&&(selected.platform==='codex'?version.stdout.trim()===`codex-cli ${selected.baseline}`:version.stdout.trim()===selected.baseline),
@@ -216,6 +216,11 @@ export class Engine {
       attempt.worker = state; attempt.model = state.model; attempt.inputs = state.inputs;
       const ownerTask=run.tasks.find(t=>t.attempts.includes(attempt));
       if(ownerTask&&state.model&&attempt.number===1) {ownerTask.worker.model=state.model;if(attempt.execution)attempt.execution.model=state.model;}
+      if(ownerTask&&state.verification_shell&&attempt.number===1) {
+        ownerTask.worker.shell??=structuredClone(state.verification_shell);
+        if(attempt.execution)attempt.execution.shell??=structuredClone(state.verification_shell);
+        if(run.worker.config_hash===ownerTask.worker.config_hash)run.worker.shell??=structuredClone(state.verification_shell);
+      }
       if (!state.stopped) {
         const observed: AttemptState = state.phase==='needs_input' || state.phase==='delivery_uncertain' || state.phase==='cancelling' || state.phase==='stop_uncertain' ? state.phase : 'running';
         const uncertainOwner = ['orphaned','stop_uncertain'].includes(attempt.state) && !await alive(state.host);

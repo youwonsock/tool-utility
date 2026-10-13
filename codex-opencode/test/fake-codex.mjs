@@ -21,7 +21,7 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
   if(frame.method==='initialize')return reply({userAgent:'mock-codex'});
   if(frame.method==='initialized')return;
   if(frame.method==='config/read')return reply({config,origins:{}});
-  if(frame.method==='thread/start'){audit({event:'session'});return reply({thread,model:p.model??config.model,modelProvider:'fake',cwd:process.cwd(),approvalPolicy:'untrusted',approvalsReviewer:'user',sandbox:{type:'workspaceWrite'}});}
+  if(frame.method==='thread/start'){audit({event:'session'});return reply({thread,model:p.model==='unavailable-model'?'fake-model':p.model??config.model,modelProvider:'fake',cwd:process.cwd(),approvalPolicy:'untrusted',approvalsReviewer:'user',sandbox:{type:'workspaceWrite'}});}
   if(frame.method==='thread/read')return reply({thread});
   if(frame.method==='turn/start'){
     const text=p.input.map(i=>i.text??'').join('\n'),matches=[...text.matchAll(/FAKE_ACTION:(.+)/g)];action=JSON.parse(matches.at(-1)?.[1]??'{}');

@@ -16,7 +16,7 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
   const frame=JSON.parse(line);
   if(frame.type==='control_request'){
     const kind=frame.request.subtype;
-    const response=kind==='initialize'?{commands:[],agents:[],models:[{value:'fake-model',displayName:'Fake',description:'Mock'}],account:{},hooks_applied:true,claude_code_version:'2.1.296'}:kind==='mcp_status'?{mcpServers:[]}:kind==='get_context_usage'?{model:'fake-model',categories:[],totalTokens:0,maxTokens:200000,rawMaxTokens:200000,percentage:0,gridRows:[],memoryFiles:[],mcpTools:[],agents:[]}:{};
+    const response=kind==='initialize'?{commands:[],agents:[],models:[{value:'fake-model',displayName:'Fake',description:'Mock'},{value:'sonnet',displayName:'Alias',description:'Mock supported alias with a mismatched resolved model'}],account:{},hooks_applied:true,claude_code_version:'2.1.296'}:kind==='mcp_status'?{mcpServers:[]}:kind==='get_context_usage'?{model:'fake-model',categories:[],totalTokens:0,maxTokens:200000,rawMaxTokens:200000,percentage:0,gridRows:[],memoryFiles:[],mcpTools:[],agents:[]}:{};
     send({type:'control_response',response:{subtype:'success',request_id:frame.request_id,response}});
     if(kind==='initialize')audit({event:'session'});if(kind==='interrupt')clearTimeout(timer);return;
   }

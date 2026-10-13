@@ -23,7 +23,7 @@ Example initial submission:
 }
 ```
 
-Verification runs in the common command runner. Its POSIX default is the inherited usable shell (bash for fish/nu); the Windows default is cmd.exe /d /s /c. A trusted execution profile may override the shell. Each execution records the actual shell and environment fingerprint. Scope entries are exact paths, directories ending in `/`, directory `/**` prefixes, or `**` for all source. Context files are protected even within broad scopes.
+Verification runs in the common command runner. Its default selection and Bash/Zsh startup follow OpenCode 1.18.30. A valid configured shell or SHELL is preferred; fallback is Zsh on macOS and PowerShell, Git Bash, then cmd on Windows. PowerShell invocation preserves native exit codes. A trusted execution profile may override the shell. Each execution records the actual shell and environment fingerprint. Scope entries are exact paths, directories ending in `/`, directory `/**` prefixes, or `**` for all source. Context files are protected even within broad scopes.
 
 `submit_tasks.worker` selects the run default; `tasks[].worker` replaces that selection for one task. Both accept `{platform, model?, profile?}`. Platforms are `opencode`, `codex`, `claude-code`, and `kilo`. OpenCode/Kilo models use `{providerID, modelID}`; Codex/Claude models use a string. Missing worker keeps the OpenCode default and legacy task.model. Conflicting legacy/new selections are rejected. Run defaults are immutable on append. Native model selections are fixed for corrections, with no automatic fallback.
 
@@ -58,3 +58,5 @@ Rejected results include `rejected-result.json` alongside the tracked diff. It p
 MCP tool inputs and service RPC remain version 1. Storage is format 2; newly launched workers use format 2. Legacy job records are read without rewriting or replaying them after explicit offline migration. `migrate --dry-run`, `migrate --apply` and incomplete-migration `migrate --rollback` never dispatch models or verification commands. A pending migration fences service startup.
 
 Permission requests include supported_decisions. "always" applies only within the current attempt and does not save global native permission rules. Reply delivery remains uncertain until an acknowledgement or causally subsequent native result is observed. get_run exposes platform/profile/model/version, while credentials and raw native connection configuration remain private.
+
+Native plugin shell.env hooks are not executed by the common verifier. Declare required environment mappings with env_refs. Ambiguous command/args or env/environment combinations and disabled resources fail preflight. Claude aliases must resolve to their advertised model family; use a resolved ID for unverifiable aliases.

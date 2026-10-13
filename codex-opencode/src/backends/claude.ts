@@ -90,7 +90,7 @@ export class ClaudeBackend implements WorkerBackend {
           if(m.type==='system'&&m.subtype==='init') {
             invariant(!m.tools?.some((name:string)=>/^(Agent|Task|Skill|CronCreate|TeamCreate|SendMessage)$/.test(name)),'MCP_POLICY','Forbidden tools remain available.');
             invariant(!m.mcp_servers?.some((s:any)=>!resources.has(s.name)),'MCP_POLICY','An undeclared MCP server remains available.');
-            if(m.model){state.model=m.model;save();}
+            if(m.model){invariant(state.model===undefined||state.model===m.model,'MODEL_UNAVAILABLE','Claude changed the resolved worker model.');state.model=m.model;save();}
           }
           if(m.type==='user'&&m.uuid===state.native_request_id)this.accepted=true;
           if(m.type==='assistant')this.accepted=true;
@@ -105,7 +105,9 @@ export class ClaudeBackend implements WorkerBackend {
     invariant(this.initialization.hooks_applied===true,'MCP_POLICY','Claude did not confirm worker hook registration.');
     const usage=await this.query.getContextUsage({detail:'summary'});
     invariant(typeof usage.model==='string'&&usage.model.length>0,'MODEL_UNAVAILABLE','Claude did not identify its current native model.');
-    invariant(spec.model===undefined||spec.model===usage.model||this.initialization.models?.some((m:any)=>m.value===spec.model),'MODEL_UNAVAILABLE','Requested Claude model was not resolved. No fallback was used.');
+    const family=typeof spec.model==='string'&&/^(sonnet|opus|haiku)(?:\[1m\])?$/.exec(spec.model)?.[1];
+    const resolvedAlias=family&&usage.model.includes(family)&&this.initialization.models?.some((m:any)=>m.value===spec.model);
+    invariant(spec.model===undefined||spec.model===usage.model||resolvedAlias,'MODEL_UNAVAILABLE','Requested Claude model was not resolved. Use a resolved model ID when its alias cannot be verified. No fallback was used.');
     await this.query.setModel(usage.model);
     state.backend='claude-code';state.backend_version=this.initialization.claude_code_version;
     state.model=usage.model;
