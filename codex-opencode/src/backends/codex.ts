@@ -106,7 +106,7 @@ export class CodexBackend implements WorkerBackend {
       const expected=mcp[name] as Record<string,unknown>,observed=effective.mcp_servers?.[name];
       for(const [key,value]of Object.entries(expected))if(value!==undefined)invariant(digest(observed?.[key])===digest(value),'MCP_POLICY','Effective Codex resource differs from its verified profile.');
     }
-    this.model=typeof spec.model==='string'?spec.model:initial.model;
+    this.model=typeof spec.model==='string'?spec.model:typeof initial.model==='string'&&initial.model.length?initial.model:undefined;
     state.backend='codex';state.backend_version=spec.worker!.baseline;save();
   }
   async createSession() {

@@ -47,12 +47,14 @@ No paid model invocation or installed-plugin activation is part of this work.
 | MP-21 | A source-only migration fixture could observe terminal task state before its scheduler tick finished collecting evidence. | Stop scheduling and await the serial tick before freezing the legacy fixture. | Reproduced on macOS CI; deterministic barrier added without success-by-sleep. |
 | MP-22 | doctor compared an external Claude CLI version with its SDK baseline and reported a valid runtime as incompatible. | Compare external CLI and SDK baselines separately; assert compatible in the source-relocated SDK test. | Regression assertion added to installation validation. |
 
+| MP-23 | Authless Codex initialization returns a null configured model, which was treated as an explicit selection. | Resolve absent/null defaults from thread/start while retaining strict checks for explicit models. | Native CI reproduced the error after all 73 regressions passed; a null-default regression was added. |
+
 ## Goal/result comparison (current evidence)
 
 | Requirement | Evidence | Status |
 | --- | --- | --- |
 | Four platforms in both roles | host-matrix.test.mjs: four host exports × four mock backends, actual MCP/Git/process workflow | Automated contract passed; model behavior unconfirmed by design. |
-| Existing workflow and safety conditions | Node 22 suite: 69 tests passed before the final alias/packaging audit; final suite has 73 tests including review/cancel/submission/evidence/lease scenarios | Final exact check is recorded in PROGRESS.md and the PR validation results. |
+| Existing workflow and safety conditions | Node 22 suite: 69 tests passed before the final alias/packaging audit; final suite has 74 tests including review/cancel/submission/evidence/lease scenarios | Final exact check is recorded in PROGRESS.md and the PR validation results. |
 | Real model-free native connections | connection-check.mjs on Node 22: OpenCode 1.18.30, Codex 0.146.0, Claude bundled 2.1.296, Kilo 7.4.23 | All four passed; provider model authentication unconfirmed. |
 | Portable installation | Installed CLI, isolated SDK and native binary used after source relocation | Final exact check is recorded in PROGRESS.md and the PR validation results. |
 | Plugin/skill structure | Official plugin-creator and skill-creator validators; generated binding checks | Passed. |
