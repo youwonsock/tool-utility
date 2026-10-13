@@ -13,7 +13,12 @@ export function connection(resource:Resource,directory:string):McpConnection {
   const c=expand(resource.connection.config);
   const allowed=new Set(['type','command','args','environment','env','url','headers','enabled','timeout','oauth']);
   invariant(Object.keys(c).every(key=>allowed.has(key)),'MCP_POLICY','Resource connection has unsupported configuration fields.');
+  invariant(c.enabled===undefined||c.enabled===true,'MCP_POLICY','A declared worker resource must be enabled.');
+  invariant(c.environment===undefined||c.env===undefined,'MCP_POLICY','Use one resource environment field.');
+  invariant(c.timeout===undefined||Number.isInteger(c.timeout)&&c.timeout>0,'MCP_POLICY','Resource timeout must be a positive integer.');
   if(c.type==='local'||c.type==='stdio'||(c.command&&!c.url)) {
+    invariant(c.url===undefined&&c.headers===undefined&&c.oauth===undefined,'MCP_POLICY','Stdio resources cannot contain remote connection fields.');
+    invariant(!Array.isArray(c.command)||c.args===undefined,'MCP_POLICY','Use a command array or a separate args field, not both.');
     const command=Array.isArray(c.command)?c.command[0]:c.command;
     const args=Array.isArray(c.command)?c.command.slice(1):c.args??[];
     invariant(typeof command==='string'&&Array.isArray(args)&&args.every((v:unknown)=>typeof v==='string'),'MCP_POLICY','Invalid stdio resource connection.');
@@ -22,6 +27,8 @@ export function connection(resource:Resource,directory:string):McpConnection {
     return {type:'stdio',command,args,...(env?{env}:{})};
   }
   invariant(['remote','http','sse'].includes(c.type)&&typeof c.url==='string','MCP_POLICY','Unsupported MCP resource transport.');
+  invariant(c.command===undefined&&c.args===undefined&&c.env===undefined&&c.environment===undefined,'MCP_POLICY','Remote resources cannot contain stdio connection fields.');
+  invariant(c.oauth===undefined||c.oauth===false||c.oauth&&typeof c.oauth==='object'&&!Array.isArray(c.oauth)&&Object.entries(c.oauth).every(([key,value])=>['clientId','clientSecret','scope'].includes(key)&&typeof value==='string'),'MCP_POLICY','Unsupported OAuth resource configuration.');
   const url=new URL(c.url);invariant(['http:','https:'].includes(url.protocol),'MCP_POLICY','Unsupported MCP resource URL.');
   invariant(!c.headers||Object.values(c.headers).every(v=>typeof v==='string'),'MCP_POLICY','Resource headers must contain strings.');
   return {type:c.type==='sse'?'sse':'http',url:c.url,...(c.headers?{headers:c.headers}:{})};

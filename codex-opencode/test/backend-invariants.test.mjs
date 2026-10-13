@@ -1,0 +1,51 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { createBackend, resolveWorker, uid, sleep, connection, restrictions } from '../dist/index.mjs';
+import { fixture, cli } from './helpers.mjs';
+import { mockProfiles, selection } from './native-helpers.mjs';
+
+async function native(t,platform,model) {
+  const f=await fixture(t);f.engine.stop();mockProfiles(f);
+  const worker=resolveWorker(f.data,{...selection(platform),...(model?{model}:{})});
+  const id=uid('native'),job_dir=path.join(f.data,'jobs',id);fs.mkdirSync(job_dir,{recursive:true});
+  const spec={protocol:2,id,job_dir,directory:f.repo,goal:'',acceptance:[],scope:['a.txt'],verification:[],resources:[],context:[],timeout_ms:60000,validation:false,host_executable:cli,worker,model:worker.model,executable:worker.executable,executable_args:worker.executable_args,password:uid('secret')};
+  const state={protocol:2,id,phase:'starting',updated:Date.now(),prompt_id:uid('msg'),verification:[],inputs:[],replies:{}};
+  const backend=createBackend({spec,state,save:()=>fs.writeFileSync(path.join(job_dir,'worker.json'),JSON.stringify(state))});
+  t.after(async()=>{await backend.cancel();assert.equal(await backend.confirmStopped(),true);});
+  await backend.start();return {backend,state,spec};
+}
+
+test('Codex rejects a native model substitution before implementation dispatch',async t=>{
+  const {backend}=await native(t,'codex','unavailable-model');
+  await assert.rejects(()=>backend.createSession(),e=>e.code==='MODEL_UNAVAILABLE');
+});
+
+test('Claude rejects an advertised alias resolved to a different model family',async t=>{
+  await assert.rejects(()=>native(t,'claude-code','sonnet'),e=>e.code==='MODEL_UNAVAILABLE');
+});
+
+for(const platform of ['opencode','codex','kilo'])test(`${platform} reconciles a lost prompt acknowledgement without a second native prompt`,async t=>{
+  const {backend,state}=await native(t,platform);await backend.createSession();
+  await assert.rejects(()=>backend.dispatch('FAKE_ACTION:{"files":{"a.txt":"once"},"drop_response":true}',state.prompt_id));
+  let observed;const deadline=Date.now()+15000;
+  do{observed=await backend.observe();if(observed.complete)break;await sleep(100);}while(Date.now()<deadline);
+  assert.equal(observed.accepted,true);assert.equal(observed.complete,true);
+  const users=platform==='codex'?observed.transcript.thread.turns.flatMap(turn=>turn.items).filter(item=>item.type==='userMessage'):observed.transcript.filter(message=>message.info.role==='user');
+  assert.equal(users.length,1);assert.equal(users[0].id??users[0].info.id,state.prompt_id);
+});
+
+test('resource normalization rejects conflicting or disabled connection settings',()=>{
+  const resource=config=>({connection:{name:'editor',config}});
+  for(const config of [
+    {type:'stdio',command:['node','server.mjs'],args:['ignored.mjs']},
+    {type:'stdio',command:'node',args:[],env:{A:'first'},environment:{A:'second'}},
+    {type:'http',url:'https://example.invalid/mcp',enabled:false},
+  ])assert.throws(()=>connection(resource(config),'/tmp/worktree'),e=>e.code==='MCP_POLICY');
+});
+
+test('HTTP backends translate portable stdio fields without leaking unsupported native keys',()=>{
+  const result=restrictions({},[{connection:{name:'editor',config:{type:'stdio',command:'node',args:['server.mjs'],env:{PROJECT:'{{worktree}}'},timeout:1500}}}],'/tmp/worktree');
+  assert.deepEqual(result.mcp.editor,{type:'local',command:['node','server.mjs'],environment:{PROJECT:'/tmp/worktree'},timeout:1500,enabled:true});
+});

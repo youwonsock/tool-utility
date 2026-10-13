@@ -15,8 +15,11 @@ fingerprint(path.join(source,'dist','runtime_modules'));fingerprint(path.join(so
 checksum.update(fs.readFileSync(path.join(source,'dist','workflow.md')));
 const stamp = checksum.digest('hex').slice(0,12);
 const release = path.join(root, 'releases', `${version}-${stamp}`);
+const installedCli = path.join(release, 'plugins', 'codex-opencode', 'runtime', 'cli.mjs');
 const staging = path.join(root, 'releases', `.stage-${crypto.randomUUID()}`);
+if (!fs.existsSync(release)) {
 fs.mkdirSync(staging, { recursive: true, mode: 0o700 });
+try {
 // Keep Node 22 on its JS traversal path: the native cpSync directory fast path
 // mishandles non-ASCII Windows paths (nodejs/node#61950).
 const copyOptions = { recursive: true, mode:fs.constants.COPYFILE_FICLONE, filter: () => true };
@@ -33,12 +36,16 @@ fs.writeFileSync(path.join(plugin, 'runtime', 'cli.mjs'), bundle);
 fs.copyFileSync(path.join(source,'dist','workflow.md'),path.join(plugin,'runtime','workflow.md'));
 fs.copyFileSync(path.join(source,'dist','runtime-manifest.json'),path.join(plugin,'runtime','runtime-manifest.json'));
 fs.cpSync(path.join(source,'dist','runtime_modules'),path.join(plugin,'runtime','node_modules'),copyOptions);
+// Generated skills replace source-only wrappers. Removing that owned directory
+// avoids Node 22 cpSync's broken Windows overwrite path for Unicode filenames.
+fs.rmSync(path.join(plugin,'skills'),{recursive:true,force:true});
 fs.cpSync(path.join(source,'dist','skills'),path.join(plugin,'skills'),copyOptions);
-const installedCli = path.join(release, 'plugins', 'codex-opencode', 'runtime', 'cli.mjs');
 fs.writeFileSync(path.join(plugin,'.mcp.json'), JSON.stringify({ mcpServers: { 'codex-opencode': { command: process.execPath, args: [installedCli,'mcp'], env: { CODEX_OPENCODE_HOME: dataRoot() } } } }, null, 2));
 const workflow=fs.readFileSync(path.join(source,'dist','workflow.md'),'utf8');
 for(const platform of platforms)exportHost(platform,path.join(staging,'hosts',platform),installedCli,workflow);
 if (!fs.existsSync(release)) fs.renameSync(staging, release); else fs.rmSync(staging, { recursive: true, force: true });
+} catch(error) { fs.rmSync(staging,{recursive:true,force:true}); throw error; }
+}
 const noRegister = process.argv.includes('--no-register');
 for(const file of ['service.json','state.json']) {
   const location=path.join(dataRoot(),file);

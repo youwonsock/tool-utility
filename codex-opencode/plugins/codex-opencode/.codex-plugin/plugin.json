@@ -1,6 +1,6 @@
 {
   "name": "codex-opencode",
-  "version": "1.0.0+codex.20261013120356",
+  "version": "1.0.0+codex.20261013152125",
   "description": "Plan and review in your current agent; delegate implementation to persistent local workers.",
   "author": {
     "name": "youwonsock"

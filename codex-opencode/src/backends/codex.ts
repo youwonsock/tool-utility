@@ -93,7 +93,7 @@ export class CodexBackend implements WorkerBackend {
     const overrides={features:{...features,hooks:true,default_mode_request_user_input:true},mcp_servers:mcp,hooks,web_search:'disabled',approval_policy:'untrusted',approvals_reviewer:'user'};
     await this.launch(overrides);
     const effective=(await this.peer!.request('config/read',{cwd:spec.directory,includeLayers:false})).config;
-    invariant(effective.features?.multi_agent===false&&effective.features?.plugins===false&&effective.features?.hooks===true,'MCP_POLICY','Effective Codex feature policy differs.');
+    invariant(Object.entries(overrides.features).every(([key,value])=>effective.features?.[key]===value)&&effective.web_search==='disabled','MCP_POLICY','Effective Codex feature policy differs.');
     invariant(effective.approval_policy==='untrusted'&&effective.approvals_reviewer==='user','MCP_POLICY','Effective Codex approval policy differs.');
     const actualHooks=effective.hooks?.PreToolUse;
     const hookCheck=Array.isArray(actualHooks)&&actualHooks.length===1&&actualHooks[0].matcher==='.*'&&actualHooks[0].hooks?.length===1
@@ -115,6 +115,7 @@ export class CodexBackend implements WorkerBackend {
     const response=await this.peer!.request('thread/start',{cwd:spec.directory,model:this.model??null,approvalPolicy:'untrusted',approvalsReviewer:'user',sandbox:'workspace-write',ephemeral:true,
       developerInstructions:'Implement only the assigned task. Do not delegate, commit, change branches, or modify protected context files.'});
     invariant(response.thread?.id&&response.approvalPolicy==='untrusted'&&response.approvalsReviewer==='user','MCP_POLICY','Native thread did not retain worker approval policy.');
+    invariant(typeof response.model==='string'&&response.model.length>0&&(this.model===undefined||response.model===this.model),'MODEL_UNAVAILABLE','Codex did not resolve the requested model. No substitute model will be dispatched.');
     state.session_id=response.thread.id;state.model=response.model;this.thread=response.thread;save();
   }
   async dispatch(prompt:string,requestID:string) {

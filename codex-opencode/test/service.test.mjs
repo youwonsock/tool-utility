@@ -52,6 +52,7 @@ test('installed bundle works after its source is moved, without source node_modu
   const client=new Client({name:'installed-test',version:'1'});const transport=new StdioClientTransport({command:process.execPath,args:[current.cli,'mcp'],env,stderr:'pipe'});await client.connect(transport);
   try{const result=await client.callTool({name:'doctor',arguments:{}});const doctor=JSON.parse(result.content[0].text);assert.equal(doctor.connection.healthy,true);assert.equal(doctor.opencode,'1.18.30');
     const external=JSON.parse((await client.callTool({name:'doctor',arguments:{worker:{platform:'claude-code',profile:'installed-claude',model:'fake-model'}}})).content[0].text);assert.equal(external.connection.healthy,true,JSON.stringify(external));
+    const bundled=JSON.parse((await client.callTool({name:'doctor',arguments:{worker:{platform:'claude-code'}}})).content[0].text);assert.equal(bundled.connection.healthy,true,JSON.stringify(bundled));assert.equal(bundled.backend_version,'2.1.296');
     for(const platform of ['opencode','codex','claude-code','kilo'])assert.ok(fs.existsSync(path.join(current.release,'hosts',platform,'binding.json')));
   }finally{await client.close();await exec(process.execPath,[current.cli,'stop'],{env});}
   assert.ok(!fs.readFileSync(path.join(current.release,'plugins/codex-opencode/.mcp.json'),'utf8').includes(source));

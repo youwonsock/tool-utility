@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { schemas } from '../dist/index.mjs';
 import { fixture, task, submit, callOk } from './helpers.mjs';
 
@@ -39,4 +41,10 @@ test('unknown execution profiles fail preflight without registering a task set',
   const result=await f.call('submit_tasks',{request_id:'unknown-profile',repo:f.repo,tasks:[task('a')],worker:{platform:'opencode',profile:'missing-profile'}});
   assert.equal(result.error.code,'WORKER_PROFILE');
   assert.equal(f.store.state.runs.length,0);
+});
+
+test('invalid unused resources fail complete submission preflight without partial registration',async t=>{
+  const f=await fixture(t);f.engine.stop();
+  const result=await f.call('submit_tasks',{request_id:'unused-invalid-resource',repo:f.repo,tasks:[task('a')],resources:[{resource_key:'unused',connection:{name:'editor',config:{type:'unsupported'}},probe:{executable:process.execPath,args:[],read_only:true},expected_instance:'editor'}]});
+  assert.equal(result.error.code,'MCP_POLICY');assert.equal(f.store.state.runs.length,0);assert.equal(fs.existsSync(path.join(f.data,'worktrees')),false);
 });
