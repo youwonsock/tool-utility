@@ -1,8 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { PROTOCOL, invariant, type WorkerSpec, type WorkerState, type Evidence } from './types.js';
+import { PROTOCOL, invariant, type WorkerSpec, type WorkerState, type Evidence, type WorkerPhase } from './types.js';
 import { uid, writeJson, readJson, durableWrite, exclusiveJson, processIdentity, sleep, terminate } from './io.js';
 import { launchOpenCode } from './opencode.js';
+import { moveWorker, workerTerminal } from './lifecycle.js';
 
 // A separate supervisor process survives service/MCP restarts. The exclusive start record
 // is a launch fence: an uncertain dispatch can never execute a second model invocation.
@@ -17,26 +18,28 @@ export async function worker(jobDir: string) {
   let api: Awaited<ReturnType<typeof launchOpenCode>> | undefined;
   let controlBusy = false, cancelled = false, fatal: Error | undefined;
   let terminationConfirmed = false;
+  let resumePhase: WorkerPhase = spec.validation ? 'verifying' : 'implementing';
   const deadline = Date.now() + spec.timeout_ms;
   const cancelledNow = () => fs.existsSync(path.join(jobDir, 'cancel.json')) || Date.now() > deadline;
   const control = async () => {
-    if (controlBusy || !api || !state.session_id) return;
+    if (controlBusy || !api || !state.session_id || workerTerminal(state)) return;
     controlBusy = true;
     try {
       if (cancelledNow()) {
-        cancelled = true; state.phase = 'cancelling'; save();
+        cancelled = true; moveWorker(state,'cancelling'); save();
         await api.client.session.abort({ sessionID: state.session_id }, { throwOnError: true, signal: AbortSignal.timeout(5000) }).catch(() => undefined);
         if (state.server) terminationConfirmed = await terminate(state.server, true);
         return;
       }
       const permissions = (await api.client.permission.list({}, { throwOnError: true })).data!;
       const questions = (await api.client.question.list({}, { throwOnError: true })).data!;
+      if (workerTerminal(state) || cancelled) return;
       state.inputs = [
         ...permissions.filter(p => p.sessionID === state.session_id).map(p => ({ id: p.id, kind: 'permission' as const, details: p })),
         ...questions.filter(q => q.sessionID === state.session_id).map(q => ({ id: q.id, kind: 'question' as const, details: q })),
       ];
-      if (state.inputs.length) state.phase = 'needs_input';
-      else if (state.phase === 'needs_input') state.phase = 'implementing';
+      if (state.inputs.length && state.phase!=='needs_input') { resumePhase=state.phase; moveWorker(state,'needs_input'); }
+      else if (!state.inputs.length && state.phase==='needs_input') moveWorker(state,resumePhase);
       save();
       for (const input of state.inputs) {
         const answer = readJson<{ decision: 'once'|'always'|'reject'|'answer'; answers?: string[][] }>(path.join(jobDir, 'replies', `${Buffer.from(input.id).toString('hex')}.json`));
@@ -58,7 +61,7 @@ export async function worker(jobDir: string) {
     api = await launchOpenCode(spec, state, save);
     invariant(!cancelledNow(), 'CANCELLED', 'Cancelled during OpenCode startup.');
     // The session-create intent is durable. A lost response stops here rather than creating a second session.
-    state.phase = 'creating_session'; save();
+    moveWorker(state,'creating_session'); save();
     let session;
     try { session = (await api.client.session.create({ title: `delegation:${spec.id}`, model: { id: state.model!.modelID, providerID: state.model!.providerID }, agent: 'delegate-worker' }, { throwOnError: true })).data!; }
     catch {
@@ -66,7 +69,7 @@ export async function worker(jobDir: string) {
       invariant(matches.length === 1, 'SESSION_UNCERTAIN', 'Session creation response was lost and no unique existing session could be identified. No request was replayed.');
       session = matches[0]!;
     }
-    state.session_id = session.id; state.phase = spec.validation ? 'verifying' : 'implementing'; save();
+    state.session_id = session.id; moveWorker(state,spec.validation ? 'verifying' : 'implementing'); save();
     if (!spec.validation) {
       const prompt = [
         'You are an implementation worker supervised by Codex. Implement only this assigned task.',
@@ -82,7 +85,7 @@ export async function worker(jobDir: string) {
       try {
         await api.client.session.promptAsync({ sessionID: session.id, messageID: state.prompt_id, model: state.model!, agent: 'delegate-worker', parts: [{ type: 'text', text: prompt }] }, { throwOnError: true });
         state.prompt_accepted = true; save();
-      } catch { state.phase = 'reconciling_delivery'; state.error = 'Prompt response lost; inspecting the existing session without resending.'; save(); }
+      } catch { moveWorker(state,'reconciling_delivery'); state.error = 'Prompt response lost; inspecting the existing session without resending.'; save(); }
       let seen = false;
       while (true) {
         await control(); invariant(!cancelled, 'CANCELLED', 'Execution cancelled or timed out.');
@@ -99,9 +102,9 @@ export async function worker(jobDir: string) {
           invariant(last.info.finish !== 'tool-calls' && last.info.finish !== 'unknown', 'INCOMPLETE_MODEL', 'Assistant did not finish its implementation turn.');
           state.summary = replies.flatMap(m => m.parts.filter(p => p.type === 'text').map(p => p.type === 'text' ? p.text : '')).join('\n');
           state.usage = replies.map(m => m.info.role === 'assistant' ? { model: `${m.info.providerID}/${m.info.modelID}`, tokens: m.info.tokens, cost: m.info.cost } : {});
-          state.error = undefined; state.phase = 'verifying'; save(); break;
+          state.error = undefined; moveWorker(state,'verifying'); save(); break;
         }
-        if (!seen && Date.now() - state.prompt_intent! > 30000) { state.phase = 'delivery_uncertain'; save(); }
+        if (!seen && Date.now() - state.prompt_intent! > 30000) { moveWorker(state,'delivery_uncertain'); save(); }
         await sleep(500);
       }
     }
@@ -124,14 +127,14 @@ export async function worker(jobDir: string) {
       state.verification.push(evidence); state.shell_intent = undefined; save();
       if (exit === null) break;
     }
-    state.phase = cancelled ? 'cancelled' : 'completed'; save();
-  } catch (e) { state.phase = cancelled || cancelledNow() ? 'cancelled' : 'failed'; state.error = (e as Error).message; save(); }
+    moveWorker(state,cancelled || cancelledNow() ? 'cancelled' : 'completed'); save();
+  } catch (e) { moveWorker(state,cancelled || cancelledNow() ? 'cancelled' : 'failed'); state.error = (e as Error).message; save(); }
   finally {
     clearInterval(timer);
     while (controlBusy) await sleep(50);
     // No terminal worker state is consumable until OpenCode and its subprocess tree are stopped.
-    state.stopped = terminationConfirmed || (state.server ? await terminate(state.server, true) : true);
-    if (!state.stopped) { state.phase = 'stop_uncertain'; state.error = 'OpenCode termination could not be confirmed.'; }
+    state.stopped = terminationConfirmed || (state.server ? await terminate(state.server, true) : !fs.existsSync(path.join(jobDir,'server-intent.json')));
+    if (!state.stopped) { moveWorker(state,'stop_uncertain'); state.error = 'OpenCode termination could not be confirmed.'; }
     api?.log.end(); save();
   }
 }

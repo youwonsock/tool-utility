@@ -5,3 +5,5 @@ export * from './store.js';
 export * from './engine.js';
 export * from './service.js';
 export * from './opencode.js';
+export * from './lifecycle.js';
+export * from './evidence.js';

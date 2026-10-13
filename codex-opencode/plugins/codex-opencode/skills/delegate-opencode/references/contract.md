@@ -42,3 +42,11 @@ The probe must query the actual tool, returning `{"instance_id":"editor-01","pro
 `get_run` includes attempt ID, commit, input requests, observed checks and artifact IDs. Page tasks using `next_cursor`. `wait_run` returns event deltas and the next `after` value. `get_artifact` uses byte offsets at UTF-8 boundaries and `next_offset`. Normal MCP responses stay within 4 KiB; artifact responses within 16 KiB.
 
 After `validate_run`, use its validation ID/commit/revision only if it is still the current passed validation. `finalize_run` is the explicit supervisor approval, not a request to start tests.
+
+Review additionally requires the task to be `needs_review`. A correction immediately makes the old result unreviewable, including before dispatch and after restart. New request IDs cannot approve or request changes on that queued result; identical retransmissions retain the original idempotent response.
+
+Cancellation intent wins over late verification snapshots. Cancelled validations use `cancelled`; the run remains `cancelling` until termination is confirmed. Unknown ownership continues to hold leases.
+
+Submission preflight failure publishes no partial task set. Prepared metadata and owned worktrees are recorded under the service's `submissions/` directory. An uncertain journal/snapshot write returns `REQUEST_UNCERTAIN` and fences new dispatch until restart and reconciliation. Restart may recover a committed submission response without replaying implementation. `STATE_TRANSITION` identifies an invalid internal transition; `STATE_CORRUPT` identifies an unknown persisted state. Protocol and existing tool inputs remain version 1.
+
+Rejected results include `rejected-result.json` alongside the tracked diff. It preserves the error code/details and changed-file list, plus at most 64 KiB of UTF-8 preview for an untracked ordinary file. Check `truncated`, size, and SHA-256; binary, authentication, and symlink targets are not text previews. Collection errors do not replace the original rejection.
