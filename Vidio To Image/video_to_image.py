@@ -6,6 +6,12 @@ import queue
 import threading
 from pathlib import Path
 from typing import Optional
+import argparse
+import tkinter.font as tkfont
+from platforms import current
+from video_to_image_service import VideoService
+from video_to_image_edit import validate_edit
+from video_to_image_editor import EditingControls, show_mcp_configuration
 
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -59,8 +65,14 @@ from video_to_image_settings import AppSettings, load_settings, save_settings
 
 
 class VideoToImageApp(tk.Tk):
-    def __init__(self) -> None:
+    def __init__(self, settings_path: Path | None = None) -> None:
         super().__init__()
+        self._settings_path = settings_path
+        self.service = VideoService(workers=1)
+        self.current_job = None
+        self.video_info = None
+        self.mode_var = tk.StringVar(self, value="extract")
+        self.font_family = current.font_family or tkfont.nametofont("TkDefaultFont").actual("family")
         self.title(APP_TITLE)
         self.geometry("820x820")
         self.minsize(760, 760)
@@ -104,19 +116,20 @@ class VideoToImageApp(tk.Tk):
         self._build_ui()
         self.message_after_id = self.after(100, self._drain_messages)
         self.protocol("WM_DELETE_WINDOW", self._close)
+        current.install_quit_handler(self, self._close)
 
     def _build_style(self) -> None:
         style = ttk.Style(self)
         try:
-            style.theme_use("vista")
+            style.theme_use(current.theme)
         except tk.TclError:
             pass
         style.configure("App.TFrame", background="#eef2f7")
         style.configure("Card.TFrame", background="#ffffff")
-        style.configure("Title.TLabel", background="#eef2f7", foreground="#142033", font=("Segoe UI", 23, "bold"))
-        style.configure("Subtitle.TLabel", background="#eef2f7", foreground="#526174", font=("Segoe UI", 10))
-        style.configure("CardTitle.TLabel", background="#ffffff", foreground="#142033", font=("Segoe UI", 12, "bold"))
-        style.configure("CardText.TLabel", background="#ffffff", foreground="#475569", font=("Segoe UI", 9))
+        style.configure("Title.TLabel", background="#eef2f7", foreground="#142033", font=(self.font_family, 23, "bold"))
+        style.configure("Subtitle.TLabel", background="#eef2f7", foreground="#526174", font=(self.font_family, 10))
+        style.configure("CardTitle.TLabel", background="#ffffff", foreground="#142033", font=(self.font_family, 12, "bold"))
+        style.configure("CardText.TLabel", background="#ffffff", foreground="#475569", font=(self.font_family, 9))
         style.configure("Card.TEntry", fieldbackground="#ffffff", padding=(8, 6))
         style.configure("Card.TCombobox", padding=(6, 4))
         style.configure("Card.TCheckbutton", background="#ffffff", foreground="#334155")
@@ -124,7 +137,7 @@ class VideoToImageApp(tk.Tk):
             "Accent.TButton",
             background="#2563eb",
             foreground="#ffffff",
-            font=("Segoe UI", 10, "bold"),
+            font=(self.font_family, 10, "bold"),
             padding=(16, 8),
         )
         style.map(
@@ -133,19 +146,19 @@ class VideoToImageApp(tk.Tk):
             foreground=[("disabled", "#64748b"), ("!disabled", "#ffffff")],
         )
         style.configure("Secondary.TButton", padding=(12, 7))
-        style.configure("Status.TLabel", background="#eef2f7", foreground="#526174", font=("Segoe UI", 9))
+        style.configure("Status.TLabel", background="#eef2f7", foreground="#526174", font=(self.font_family, 9))
         style.configure(
             "Summary.TLabel",
             background="#eff6ff",
             foreground="#1d4ed8",
-            font=("Segoe UI", 9, "bold"),
+            font=(self.font_family, 9, "bold"),
             padding=(10, 8),
         )
         style.configure(
             "SummaryError.TLabel",
             background="#fff1f2",
             foreground="#be123c",
-            font=("Segoe UI", 9, "bold"),
+            font=(self.font_family, 9, "bold"),
             padding=(10, 8),
         )
 
@@ -177,7 +190,17 @@ class VideoToImageApp(tk.Tk):
         # The scrollable content contains many native Tk widgets.  Bind the
         # wheel at the application level so scrolling works even when the
         # pointer is over an entry, combobox, or checkbutton inside the card.
-        canvas.bind_all("<MouseWheel>", lambda event: canvas.yview_scroll(-int(event.delta / 120), "units"))
+        self.scroll_canvas = canvas
+        def wheel(event):
+            if event.widget.winfo_toplevel() == self:
+                units = current.wheel_units(event.delta)
+                if units: canvas.yview_scroll(units, "units")
+                return 'break'
+        self.scroll_tag = 'VideoToolsScroll' + self._w
+        self.bind_class(self.scroll_tag, '<MouseWheel>', wheel)
+        self.bind_class(self.scroll_tag, '<Button-4>', lambda event: (canvas.yview_scroll(-1, 'units'), 'break')[1])
+        self.bind_class(self.scroll_tag, '<Button-5>', lambda event: (canvas.yview_scroll(1, 'units'), 'break')[1])
+        current.bind_precise_scroll(self, self.scroll_tag, canvas)
 
         ttk.Label(outer, text=APP_TITLE, style="Title.TLabel").pack(anchor="w")
         ttk.Label(
@@ -189,12 +212,26 @@ class VideoToImageApp(tk.Tk):
 
         self._build_file_card(outer)
         self._build_range_card(outer)
-        self._build_output_card(outer)
-        self._build_preview_card(outer)
+        self.notebook = ttk.Notebook(outer)
+        self.notebook.enable_traversal()
+        self.notebook.pack(fill='both', expand=True, pady=(2, 12))
+        self.extract_tab = ttk.Frame(self.notebook, style='App.TFrame')
+        self.edit_tab = ttk.Frame(self.notebook, style='App.TFrame')
+        self.notebook.add(self.extract_tab, text='이미지 추출')
+        self.notebook.add(self.edit_tab, text='영상 편집')
+        self._build_output_card(self.extract_tab)
+        self._build_preview_card(self.extract_tab)
+        self.editor = EditingControls(self, self.edit_tab, self._editing_settings)
+        self.notebook.bind('<<NotebookTabChanged>>', self._mode_changed)
+        def scrollable(widget):
+            widget.bindtags((self.scroll_tag,) + widget.bindtags())
+            for child in widget.winfo_children(): scrollable(child)
+        scrollable(outer)
+        canvas.bindtags((self.scroll_tag,) + canvas.bindtags())
 
         progress_area = ttk.Frame(root, style="App.TFrame", padding=(28, 8, 28, 14))
         progress_area.pack(fill="x")
-        self.summary_label = ttk.Label(progress_area, textvariable=self.summary_var, style="Summary.TLabel", anchor="w")
+        self.summary_label = ttk.Label(progress_area, textvariable=self.summary_var, style="Summary.TLabel", anchor="w", wraplength=690)
         self.summary_label.pack(fill="x", pady=(0, 7))
         self._update_output_summary()
         ttk.Label(progress_area, textvariable=self.status_var, style="Status.TLabel").pack(anchor="w")
@@ -206,7 +243,7 @@ class VideoToImageApp(tk.Tk):
         self.start_button = tk.Button(
             buttons,
             text="이미지 추출 시작",
-            command=self._start_extraction,
+            command=self._start,
             bg="#2563eb",
             fg="#ffffff",
             activebackground="#1d4ed8",
@@ -215,12 +252,13 @@ class VideoToImageApp(tk.Tk):
             relief="flat",
             bd=0,
             highlightthickness=0,
-            font=("Segoe UI", 10, "bold"),
+            font=(self.font_family, 10, "bold"),
             padx=18,
             pady=7,
             cursor="hand2",
         )
         self.start_button.pack(side="right")
+        ttk.Button(buttons, text="MCP 연결 설정", command=lambda: show_mcp_configuration(self)).pack(side="left")
         self.cancel_button = ttk.Button(buttons, text="취소", style="Secondary.TButton", command=self._cancel, state="disabled")
         self.cancel_button.pack(side="right", padx=(0, 8), ipadx=8, ipady=4)
         self._schedule_preview_update()
@@ -246,11 +284,11 @@ class VideoToImageApp(tk.Tk):
 
     def _build_range_card(self, parent: ttk.Frame) -> None:
         card = self._card(parent)
-        ttk.Label(card, text="2. 추출 구간", style="CardTitle.TLabel").grid(row=0, column=0, columnspan=3, sticky="w")
+        ttk.Label(card, text="2. 처리 구간", style="CardTitle.TLabel").grid(row=0, column=0, columnspan=3, sticky="w")
         ttk.Label(
             card,
             text="시간은 초 또는 HH:MM:SS 형식, 간격은 양의 실수 초 단위로 입력할 수 있습니다. 끝 시점은 포함하지 않습니다.",
-            style="CardText.TLabel",
+            style="CardText.TLabel", wraplength=640,
         ).grid(row=1, column=0, columnspan=3, sticky="w", pady=(4, 10))
         ttk.Label(card, text="시작", style="CardText.TLabel").grid(row=2, column=0, sticky="w")
         self.start_entry = ttk.Entry(card, textvariable=self.start_var, width=18, style="Card.TEntry")
@@ -389,7 +427,7 @@ class VideoToImageApp(tk.Tk):
             highlightthickness=0,
             bd=0,
         )
-        self.preview_renderer = PreviewCanvasRenderer(self.preview_canvas)
+        self.preview_renderer = PreviewCanvasRenderer(self.preview_canvas, self.font_family)
         self.preview_canvas.grid(row=3, column=0, columnspan=4, sticky="ew", pady=(10, 0))
         self.preview_canvas.bind("<Configure>", lambda _event: self._schedule_preview_update())
         for index in range(4):
@@ -469,6 +507,10 @@ class VideoToImageApp(tk.Tk):
         return available[preset]
 
     def _update_output_summary(self) -> None:
+        if self.mode_var.get() == 'edit' and hasattr(self, 'editor'):
+            f = self.editor.fields
+            self.summary_var.set(f'영상 편집 · {f["rotation"].get()}도 회전 · {f["speed"].get()}배속 · CRF {f["crf"].get()} · MP4')
+            return
         if not hasattr(self, "summary_label"):
             return
 
@@ -573,8 +615,8 @@ class VideoToImageApp(tk.Tk):
 
     def _choose_video(self) -> None:
         selected = filedialog.askopenfilename(
-            title="MP4 동영상 선택",
-            filetypes=(("MP4 동영상", "*.mp4"), ("동영상 파일", "*.mp4;*.mov;*.mkv;*.avi"), ("모든 파일", "*.*")),
+            title="동영상 선택",
+            filetypes=(("MP4 동영상", "*.mp4"), ("동영상 파일", ("*.mp4", "*.mov", "*.mkv", "*.avi", "*.webm", "*.m4v")), ("모든 파일", "*.*")),
         )
         if not selected:
             return
@@ -600,10 +642,11 @@ class VideoToImageApp(tk.Tk):
     def _probe_worker(self, path: Path, cancel_event: threading.Event) -> None:
         try:
             ffmpeg = find_ffmpeg()
-            duration = probe_duration(ffmpeg, path, cancel_event)
+            info = self.service.inspect(path, cancel_event)
+            duration = info.duration
             if cancel_event.is_set():
                 return
-            self.messages.put(ProbeCompleted(path, ffmpeg, duration))
+            self.messages.put(ProbeCompleted(path, ffmpeg, duration, info))
         except ProbeCancelled:
             return
         except Exception as exc:
@@ -616,7 +659,7 @@ class VideoToImageApp(tk.Tk):
             self.output_var.set(selected)
 
     def _start_extraction(self) -> None:
-        if self.worker and self.worker.is_alive():
+        if self.current_job:
             return
         if not self.video_path or not self.video_path.exists():
             messagebox.showwarning(APP_TITLE, "먼저 MP4 동영상 파일을 선택해 주세요.")
@@ -646,7 +689,7 @@ class VideoToImageApp(tk.Tk):
             output_text = self.output_var.get().strip()
             if not output_text:
                 raise ValueError("저장 폴더를 입력해 주세요.")
-            output_dir = Path(output_text)
+            output_dir = Path(output_text).expanduser().resolve()
             output_dir.mkdir(parents=True, exist_ok=True)
             prefix = safe_prefix(self.prefix_var.get(), self.video_path.stem + "_frame")
         except (OSError, ValueError) as exc:
@@ -675,77 +718,67 @@ class VideoToImageApp(tk.Tk):
         self.status_var.set(f"추출 준비 중... 예상 {unit} {expected}장{suffix}")
         self._set_controls("disabled")
         self.cancel_button.configure(state="normal")
-        self.cancel_event.clear()
-        self.extraction_service = FFmpegExtractionService(request, self.cancel_event, self.messages.put)
-        self.worker = threading.Thread(
-            target=self._extract_worker,
-            args=(self.extraction_service,),
-            daemon=True,
-        )
-        self.worker.start()
+        self.current_job = self.service.start_extraction(request)['job_id']
+        self.progress_var.set(0)
+        self.status_var.set(f'이미지 추출 시작 · 예상 {expected}장')
+        self._set_controls('disabled')
+        self.cancel_button.configure(state='normal')
 
     def _extract_worker(self, service: FFmpegExtractionService) -> None:
         service.run()
 
     def _drain_messages(self) -> None:
-        if self._closing:
-            return
+        if self._closing: return
         try:
             while True:
                 event = self.messages.get_nowait()
-                if isinstance(event, ProbeCompleted):
-                    if event.video_path != self.video_path:
-                        continue
-                    self.ffmpeg_path = event.ffmpeg_path
-                    self.duration = event.duration
+                if isinstance(event, ProbeCompleted) and event.video_path == self.video_path:
+                    self.ffmpeg_path, self.duration, self.video_info = event.ffmpeg_path, event.duration, event.info
                     self.end_var.set(format_time(event.duration))
-                    self.prefix_var.set(f"{event.video_path.stem}_frame")
-                    self.info_var.set(f"길이 {format_time(event.duration)} · FFmpeg 준비 완료")
-                    self.status_var.set("추출 구간과 저장 설정을 확인해 주세요.")
-                    self.start_button.configure(state="normal")
-                    self.video_button.configure(state="normal")
-                elif isinstance(event, ProbeFailed):
-                    if event.video_path != self.video_path:
-                        continue
-                    self.info_var.set("영상 정보를 읽지 못했습니다.")
-                    self.status_var.set("오류")
-                    self.start_button.configure(state="disabled")
-                    self.video_button.configure(state="normal")
-                    messagebox.showerror(APP_TITLE, event.error)
-                elif isinstance(event, ExtractionProgress):
-                    self.progress_var.set(event.percent)
-                    self.status_var.set(f"추출 중... {event.percent:.0f}% · {event.frames}장 생성")
-                elif isinstance(event, ExtractionFinished):
-                    self.progress_var.set(100)
-                    if event.count:
-                        completion_message = f"이미지 {event.count}장을 저장했습니다. 기존 파일 {event.skipped}장 건너뜀.\n\n{event.output_dir}"
-                        self.status_var.set(f"완료 · {event.count}장 저장됨")
-                    else:
-                        completion_message = (
-                            "새로 저장된 이미지가 없습니다.\n"
-                            "기존 파일을 건너뛰었거나 추출할 프레임이 없습니다.\n\n"
-                            f"{event.output_dir}"
-                        )
-                        self.status_var.set("완료 · 새로 저장된 이미지 없음")
-                    self._set_controls("normal")
-                    self.cancel_button.configure(state="disabled")
-                    messagebox.showinfo(APP_TITLE, completion_message)
-                elif isinstance(event, ExtractionCancelled):
-                    self.progress_var.set(0)
-                    self.status_var.set("취소됨")
-                    self._set_controls("normal")
-                    self.cancel_button.configure(state="disabled")
-                elif isinstance(event, ExtractionFailed):
-                    self.status_var.set("오류")
-                    self._set_controls("normal")
-                    self.cancel_button.configure(state="disabled")
+                    self.prefix_var.set(f'{event.video_path.stem}_frame')
+                    if event.info:
+                        width, height = event.info.display_size
+                        self.info_var.set(f'길이 {format_time(event.duration)} · {width} × {height} · {event.info.fps:g} FPS')
+                        self.editor.source_changed(event.info)
+                    self.status_var.set('처리 구간과 저장 설정을 확인해 주세요.')
+                    self.start_button.configure(state='normal')
+                    self.video_button.configure(state='normal')
+                elif isinstance(event, ProbeFailed) and event.video_path == self.video_path:
+                    self.info_var.set('영상 정보를 읽지 못했습니다.')
+                    self.status_var.set('오류')
+                    self.start_button.configure(state='disabled')
+                    self.video_button.configure(state='normal')
                     messagebox.showerror(APP_TITLE, event.error)
         except queue.Empty:
             pass
+        if self.current_job:
+            job = self.service.jobs.get(self.current_job)
+            self.progress_var.set(job['progress_percent'])
+            label = '영상 편집' if job['kind'] == 'edit_video' else '이미지 추출'
+            self.status_var.set(f'{label} · {job["progress_percent"]:.0f}%')
+            if job['status'] in {'completed', 'failed', 'cancelled'}:
+                self.current_job = None
+                self._set_controls('normal')
+                self.cancel_button.configure(state='disabled')
+                if job['status'] == 'completed':
+                    result = job['result']
+                    if job['kind'] == 'edit_video':
+                        self.status_var.set('영상 편집 완료')
+                        messagebox.showinfo(APP_TITLE, f'편집 영상을 저장했습니다.\n{result["output_path"]}\n{result["width"]} × {result["height"]} · {result["duration"]:g}초')
+                    else:
+                        self.status_var.set(f'완료 · {result["saved_count"]}장 저장됨')
+                        messagebox.showinfo(APP_TITLE, f'이미지 {result["saved_count"]}장 저장 · 기존 파일 {result["skipped_count"]}장 건너뜀\n{result["output_directory"]}')
+                elif job['status'] == 'failed':
+                    self.status_var.set('오류')
+                    messagebox.showerror(APP_TITLE, job['error'])
+                else:
+                    self.status_var.set('취소됨'); self.progress_var.set(0)
         if not self._closing:
             self.message_after_id = self.after(100, self._drain_messages)
 
     def _set_controls(self, state: str) -> None:
+        self.editor.sync(state == 'normal')
+        for index in range(2): self.notebook.tab(index, state='normal' if state == 'normal' else 'disabled')
         for widget in (
             self.video_entry,
             self.video_button,
@@ -775,46 +808,34 @@ class VideoToImageApp(tk.Tk):
                 combo.configure(state="readonly")
             self._sync_output_controls()
             self._sync_size_controls()
+            if self.mode_var.get() == "edit": self.interval_entry.configure(state="disabled")
 
     def _cancel(self) -> None:
-        if self.worker and self.worker.is_alive():
-            self.cancel_event.set()
-            if self.extraction_service:
-                self.extraction_service.terminate()
-            self.cancel_button.configure(state="disabled")
-            self.status_var.set("취소하는 중...")
+        if self.current_job:
+            self.service.jobs.cancel(self.current_job)
+            self.cancel_button.configure(state='disabled')
+            self.status_var.set('취소하는 중...')
 
     def _close(self) -> None:
         if not self._closing:
             self._closing = True
-            self.cancel_event.set()
             self.probe_cancel_event.set()
-
-        # 프로세스가 종료 직전에 등록되는 경합 상황도 다음 확인 주기에서
-        # 다시 정리할 수 있도록 닫히는 동안 매번 현재 목록을 확인한다.
+            self.service.close(wait=False)
         terminate_all_processes()
-
-        extraction_running = self.worker is not None and self.worker.is_alive()
-        probe_running = self.probe_worker is not None and self.probe_worker.is_alive()
-        if extraction_running or probe_running:
+        running = any(job['status'] not in {'completed', 'failed', 'cancelled'} for job in self.service.jobs.list())
+        if running or (self.probe_worker and self.probe_worker.is_alive()):
             self.after(100, self._close)
             return
-
-        if self.message_after_id is not None:
-            try:
-                self.after_cancel(self.message_after_id)
-            except tk.TclError:
-                pass
-        if self.preview_after_id is not None:
-            try:
-                self.after_cancel(self.preview_after_id)
-            except tk.TclError:
-                pass
+        for after_id in (self.message_after_id, self.preview_after_id):
+            if after_id:
+                try: self.after_cancel(after_id)
+                except tk.TclError: pass
         self._save_settings()
         self.destroy()
 
     def _load_settings(self) -> None:
-        settings = load_settings()
+        settings = load_settings(self._settings_path)
+        self._editing_settings = settings.editing
         for variable, value in (
             (self.output_var, settings.output),
             (self.prefix_var, settings.prefix),
@@ -850,11 +871,56 @@ class VideoToImageApp(tk.Tk):
                 size_height=self.size_height_var.get(),
                 overwrite=self.overwrite_var.get(),
                 geometry=self.geometry(),
-            )
+                editing=self.editor.settings(),
+            ), self._settings_path
         )
 
+    def _mode_changed(self, _event=None):
+        if self._closing or not self.notebook.select():
+            return
+        self.mode_var.set('edit' if self.notebook.index(self.notebook.select()) == 1 else 'extract')
+        self.start_button.configure(text='영상 편집 시작' if self.mode_var.get() == 'edit' else '이미지 추출 시작')
+        self.interval_entry.configure(state='disabled' if self.mode_var.get() == 'edit' else 'normal')
+        self.scroll_canvas.yview_moveto(0)
+        self._update_output_summary()
 
-if __name__ == "__main__":
-    app = VideoToImageApp()
-    app.mainloop()
+    def _start(self):
+        if self.mode_var.get() == 'edit': self._start_edit()
+        else: self._start_extraction()
 
+    def _start_edit(self):
+        if self.current_job: return
+        if not self.video_path or not self.video_info:
+            messagebox.showwarning(APP_TITLE, '먼저 동영상 파일을 선택하고 정보 조회가 끝날 때까지 기다리세요.')
+            return
+        try:
+            request = self.editor.request(parse_time(self.start_var.get()), parse_time(self.end_var.get()))
+            validate_edit(request, self.video_info)
+            self.current_job = self.service.start_edit(request)['job_id']
+        except (ValueError, OSError) as exc:
+            messagebox.showerror(APP_TITLE, str(exc))
+            return
+        self.progress_var.set(0)
+        self.status_var.set('영상 편집 시작')
+        self._set_controls('disabled')
+        self.cancel_button.configure(state='normal')
+
+
+def main():
+    parser = argparse.ArgumentParser(description='영상 이미지 추출 및 편집 GUI')
+    parser.add_argument('--self-test-report', type=Path)
+    parser.add_argument('--settings', type=Path, help='Optional isolated settings file')
+    args = parser.parse_args()
+    if args.self_test_report:
+        from portable_selftest import run_gui_test
+        return run_gui_test(args.self_test_report)
+    try:
+        app = VideoToImageApp(args.settings)
+        app.mainloop()
+    except Exception as exc:
+        messagebox.showerror(APP_TITLE, str(exc))
+        return 1
+    return 0
+
+if __name__ == '__main__':
+    raise SystemExit(main())

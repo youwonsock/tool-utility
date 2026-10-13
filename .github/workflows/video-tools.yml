@@ -1,13 +1,10 @@
 name: Video tools tests
 on:
   push:
-    paths:
-      - "Vidio To Image/**"
-      - ".github/workflows/video-tools.yml"
+    paths: ["Vidio To Image/**", ".github/workflows/video-tools.yml"]
   pull_request:
-    paths:
-      - "Vidio To Image/**"
-      - ".github/workflows/video-tools.yml"
+    paths: ["Vidio To Image/**", ".github/workflows/video-tools.yml"]
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
@@ -15,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-15, macos-15-intel]
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -24,23 +21,35 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-      - name: Install dependencies
-        run: python -m pip install -r requirements-mcp.txt
-      - name: Unit, real FFmpeg and MCP stdio tests
-        run: |
-          python -c "from media_test_support import test_ffmpeg; import subprocess; subprocess.run([test_ffmpeg(), '-version'], check=True)"
-          python -m unittest discover -v
-      - name: Check Windows installation and generated configuration
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          ./install_mcp.ps1 -Workspace (Join-Path $env:RUNNER_TEMP "video-workspace")
-          $config = Get-Content mcp-config.local.json -Raw | ConvertFrom-Json
-          if (-not (Test-Path $config.mcpServers.'video-tools'.command)) { throw "Missing Python" }
-          if (-not (Test-Path $config.mcpServers.'video-tools'.args[0])) { throw "Missing MCP entry point" }
-      - name: Build Windows GUI package
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: ./package.ps1
-
+          python-version: "3.14.6"
+      - name: Locked dependencies
+        run: python -m pip install -r requirements-release.txt
+      - name: Linux window server
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y xvfb libtk8.6
+      - name: Source regression and GUI acceptance
+        if: runner.os != 'Linux'
+        env:
+          VIDEO_TOOLS_GUI_TESTS: "1"
+        run: python -m unittest discover -v
+      - name: Linux regression and GUI acceptance
+        if: runner.os == 'Linux'
+        env:
+          VIDEO_TOOLS_GUI_TESTS: "1"
+        run: xvfb-run -a python -m unittest discover -v
+      - name: Native portable package
+        if: runner.os != 'Linux'
+        run: python build_portable.py --package
+      - name: Relocated portable GUI and MCP acceptance
+        if: runner.os != 'Linux'
+        run: python verify_portable.py
+      - name: Preserve release and verification evidence
+        if: always() && runner.os != 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: video-tools-${{ matrix.os }}
+          path: |
+            Vidio To Image/dist/*.zip
+            Vidio To Image/dist/*.sha256
+            Vidio To Image/test-output/portable-verification.json
+            Vidio To Image/test-output/gui-portable.json

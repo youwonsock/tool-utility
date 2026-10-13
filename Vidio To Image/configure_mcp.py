@@ -3,24 +3,16 @@ import argparse
 import json
 import sys
 from pathlib import Path
-
-
-def configuration(workspace: Path) -> dict:
-    return {"mcpServers": {"video-tools": {
-        # Resolving the symlink would select the base Python on Unix and lose
-        # the virtual environment containing the MCP dependencies.
-        "command": str(Path(sys.executable).absolute()),
-        "args": [str(Path(__file__).resolve().with_name("video_to_image_mcp.py")),
-                 "--workspace", str(workspace.expanduser().resolve())],
-    }}}
+from video_to_image_runtime import configuration
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workspace", type=Path, required=True)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--executable", type=Path, help="Portable MCP executable")
     args = parser.parse_args()
-    content = json.dumps(configuration(args.workspace), ensure_ascii=False, indent=2) + "\n"
+    content = json.dumps(configuration(args.workspace, args.executable), ensure_ascii=False, indent=2) + "\n"
     if args.output:
         args.output.write_text(content, encoding="utf-8")
         print(f"Created {args.output.resolve()}")
