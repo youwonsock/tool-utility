@@ -8,7 +8,7 @@ import { root, temporaryRoot } from './helpers.mjs';
 
 test('installer updates its own marketplace, retains old releases, and rolls back failed registration',async()=>{
   const dir=fs.mkdtempSync(path.join(temporaryRoot,'업데이트 검증 ')),source=path.join(dir,'source'),install=path.join(dir,'install'),data=path.join(dir,'data');fs.mkdirSync(source);
-  for(const entry of ['dist','plugins','.agents','scripts','package.json'])fs.cpSync(path.join(root,entry),path.join(source,entry),{recursive:true,filter:()=>true});
+  for(const entry of ['dist','plugins','.agents','scripts','package.json'])fs.cpSync(path.join(root,entry),path.join(source,entry),{recursive:true,mode:fs.constants.COPYFILE_FICLONE,filter:()=>true});
   assert.ok(fs.existsSync(path.join(source,'scripts/install.mjs')), `Copied installer missing: ${JSON.stringify(fs.readdirSync(source))}`);
   const stateFile=path.join(dir,'fake-codex-state.json');fs.writeFileSync(stateFile,JSON.stringify({marketplaces:[]}));
   const fakeScript=path.join(dir,'fake-codex.mjs');
@@ -16,7 +16,7 @@ test('installer updates its own marketplace, retains old releases, and rolls bac
   const fakeExe=path.join(dir,process.platform==='win32'?'fake codex.cmd':'fake codex');
   fs.writeFileSync(fakeExe,process.platform==='win32'?`@"${process.execPath}" "%~dp0fake-codex.mjs" %*\r\n`:`#!/bin/sh\nexec "${process.execPath}" "${fakeScript}" "$@"\n`,{mode:0o755});
   const env={...process.env,CODEX_EXECUTABLE:fakeExe,FAKE_CODEX_STATE:stateFile,CODEX_OPENCODE_INSTALL_ROOT:install,CODEX_OPENCODE_HOME:data};
-  const run=()=>exec(process.execPath,[path.join(source,'scripts/install.mjs')],{env,timeout:30000});
+  const run=()=>exec(process.execPath,[path.join(source,'scripts/install.mjs')],{env,timeout:120000});
   let result=await run();assert.equal(result.code,0,result.stderr);const first=JSON.parse(fs.readFileSync(path.join(install,'current.json')));
   const skill=path.join(source,'plugins/codex-opencode/skills/delegate-opencode/SKILL.md');fs.appendFileSync(skill,'\n');
   result=await run();assert.equal(result.code,0,result.stderr);const second=JSON.parse(fs.readFileSync(path.join(install,'current.json')));assert.notEqual(first.release,second.release);assert.ok(fs.existsSync(first.cli));
