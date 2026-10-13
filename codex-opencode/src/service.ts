@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { Engine } from './engine.js';
 import { Store } from './store.js';
-import { PROTOCOL, VERSION, Fault, invariant, schemas, type ProcessIdentity, type ToolName } from './types.js';
+import { PROTOCOL, STORE_FORMAT, WORKER_FORMAT, platforms, VERSION, Fault, invariant, schemas, type ProcessIdentity, type ToolName } from './types.js';
 import { mkdir, uid, readJson, writeJson, processIdentity, alive, sleep } from './io.js';
 import { git } from './git.js';
 import { holdsResources, canCleanup } from './lifecycle.js';
@@ -37,7 +37,7 @@ export async function serve(root: string, executableFile: string) {
       const data = JSON.stringify(response); res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(data);
     };
     try {
-      if (req.url === '/health' && req.method === 'GET') { send(200, { protocol: PROTOCOL, version: VERSION, owner }); return; }
+      if (req.url === '/health' && req.method === 'GET') { send(200, { protocol: PROTOCOL, version: VERSION, owner,storage_format:STORE_FORMAT,worker_format:WORKER_FORMAT,worker_platforms:platforms }); return; }
       invariant(req.method === 'POST', 'METHOD', 'POST required.');
       const chunks: Buffer[] = []; let length = 0;
       for await (const chunk of req) { length += chunk.length; invariant(length <= 2 * 1024 * 1024, 'BODY_LIMIT', 'Request too large.'); chunks.push(chunk); }
@@ -87,7 +87,7 @@ export async function connect(root: string, executableFile: string, start = true
     invariant(/^http:\/\/127\.0\.0\.1:\d+$/.test(descriptor.url), 'ENDPOINT', 'Service endpoint must be localhost.');
     try {
       const response = await fetch(`${descriptor.url}/health`, { headers: { Authorization: `Bearer ${descriptor.token}` }, signal: AbortSignal.timeout(1500) });
-      if (response.ok) { const data = await response.json() as { protocol: number }; invariant(data.protocol === PROTOCOL, 'UPDATE_PENDING', 'An incompatible service is running. Finish its work before updating.'); return descriptor; }
+      if (response.ok) { const data = await response.json() as { protocol: number;storage_format?:number;worker_format?:number;worker_platforms?:string[] }; invariant(data.protocol === PROTOCOL && data.storage_format===STORE_FORMAT&&data.worker_format===WORKER_FORMAT&&platforms.every(p=>data.worker_platforms?.includes(p)), 'UPDATE_PENDING', 'An incompatible service is running. Stop owned processes and finish the explicit format transition before updating.'); return descriptor; }
     } catch (e) { if (e instanceof Fault) throw e; }
     return undefined;
   };

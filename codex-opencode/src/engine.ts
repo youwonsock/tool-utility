@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { Store } from './store.js';
-import { BASELINE, PROTOCOL, VERSION, Fault, invariant, schemas, type Attempt, type AttemptState, type Run, type Task, type TaskSpec, type ToolName, type WorkerSpec, type WorkerState, type Resource, type SubmitArgs } from './types.js';
+import { BASELINE, PROTOCOL, STORE_FORMAT, WORKER_FORMAT, VERSION, backendVersions, platforms, Fault, invariant, schemas, type Attempt, type AttemptState, type Run, type Task, type TaskSpec, type ToolName, type WorkerSpec, type WorkerState, type Resource, type SubmitArgs, type WorkerSelection, type Model } from './types.js';
 import { uid, digest, readJson, writeJson, mkdir, exec, alive, terminate, sleep, inside, processIdentity, bootId, treeAlive } from './io.js';
 import { branch, clean, git, head, repository, worktree, materialize, validateScope, resultCommit, integrate, targetReady, checkContext, contextHash } from './git.js';
 import { probeResources, resolvedConfig, launchOpenCode, inspectSession } from './opencode.js';
@@ -10,6 +10,10 @@ import { probeResources, resolvedConfig, launchOpenCode, inspectSession } from '
 import { transition, moveRun, moveTask, moveAttempt, moveValidation, moveWorker, workerTerminal, holdsResources, occupiesSlot, canSchedule, canReview, validateWorkerState } from './lifecycle.js';
 import { submitTasks, recoverSubmissions } from './submission.js';
 import { rejectedEvidence } from './evidence.js';
+import { resolveWorker, publicWorker } from './profiles.js';
+import { createBackend } from './backends/index.js';
+import { inspectHttpSession } from './backends/http.js';
+import { confirmedStopped, stopOwned, processEvidence } from './backends/process.js';
 export class Engine {
   private tail: Promise<unknown> = Promise.resolve();
   private timer?: NodeJS.Timeout;
@@ -83,28 +87,32 @@ export class Engine {
   view(run: Run, cursor?: string) {
     return this.store.page(run.tasks.map(t => {
       const a = t.attempts.at(-1);
-      return { task_id: t.spec.id, state: t.state, dependencies: t.spec.dependencies, attempt: a && { id: a.id, number: a.number, state: a.state, directory: a.directory, commit: a.commit, model: a.model, verification: a.verification, artifacts: a.artifacts, inputs: a.inputs, error: a.error, integrated_commit: a.integrated_commit } };
-    }), cursor, { run_id: run.id, state: run.state, revision: run.revision, base: run.base, integration_commit: run.integration_commit,
+      return { task_id: t.spec.id, state: t.state, dependencies: t.spec.dependencies, worker:publicWorker(t.worker), attempt: a && { id: a.id, number: a.number, state: a.state, directory: a.directory, commit: a.commit, model: a.model, backend:a.worker?.backend, backend_version:a.worker?.backend_version, verification: a.verification, artifacts: a.artifacts, inputs: a.inputs, error: a.error, integrated_commit: a.integrated_commit } };
+    }), cursor, { run_id: run.id, state: run.state, revision: run.revision, base: run.base, integration_commit: run.integration_commit,worker:publicWorker(run.worker),
       validation: run.validation && { id: run.validation.id, state: run.validation.state, commit: run.validation.commit, revision: run.validation.revision, attempt_id: run.validation.attempt.id, directory: run.validation.attempt.directory, artifacts: run.validation.attempt.artifacts, verification: run.validation.attempt.verification, inputs: run.validation.attempt.inputs, error: run.validation.attempt.error }, error: run.error,
       event_cursor: this.store.state.events.filter(e => e.run_id === run.id).at(-1)?.seq ?? 0,
     });
   }
-  async doctor(args: { repo?: string; model?: unknown }) {
-    const version = await exec(this.options.opencode, [...this.options.opencode_args, '--version']);
+  async doctor(args: { repo?: string; model?: Model; worker?:WorkerSelection }) {
+    const selected=resolveWorker(this.store.root,args.worker,args.model,this.options);
+    const version = selected.executable==='bundled'?{stdout:'0.3.296',code:0}:await exec(selected.executable, [...selected.executable_args, '--version']).catch(()=>({stdout:'',code:1}));
     const repo = args.repo ? await repository(args.repo) : undefined;
-    const config = await resolvedConfig(this.options.opencode, this.options.opencode_args, args.repo || this.store.root);
     const doctorID = uid('doctor'), jobDir = path.join(this.store.root, 'diagnostics', doctorID); mkdir(jobDir);
-    const state: WorkerState = { protocol: PROTOCOL, id: doctorID, phase: 'doctor', updated: Date.now(), prompt_id: '', verification: [], inputs: [], replies: {} };
+    const state: WorkerState = { protocol: WORKER_FORMAT, id: doctorID, phase: 'doctor', updated: Date.now(), prompt_id: '', verification: [], inputs: [], replies: {} };
+    const spec:WorkerSpec={protocol:WORKER_FORMAT,host_executable:this.executableFile,diagnostic:true,worker:selected,id:doctorID,directory:args.repo||this.store.root,job_dir:jobDir,goal:'',acceptance:[],scope:[],verification:[],resources:[],context:[],timeout_ms:30000,validation:true,model:selected.model,executable:selected.executable,executable_args:selected.executable_args,password:uid('secret')};
+    writeJson(path.join(jobDir,'spec.json'),spec);
+    const backend=createBackend({spec,state,save:()=>writeJson(path.join(jobDir,'worker.json'),state)});
     let connection: { healthy: boolean; model?: unknown; error?: string } = { healthy: false };
     try {
-      const api = await launchOpenCode({ id: doctorID, directory: args.repo || this.store.root, job_dir: jobDir, goal: '', acceptance: [], scope: [], verification: [], resources: [], context: [], timeout_ms: 30000, validation: true, model: args.model as WorkerSpec['model'], executable: this.options.opencode, executable_args: this.options.opencode_args, password: uid('secret') }, state, () => {});
-      connection = { healthy: true, model: state.model }; api.log.end();
+      await backend.start();await backend.createSession();
+      connection = { healthy: true, model: state.model };
     } catch (e) { connection.error = (e as Error).message; }
-    finally { if (state.server) await terminate(state.server, true); }
+    finally { const stopped=await backend.confirmStopped();if(!stopped){connection.healthy=false;connection.error='Diagnostic runtime termination could not be confirmed.';} }
     return { version: VERSION, protocol: PROTOCOL, node: process.versions.node, platform: process.platform,
-      opencode: version.stdout.trim(), baseline: BASELINE, compatible: version.code === 0 && version.stdout.trim() === BASELINE,
+      storage_format:STORE_FORMAT,worker_format:WORKER_FORMAT,worker:publicWorker(selected),backend_version:state.backend_version,
+      opencode: selected.platform==='opencode'?version.stdout.trim():undefined, baseline:selected.baseline, compatible:version.code===0&&(selected.platform==='codex'?version.stdout.trim()===`codex-cli ${selected.baseline}`:version.stdout.trim()===selected.baseline),
       connection, provider_authentication: 'Not exercised by doctor; a real model request is required to verify provider credentials.',
-      inherited_mcp_disabled: Object.keys(config.mcp ?? {}), repo,
+      backends:platforms.map(platform=>({platform,baseline:backendVersions[platform],connection:platform===selected.platform?connection:{healthy:null,checked:false},experimental:platform==='codex'})),repo,
       resources: this.store.state.runs.flatMap(r => r.resources.map(p => ({ run_id: r.id, resource_key: p.resource_key, expected_instance: p.expected_instance, project_bound: p.project_bound }))),
       running: this.allAttempts().filter(a => holdsResources(a)).map(a => a.id),
       metrics: this.store.state.metrics,
@@ -121,7 +129,7 @@ export class Engine {
     };
     for (const t of specs) visit(t.id);
   }
-  async submit(args: SubmitArgs) { return submitTasks(this.store, args, specs => this.validateGraph(specs)); }
+  async submit(args: SubmitArgs) { return submitTasks(this.store, args, specs => this.validateGraph(specs),(selection,model)=>resolveWorker(this.store.root,selection,model,this.options)); }
   invalidate(run: Run) {
     if (run.validation) { moveValidation(run.validation,'invalidated'); (run.validation_history ??= []).push(run.validation); run.validation = undefined; }
   }
@@ -147,7 +155,7 @@ export class Engine {
     const base = run.integration_commit;
     const id = uid('attempt');
     const metadata = readJson<{ context: Attempt['context'] }>(path.join(this.store.root, 'runs', run.id, `${task.spec.id}.json`))!;
-    const attempt: Attempt = { id, number: task.attempts.length + 1, base, directory: path.join(this.store.root, 'worktrees', run.id, id), job_dir: path.join(this.store.root, 'jobs', id), state: 'launching', artifacts: [], verification: [], context: metadata.context, resources: task.spec.resources, inputs: [], feedback: prior?.feedback };
+    const attempt: Attempt = { id, number: task.attempts.length + 1, base, directory: path.join(this.store.root, 'worktrees', run.id, id), job_dir: path.join(this.store.root, 'jobs', id), state: 'launching', artifacts: [], verification: [], context: metadata.context, resources: task.spec.resources, inputs: [], feedback: prior?.feedback,execution:structuredClone(task.worker) };
     moveTask(task,'running'); task.attempts.push(attempt); this.store.save();
     try {
       checkContext(run.repo, attempt.context);
@@ -160,16 +168,17 @@ export class Engine {
         attempt.artifacts.push(this.store.artifact(run.id, 'patch-application.json', JSON.stringify(applied)));
       }
       await probeResources(this.resources(run, attempt), attempt.directory);
-      const goal = `${task.spec.goal}${attempt.feedback ? `\n\nCodex correction instructions:\n${attempt.feedback}` : ''}`;
-      await this.spawn(run, attempt, { goal, acceptance: task.spec.acceptance, verification: task.spec.verification, scope: task.spec.scope, model: task.spec.model ?? prior?.model, validation: false });
+      const goal = `${task.spec.goal}${attempt.feedback ? `\n\nSupervisor correction instructions:\n${attempt.feedback}` : ''}`;
+      await this.spawn(run, attempt, { goal, acceptance: task.spec.acceptance, verification: task.spec.verification, scope: task.spec.scope, model: task.worker.model ?? prior?.model, validation: false });
     } catch (e) { await this.launchFailure(run, attempt, e); }
     this.store.event(run.id, 'attempt_started', { task_id: task.spec.id, attempt_id: id, state: attempt.state });
   }
   resources(run: Run, attempt: Attempt): Resource[] { return attempt.resources.map(key => run.resources.find(r => r.resource_key === key)!); }
   async spawn(run: Run, attempt: Attempt, task: Pick<WorkerSpec, 'goal'|'acceptance'|'verification'|'scope'|'model'|'validation'>) {
     mkdir(attempt.job_dir);
-    const spec: WorkerSpec = { id: attempt.id, directory: attempt.directory, job_dir: attempt.job_dir, ...task, resources: this.resources(run, attempt), context: attempt.context,
-      timeout_ms: run.settings.timeout_ms, executable: this.options.opencode, executable_args: this.options.opencode_args, password: uid('secret') };
+    const selected=attempt.execution??run.worker;
+    const spec: WorkerSpec = { protocol:WORKER_FORMAT,host_executable:this.executableFile,worker:{...selected,model:task.model??selected.model},id: attempt.id, directory: attempt.directory, job_dir: attempt.job_dir, ...task, resources: this.resources(run, attempt), context: attempt.context,
+      timeout_ms: run.settings.timeout_ms, executable: selected.executable, executable_args: selected.executable_args, password: uid('secret') };
     writeJson(path.join(attempt.job_dir, 'spec.json'), spec);
     moveAttempt(attempt,'launching'); attempt.launch_boot = await bootId(); this.store.save(); // durable launch intent precedes spawn
     const logFd = fs.openSync(path.join(attempt.job_dir, 'host.log'), 'a', 0o600);
@@ -205,6 +214,8 @@ export class Engine {
       const progress = (w?: WorkerState) => digest(w && { phase: w.phase, inputs: w.inputs, session_id: w.session_id, prompt_intent: w.prompt_intent, prompt_accepted: w.prompt_accepted, model: w.model, shell_intent: w.shell_intent, verification: w.verification });
       const prior = progress(attempt.worker);
       attempt.worker = state; attempt.model = state.model; attempt.inputs = state.inputs;
+      const ownerTask=run.tasks.find(t=>t.attempts.includes(attempt));
+      if(ownerTask&&state.model&&attempt.number===1) {ownerTask.worker.model=state.model;if(attempt.execution)attempt.execution.model=state.model;}
       if (!state.stopped) {
         const observed: AttemptState = state.phase==='needs_input' || state.phase==='delivery_uncertain' || state.phase==='cancelling' || state.phase==='stop_uncertain' ? state.phase : 'running';
         const uncertainOwner = ['orphaned','stop_uncertain'].includes(attempt.state) && !await alive(state.host);
@@ -212,14 +223,15 @@ export class Engine {
         if (prior !== progress(state)) this.store.event(run.id, 'worker_state', { attempt_id: attempt.id, phase: state.phase, input_ids: state.inputs.map(i => i.id), prompt_dispatched: !!state.prompt_intent, verified_commands: state.verification.length });
         continue;
       }
-      if ((!state.server && fs.existsSync(path.join(attempt.job_dir,'server-intent.json'))) || (state.server && await treeAlive(state.server))) {
+      const spec=readJson<WorkerSpec>(path.join(attempt.job_dir,'spec.json'));
+      if (!await confirmedStopped(spec??{job_dir:attempt.job_dir} as WorkerSpec,state)) {
         if (attempt.state!=='stop_uncertain' || prior!==progress(state)) {
           moveAttempt(attempt,'stop_uncertain'); this.store.event(run.id,'worker_stop_unverified',{attempt_id:attempt.id});
         }
         continue;
       }
       attempt.error = state.error;
-      for (const file of ['prompt.txt','transcript.json','server.log','host.log', ...state.verification.map(v => v.artifact)]) {
+      for (const file of ['prompt.txt','transcript.json','server.log','host.log', ...state.verification.flatMap((v,i) => [v.artifact,`verification-${i}.log`])]) {
         const source = inside(attempt.job_dir, file); if (fs.existsSync(source)) attempt.artifacts.push(this.store.artifact(run.id, path.basename(file), fs.readFileSync(source)));
       }
       attempt.artifacts.push(this.store.artifact(run.id, 'worker-report.json', JSON.stringify({ model_report: state.summary ?? null, reported_usage: state.usage ?? null, observed_verification: state.verification, session_id: state.session_id, model: state.model })));
@@ -230,7 +242,7 @@ export class Engine {
       else if (state.phase !== 'completed') this.finishAttempt(run,attempt,'failed');
       else if (task) {
         try {
-          const title = `OpenCode ${task.spec.id} attempt ${attempt.number} (${attempt.id})`;
+          const title = `${attempt.worker?.protocol===1?'OpenCode':'Delegate'} ${task.spec.id} attempt ${attempt.number} (${attempt.id})`;
           const current = await head(attempt.directory);
           if (attempt.commit_intent && current !== attempt.base) {
             invariant((await git(attempt.directory, ['show','-s','--format=%s',current])).stdout.trim() === title && (await git(attempt.directory, ['rev-parse',`${current}^`])).stdout.trim() === attempt.base, 'COMMIT_UNCERTAIN', 'Interrupted result commit does not match its durable intent.');
@@ -294,6 +306,12 @@ export class Engine {
     invariant(attempt && holdsResources(attempt), 'ATTEMPT', 'No active attempt.');
     const input = attempt.inputs.find(i => i.id === args.input_id); invariant(input, 'INPUT', 'Input is no longer pending.');
     invariant(input.kind === 'permission' ? args.decision !== 'answer' : args.decision === 'answer' || args.decision === 'reject', 'INPUT', 'Decision type does not match input.');
+    invariant(!input.supported_decisions||input.supported_decisions.includes(args.decision),'INPUT_UNSUPPORTED','This native input does not support the requested decision.');
+    if(input.kind==='question'&&args.decision==='answer') {
+      const details=input.details as any;
+      const count=Array.isArray(details?.questions)?details.questions.length:details?.requestedSchema?.properties?Object.keys(details.requestedSchema.properties).length:undefined;
+      invariant(Array.isArray(args.answers)&&args.answers.length>0&&(count===undefined||args.answers.length===count),'INPUT','Answer count does not match the pending question.');
+    }
     if (args.decision === 'answer') invariant(args.answers, 'INPUT', 'Answers are required.');
     const file = path.join(attempt.job_dir, 'replies', `${Buffer.from(input.id).toString('hex')}.json`);
     invariant(!fs.existsSync(file), 'INPUT_ALREADY_DECIDED', 'This input already has a decision. Reconcile delivery instead of resending.');
@@ -321,8 +339,8 @@ export class Engine {
           checkContext(run.repo, attempt.context); checkContext(attempt.directory, attempt.context);
           await probeResources(this.resources(run, attempt), attempt.directory);
           invariant(!fs.existsSync(path.join(attempt.job_dir, 'spec.json')), 'DISPATCH_UNCERTAIN', 'An execution intent already exists; it cannot be dispatched again.');
-          const spec = task ? { goal: `${task.spec.goal}${attempt.feedback ? `\n\nCodex correction instructions:\n${attempt.feedback}` : ''}`, acceptance: task.spec.acceptance, verification: task.spec.verification, scope: task.spec.scope, model: task.spec.model ?? task.attempts.at(-2)?.model, validation: false }
-            : { goal: 'Execute the frozen final verification commands.', acceptance: [], verification: run.final_verification, scope: [], model: run.tasks.at(-1)?.attempts.at(-1)?.model, validation: true };
+          const spec = task ? { goal: `${task.spec.goal}${attempt.feedback ? `\n\nSupervisor correction instructions:\n${attempt.feedback}` : ''}`, acceptance: task.spec.acceptance, verification: task.spec.verification, scope: task.spec.scope, model: task.worker.model ?? task.attempts.at(-2)?.model, validation: false }
+            : { goal: 'Execute the frozen final verification commands.', acceptance: [], verification: run.final_verification, scope: [], validation: true };
           await this.spawn(run, attempt, spec); attempt.error = undefined;
           if (task) moveTask(task,'running'); else if (run.validation) moveValidation(run.validation,'running');
           this.store.event(run.id, 'resource_binding_verified', { attempt_id: attempt.id, directory: attempt.directory });
@@ -339,16 +357,18 @@ export class Engine {
       if (state?.url && !state.stopped) {
         const spec = readJson<WorkerSpec>(path.join(attempt.job_dir, 'spec.json'));
         if (spec) {
-          const evidence = await inspectSession(spec, state).catch(e => ({ error: (e as Error).message, outcome: 'unverified' }));
+          const evidence = await inspectHttpSession(spec, state).catch(e => ({ error: (e as Error).message, outcome: 'unverified' }));
           attempt.artifacts.push(this.store.artifact(run.id, 'session-reconciliation.json', JSON.stringify(evidence)));
         }
       }
       if (owner && await alive(owner)) continue;
-      if (state?.server && await treeAlive(state.server)) {
-        if (run.state === 'cancelling') { const stopped = await terminate(state.server, true); if (stopped) { if (!workerTerminal(state)) moveWorker(state,'cancelled'); state.stopped = true; writeJson(path.join(attempt.job_dir, 'worker.json'), state); } }
+      const evidence=state?processEvidence(attempt.job_dir,state):undefined;
+      const processesAlive=evidence?(await Promise.all(evidence.identities.map(identity=>treeAlive(identity)))).some(Boolean):false;
+      if (state && processesAlive) {
+        if (run.state === 'cancelling') { const spec=readJson<WorkerSpec>(path.join(attempt.job_dir,'spec.json'));const stopped=spec?await stopOwned({spec,state,save:()=>writeJson(path.join(attempt.job_dir,'worker.json'),state)}):state.server?await terminate(state.server,true):false; if (stopped) { if (!workerTerminal(state)) moveWorker(state,'cancelled'); state.stopped = true; writeJson(path.join(attempt.job_dir, 'worker.json'), state); } }
         else { moveAttempt(attempt,'orphaned'); attempt.error = 'Worker host exited while its OpenCode server is still alive. Cancel to stop the owned process before correction; no request was replayed.'; }
       } else if (state?.stopped) continue;
-      else if (owner && ((state?.server && process.platform !== 'win32') || !fs.existsSync(path.join(attempt.job_dir, 'server-intent.json')))) {
+      else if (owner && !evidence?.uncertain && (evidence?.ledger ? process.platform!=='win32'||evidence.identities.length===0 : (state?.server && process.platform !== 'win32') || !fs.existsSync(path.join(attempt.job_dir, 'server-intent.json')))) {
         this.finishAttempt(run,attempt,'interrupted'); attempt.error = 'Worker process exited; no automatic retry was made.';
       } else { moveAttempt(attempt,'orphaned'); attempt.error = 'Launch ownership is uncertain. Resource leases remain held. Inspect the job directory/processes before cleanup.'; }
     }
@@ -384,12 +404,12 @@ export class Engine {
     const context = [...new Map(allContext.map(c => [c.path, c])).values()];
     checkContext(run.repo, context);
     this.invalidate(run); const id = uid('validation');
-    const attempt: Attempt = { id, number: 1, base: run.integration_commit, directory: path.join(this.store.root, 'worktrees', run.id, id), job_dir: path.join(this.store.root, 'jobs', id), state: 'launching', context, resources, artifacts: [], verification: [], inputs: [] };
+    const attempt: Attempt = { id, number: 1, base: run.integration_commit, directory: path.join(this.store.root, 'worktrees', run.id, id), job_dir: path.join(this.store.root, 'jobs', id), state: 'launching', context, resources, artifacts: [], verification: [], inputs: [],execution:structuredClone(run.worker) };
     moveRun(run,'validating'); run.validation = { id, revision: run.revision, commit: run.integration_commit, context_hash: contextHash(context), commands_hash: digest(run.final_verification), attempt, state: 'running' }; this.store.save();
     try {
       await worktree(run.repo, attempt.directory, run.integration_commit); await materialize(this.store, attempt.directory, context);
       await probeResources(this.resources(run, attempt), attempt.directory);
-      await this.spawn(run, attempt, { goal: 'Execute only the frozen final verification commands.', acceptance: [], verification: run.final_verification, scope: [], validation: true, model: run.tasks.at(-1)?.attempts.at(-1)?.model });
+      await this.spawn(run, attempt, { goal: 'Execute only the frozen final verification commands.', acceptance: [], verification: run.final_verification, scope: [], validation: true });
     } catch (e) { await this.launchFailure(run, attempt, e); if (attempt.state==='resource_wait') moveValidation(run.validation,'awaiting_resource'); else if (!holdsResources(attempt)) this.finishAttempt(run,attempt,'failed'); }
     this.store.event(run.id, 'validation_started', { validation_id: id, commit: run.integration_commit, revision: run.revision });
     return { validation_id: id, commit: run.integration_commit, revision: run.revision, state: run.state };

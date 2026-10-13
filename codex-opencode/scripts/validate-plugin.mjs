@@ -18,3 +18,13 @@ assert.match(skill,/^---\nname: delegate-opencode\ndescription: .+\n---\n/); ass
 for(const name of ['doctor','submit_tasks','list_runs','get_run','wait_run','get_artifact','review_task','respond_to_request','reconcile_run','cancel_run','validate_run','finalize_run']) assert.ok(skill.includes(name),name);
 const interfaceFile=fs.readFileSync(path.join(plugin,'skills/delegate-opencode/agents/openai.yaml'),'utf8'); assert.ok(interfaceFile.includes('$delegate-opencode'));
 console.log('Plugin, marketplace and delegation skill contracts validated.');
+for(const name of ['delegate-agents','delegate-opencode']) {
+  const generated=fs.readFileSync(path.join(root,'dist','skills',name,'SKILL.md'),'utf8').replaceAll('\r\n','\n');
+  assert.ok(generated.startsWith(`---\nname: ${name}\n`));assert.ok(generated.split('\n').length<500);
+  for(const tool of ['doctor','submit_tasks','list_runs','get_run','wait_run','get_artifact','review_task','respond_to_request','reconcile_run','cancel_run','validate_run','finalize_run'])assert.ok(generated.includes(tool),`${name}/${tool}`);
+}
+for(const platform of ['opencode','codex','claude-code','kilo']) {
+  const binding=JSON.parse(fs.readFileSync(path.join(root,'dist','bindings',platform,'binding.json')));
+  assert.equal(binding.platform,platform);assert.equal(binding.support.model_tasks,'not exercised');assert.equal(binding.support.ide_desktop_gui,'unconfirmed');
+}
+assert.ok(fs.existsSync(path.join(root,'dist','runtime_modules','@codex-opencode','claude-runtime','index.mjs')));

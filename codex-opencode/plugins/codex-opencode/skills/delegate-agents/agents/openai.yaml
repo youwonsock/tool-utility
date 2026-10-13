@@ -1,0 +1,4 @@
+interface:
+  display_name: "Delegate Agents"
+  short_description: "Plan, delegate, review and finalize changes"
+  default_prompt: "Use $delegate-agents to delegate implementation and review observed evidence."

@@ -1,19 +1,19 @@
 {
   "name": "codex-opencode",
-  "version": "1.0.0+codex.20260922083320",
-  "description": "Codex plans and reviews; persistent OpenCode workers implement and verify.",
+  "version": "1.0.0+codex.20261013120356",
+  "description": "Plan and review in your current agent; delegate implementation to persistent local workers.",
   "author": {
     "name": "youwonsock"
   },
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
-    "displayName": "Codex\u2013OpenCode Delegation",
-    "shortDescription": "Delegate implementation to persistent OpenCode workers.",
-    "longDescription": "Plan and review in Codex while OpenCode edits, tests and builds in isolated Git worktrees, with durable evidence and guarded final integration.",
+    "displayName": "Agent Delegation",
+    "shortDescription": "Delegate implementation across local agent platforms.",
+    "longDescription": "Keep planning and review in your current conversation while Codex, OpenCode, Claude Code or Kilo implement changes in isolated Git worktrees, with observed verification and guarded integration.",
     "developerName": "youwonsock",
     "category": "Productivity",
     "capabilities": [],
-    "defaultPrompt": "Use $delegate-opencode to plan, delegate, review and integrate this change."
+    "defaultPrompt": "Use $delegate-agents to plan, delegate, review and integrate this change."
   }
 }

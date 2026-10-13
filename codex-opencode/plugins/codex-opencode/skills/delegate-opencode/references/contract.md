@@ -23,7 +23,11 @@ Example initial submission:
 }
 ```
 
-Use the platform's OpenCode shell syntax for `command`. Scope entries are exact paths, directories ending in `/`, directory `/**` prefixes, or `**` for all source. Context files are protected even within broad scopes. Supply an explicit `{providerID, modelID}` only to override the existing OpenCode default; unavailable selections fail without fallback.
+Verification runs in the common command runner. Its POSIX default is the inherited usable shell (bash for fish/nu); the Windows default is cmd.exe /d /s /c. A trusted execution profile may override the shell. Each execution records the actual shell and environment fingerprint. Scope entries are exact paths, directories ending in `/`, directory `/**` prefixes, or `**` for all source. Context files are protected even within broad scopes.
+
+`submit_tasks.worker` selects the run default; `tasks[].worker` replaces that selection for one task. Both accept `{platform, model?, profile?}`. Platforms are `opencode`, `codex`, `claude-code`, and `kilo`. OpenCode/Kilo models use `{providerID, modelID}`; Codex/Claude models use a string. Missing worker keeps the OpenCode default and legacy task.model. Conflicting legacy/new selections are rejected. Run defaults are immutable on append. Native model selections are fixed for corrections, with no automatic fallback.
+
+Local profiles.json contains `{profiles: {name: {platform, executable, args?, native_profile?, env_refs?, shell?}}}`. native_profile is Codex-only. env_refs maps target variable names to existing environment variable names and cannot disable the worker recursion guard. Profiles are snapshotted at submission; they contain configuration, not copied credential files. A per-platform `<platform>-default` profile overrides its builtin default.
 
 A resource profile is supplied on initial `submit_tasks`:
 
@@ -50,3 +54,7 @@ Cancellation intent wins over late verification snapshots. Cancelled validations
 Submission preflight failure publishes no partial task set. Prepared metadata and owned worktrees are recorded under the service's `submissions/` directory. An uncertain journal/snapshot write returns `REQUEST_UNCERTAIN` and fences new dispatch until restart and reconciliation. Restart may recover a committed submission response without replaying implementation. `STATE_TRANSITION` identifies an invalid internal transition; `STATE_CORRUPT` identifies an unknown persisted state. Protocol and existing tool inputs remain version 1.
 
 Rejected results include `rejected-result.json` alongside the tracked diff. It preserves the error code/details and changed-file list, plus at most 64 KiB of UTF-8 preview for an untracked ordinary file. Check `truncated`, size, and SHA-256; binary, authentication, and symlink targets are not text previews. Collection errors do not replace the original rejection.
+
+MCP tool inputs and service RPC remain version 1. Storage is format 2; newly launched workers use format 2. Legacy job records are read without rewriting or replaying them after explicit offline migration. `migrate --dry-run`, `migrate --apply` and incomplete-migration `migrate --rollback` never dispatch models or verification commands. A pending migration fences service startup.
+
+Permission requests include supported_decisions. "always" applies only within the current attempt and does not save global native permission rules. Reply delivery remains uncertain until an acknowledgement or causally subsequent native result is observed. get_run exposes platform/profile/model/version, while credentials and raw native connection configuration remain private.
