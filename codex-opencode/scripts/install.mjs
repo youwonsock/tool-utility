@@ -19,7 +19,7 @@ const staging = path.join(root, 'releases', `.stage-${crypto.randomUUID()}`);
 fs.mkdirSync(staging, { recursive: true, mode: 0o700 });
 // Keep Node 22 on its JS traversal path: the native cpSync directory fast path
 // mishandles non-ASCII Windows paths (nodejs/node#61950).
-const copyOptions = { recursive: true, filter: () => true };
+const copyOptions = { recursive: true, mode:fs.constants.COPYFILE_FICLONE, filter: () => true };
 fs.cpSync(path.join(source, 'plugins'), path.join(staging, 'plugins'), copyOptions);
 fs.cpSync(path.join(source, '.agents'), path.join(staging, '.agents'), copyOptions);
 const plugin = path.join(staging, 'plugins', 'codex-opencode');

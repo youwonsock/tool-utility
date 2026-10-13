@@ -21,13 +21,28 @@ No paid model invocation or installed-plugin activation is part of this work.
 
 | ID | Observation | Required repair | Evidence / status |
 | --- | --- | --- | --- |
-| MP-01 | MCP schemas currently accept only the OpenCode model format. | Add typed optional worker selections without changing legacy request hashes. | New selection regressions added; expected to fail before implementation. |
-| MP-02 | Engine and workers directly call OpenCode SDK. | Separate backend contracts and add the other three runtimes. | Pending. |
-| MP-03 | Verification uses OpenCode shell requests and requires its runtime. | Add durable process-backed verification and no-model final validation. | Pending. |
-| MP-04 | Storage, RPC and worker records share one version constant. | Separate formats and implement guarded offline migration. | Pending. |
-| MP-05 | Release copies only a JS bundle and Codex bindings. | Include required SDK assets and four supervisor exports. | Pending. |
-| MP-06 | Claude Agent SDK 0.3.296 requires Zod 4; the existing contract uses Zod 3. | Isolate SDK peers in a local runtime package, preserving root SDK and Zod versions. | Dependency resolution conflict reproduced; repair in progress. |
-| MP-07 | Real model-free checks passed OpenCode, Claude and Kilo; Codex hook config comparison failed. | Compare required hook semantics while accepting native default-field normalization. | Reproduced on Codex 0.146.0; repair in progress. |
+| MP-01 | MCP schemas accepted only the OpenCode model format. | Typed optional worker selections; preserve legacy hashing. | Four selection regressions and legacy migration retransmission passed. |
+| MP-02 | Engine and workers directly called OpenCode SDK. | Separate backend contracts and add three runtimes. | Four worker flows and 16 MCP contract combinations passed on Node 22. |
+| MP-03 | Verification depended on OpenCode shell requests. | Durable command-host with real receipts/logs and no-model final validation. | Existing lifecycle/recovery conditions passed. Final validation has no native session. |
+| MP-04 | Storage, RPC and workers shared a version constant. | RPC 1; storage/worker 2; guarded explicit offline migration. | Four migration tests passed, including interrupted apply, rollback and changed-file preservation. |
+| MP-05 | Releases copied only JS and Codex bindings. | Package SDK/native assets and export four hosts. | Source-moved installation, isolated Claude SDK initialization and bundled native binary version check passed. |
+| MP-06 | Claude SDK requires Zod 4 while the existing contract uses Zod 3. | Isolate SDK peers in a local runtime package. | npm dependency resolution and strict type checking passed; original SDK/Zod pins preserved. |
+| MP-07 | Codex added default fields to its effective hook configuration. | Compare required command/matcher/synchronous semantics. | Real Codex 0.146.0 initialization passed after correction. |
+| MP-08 | A regression depended on the removed native final-verification question mechanism. | Test answered implementation input, verification command continuation and service recovery using real process gates. | Rewritten regression passed without fixed sleeps deciding success. |
+| MP-09 | macOS CI hit the old 30-second installer timeout after adding native SDK assets. | Use copy-on-write cloning where available and a 120-second bounded install check. | Two CI installation failures reproduced; repair validation in progress. |
+
+## Goal/result comparison (current evidence)
+
+| Requirement | Evidence | Status |
+| --- | --- | --- |
+| Four platforms in both roles | host-matrix.test.mjs: four host exports × four mock backends, actual MCP/Git/process workflow | Automated contract passed; model behavior unconfirmed by design. |
+| Existing workflow and safety conditions | Node 22 suite: 57 tests passed, including original review/cancel/submission/evidence/lease scenarios | Passed locally. |
+| Real model-free native connections | connection-check.mjs on Node 22: OpenCode 1.18.30, Codex 0.146.0, Claude bundled 2.1.296, Kilo 7.4.23 | All four passed; provider model authentication unconfirmed. |
+| Portable installation | Installed CLI, isolated SDK and native binary used after source relocation | Passed locally. |
+| Plugin/skill structure | Official plugin-creator and skill-creator validators; generated binding checks | Passed. |
+| macOS/Windows CI | Draft PR #5, commit 5bed65ccc0e26234177ee65c7f35dc4c442fe3d5, Actions run 38395587763 | Running; completion is not yet claimed. |
+| GUI layout | No authored GUI; native IDE/desktop interfaces are unchanged and export support marks them unconfirmed | Not applicable to authored layout; native GUI unconfirmed. |
+| Paid models and installed activation | Connection checks never dispatch prompts; registration tests use temporary mocked installers | Excluded and not performed. |
 
 This plugin has no authored GUI. Layout checks apply to generated/documented
 host configuration and skill metadata; native IDE/desktop screens must be

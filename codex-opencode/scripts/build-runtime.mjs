@@ -17,7 +17,7 @@ export function buildRuntime(source) {
   const copy=(from,to,ancestors=new Set())=>{
     const info=JSON.parse(fs.readFileSync(path.join(from,'package.json')));
     if(ancestors.has(from))throw new Error(`Runtime dependency cycle at ${info.name}`);
-    fs.cpSync(from,to,{recursive:true,dereference:true,filter:file=>path.basename(file)!=='node_modules'&&!file.endsWith('.log')});
+    fs.cpSync(from,to,{recursive:true,dereference:true,mode:fs.constants.COPYFILE_FICLONE,filter:file=>path.basename(file)!=='node_modules'&&!file.endsWith('.log')});
     copied.push({name:info.name,version:info.version,path:path.relative(output,to)});
     const next=new Set([...ancestors,from]);
     for(const name of [...new Set([...Object.keys(info.dependencies??{}),...Object.keys(info.peerDependencies??{}),...Object.keys(info.optionalDependencies??{})])].sort()) {
