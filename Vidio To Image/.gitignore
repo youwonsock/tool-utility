@@ -22,6 +22,7 @@ build/
 dist/
 *.egg-info/
 *.spec
+!portable.spec
 
 # Generated media and test outputs
 추출이미지/

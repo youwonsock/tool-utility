@@ -17,8 +17,9 @@ from video_to_image_domain import (
 class PreviewCanvasRenderer:
     """PreviewPlan을 Tkinter Canvas에 그리는 UI 전용 객체."""
 
-    def __init__(self, canvas: tk.Canvas) -> None:
+    def __init__(self, canvas: tk.Canvas, font_family: str = "Segoe UI") -> None:
         self.canvas = canvas
+        self.font_family = font_family
 
     def draw_message(self, message: str) -> None:
         self.canvas.configure(background="#fff1f2")
@@ -30,7 +31,7 @@ class PreviewCanvasRenderer:
             height / 2,
             text=f"미리보기를 표시할 수 없습니다\n{message}",
             fill="#be123c",
-            font=("Segoe UI", 10, "bold"),
+            font=(self.font_family, 10, "bold"),
             justify="center",
         )
 
@@ -123,12 +124,12 @@ class PreviewCanvasRenderer:
             y0 + cell_height * 0.47,
             text=f"Sample {index + 1:02d}",
             fill="#ffffff",
-            font=("Segoe UI", font_size, "bold"),
+            font=(self.font_family, font_size, "bold"),
         )
         self.canvas.create_text(
             x0 + cell_width / 2,
             y0 + cell_height * 0.70,
             text=f"t={format_time(sample_time)}",
             fill="#f8fafc",
-            font=("Segoe UI", max(7, font_size - 1)),
+            font=(self.font_family, max(7, font_size - 1)),
         )

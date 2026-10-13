@@ -12,7 +12,7 @@ from video_to_image_domain import (
     SizePlan, build_video_filter, calculate_expected_output_count, safe_prefix,
 )
 from video_to_image_backend import (
-    OperationCancelled, ProbeCancelled, find_ffmpeg, probe_duration, probe_video,
+    OperationCancelled, ProbeCancelled, VideoInfo, find_ffmpeg, probe_duration, probe_video,
     publish_file, run_ffmpeg, terminate_all_processes, terminate_process_tree,
     process_creation_flags, windows_creation_flags,
 )
@@ -26,6 +26,7 @@ class ProbeCompleted:
     video_path: Path
     ffmpeg_path: str
     duration: float
+    info: Optional[VideoInfo] = None
 
 
 @dataclass(frozen=True)
