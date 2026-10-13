@@ -11,7 +11,7 @@ if (argv.includes('debug')) {
   process.exit(0);
 }
 const session = { id: 'ses_test', title: 'test' };
-let messages = [], busy = false, timer, pending, action, current;
+let messages = [], busy = false, timer, pending, action, current, askedShell = false, resumeShell;
 const audit = event => { if (process.env.FAKE_AUDIT) fs.appendFileSync(process.env.FAKE_AUDIT, `${JSON.stringify({ ...event, cwd: process.cwd(), time: Date.now(), pid: process.pid })}\n`); };
 const finish = () => {
   for (const [file, value] of Object.entries(action?.files || {})) { fs.mkdirSync(path.dirname(path.resolve(file)), { recursive: true }); fs.writeFileSync(file, value); }
@@ -46,15 +46,24 @@ const server = http.createServer(async (req,res) => {
   }
   if (url.pathname === '/permission') return send(pending?.kind === 'permission' ? [pending] : []);
   if (url.pathname === '/question') return send(pending?.kind === 'question' ? [pending] : []);
-  if (/\/(permission|question)\/req_test\/(reply|reject)/.test(url.pathname)) { pending = undefined; timer = setTimeout(finish,10); return send(true); }
+  if (/\/(permission|question)\/req_test\/(reply|reject)/.test(url.pathname)) {
+    pending = undefined;
+    if (resumeShell) { const resume=resumeShell;resumeShell=undefined;resume(); } else timer = setTimeout(finish,10);
+    return send(true);
+  }
   if (url.pathname === '/session/ses_test/abort') { clearTimeout(timer); busy = false; return send(true); }
   if (url.pathname === '/session/ses_test/shell') {
     audit({ event: 'shell', command: input.command });
-    shell(input.command, { cwd: process.cwd(), timeout: 5000 }, (error, stdout, stderr) => {
+    const execute = () => shell(input.command, { cwd: process.cwd(), timeout: 30000 }, (error, stdout, stderr) => {
       const exit = error ? (typeof error.code === 'number' ? error.code : 1) : 0;
       const result = { info: { id: input.messageID, role: 'assistant', parentID: input.messageID, sessionID: session.id, time: { completed: Date.now() } }, parts: [{ type: 'tool', tool: 'bash', state: { status: 'completed', input: { command: input.command }, metadata: { exit }, output: stdout + stderr } }] };
-      messages.push(result); return send(result);
-    }); return;
+      messages.push(result); busy=false; return send(result);
+    });
+    if (process.env.FAKE_SHELL_QUESTION==='1' && !askedShell) {
+      askedShell=true;busy=true;resumeShell=execute;
+      pending={id:'req_test',sessionID:session.id,kind:'question',questions:[{question:'Run verification?',header:'Verify',options:[]}]};
+    } else execute();
+    return;
   }
   send({ error: `Unimplemented ${req.method} ${url.pathname}` },404);
 });

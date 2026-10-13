@@ -8,6 +8,7 @@ import { Store } from './store.js';
 import { PROTOCOL, VERSION, Fault, invariant, schemas, type ProcessIdentity, type ToolName } from './types.js';
 import { mkdir, uid, readJson, writeJson, processIdentity, alive, sleep } from './io.js';
 import { git } from './git.js';
+import { holdsResources, canCleanup } from './lifecycle.js';
 
 type Descriptor = { protocol: number; version: string; url: string; token: string; owner: ProcessIdentity; executable: string };
 export async function serve(root: string, executableFile: string) {
@@ -25,6 +26,7 @@ export async function serve(root: string, executableFile: string) {
   }
   writeJson(path.join(lock, 'owner.json'), { owner });
   const store = new Store(root); const engine = new Engine(store, executableFile);
+  await engine.recoverPreparations();
   const token = uid('auth');
   const equal = (a: string, b: string) => { const x = Buffer.from(a), y = Buffer.from(b); return x.length === y.length && crypto.timingSafeEqual(x, y); };
   const server = http.createServer(async (req, res) => {
@@ -43,7 +45,7 @@ export async function serve(root: string, executableFile: string) {
       invariant(input.protocol === PROTOCOL, 'UPDATE_PENDING', 'Protocol mismatch. Keep the active release until its work finishes.');
       if (req.url === '/stop') {
         await engine.serial(async () => {
-          const running = engine.allAttempts().filter(a => ['launching','running','needs_input','resource_wait','delivery_uncertain','orphaned','stop_uncertain','cancelling'].includes(a.state));
+          const running = engine.allAttempts().filter(holdsResources);
           if (running.length && input.cancel === true) for (const run of store.state.runs.filter(r => !['completed','cancelled'].includes(r.state))) await engine.cancel(run);
           invariant(!running.length, 'JOBS_ACTIVE', 'Jobs are active. Cancellation has been requested if --cancel was supplied; wait for confirmed termination before stopping.');
           engine.stop(); store.save();
@@ -53,7 +55,7 @@ export async function serve(root: string, executableFile: string) {
       if (req.url === '/cleanup') {
         await engine.serial(async () => {
           const run = engine.getRun(input.run_id);
-          invariant(['completed','cancelled'].includes(run.state), 'JOBS_ACTIVE', 'Only completed or confirmed-cancelled runs can be cleaned.');
+          invariant(canCleanup(run), 'JOBS_ACTIVE', 'Only completed or confirmed-cancelled runs can be cleaned.');
           for (const a of engine.allAttempts(run)) invariant(!await alive(a.worker?.host) && !await alive(a.worker?.server), 'JOBS_ACTIVE', 'An owned process is still alive.');
           const worktrees = [run.integration_dir, ...engine.allAttempts(run).map(a => a.directory), ...(run.validation_history ?? []).map(v => v.attempt.directory)];
           for (const directory of [...new Set(worktrees)]) if (fs.existsSync(directory)) await git(run.repo, ['worktree','remove','--force',directory]);

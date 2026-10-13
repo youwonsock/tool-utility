@@ -39,17 +39,22 @@ export function validateScope(scope: string[]) {
   for (const p of scope) if (p !== '**') { safeRelative(p.replace(/\/\*\*$|\/$/, '')); invariant(!p.replace(/\/\*\*$/, '').includes('*'), 'SCOPE', 'Use exact paths, directories ending in /, or /**.'); }
 }
 const forbiddenContext = /(^|\/)(\.env(?:\..*)?|auth\.json|credentials(?:\..*)?|id_(?:rsa|ed25519)|config\.toml)$/i;
-export async function snapshot(store: Store, runID: string, repo: string, paths: string[]): Promise<ContextFile[]> {
-  const files: ContextFile[] = [];
+export const authenticationFile = (relative: string) => forbiddenContext.test(relative);
+export type CapturedContext = Omit<ContextFile, 'artifact'> & { data: Buffer };
+export async function captureContext(repo: string, paths: string[]): Promise<CapturedContext[]> {
+  const files: CapturedContext[] = [];
   const tracked = new Set((await git(repo, ['ls-files','-z'])).stdout.split('\0'));
   for (const relative of [...new Set(paths)].sort()) {
     invariant(!forbiddenContext.test(relative), 'CONTEXT_SECRET', `Authentication/config files cannot be context: ${relative}`);
     const absolute = inside(repo, relative); const stat = fs.statSync(absolute);
     invariant(stat.isFile() && stat.size <= 2 * 1024 * 1024, 'CONTEXT_FILE', `Context must be a file up to 2 MiB: ${relative}`);
     const data = fs.readFileSync(absolute);
-    files.push({ path: relative, hash: hash(data), artifact: store.artifact(runID, 'context', data), tracked: tracked.has(relative), mode: stat.mode & 0o777 });
+    files.push({ path: relative, hash: hash(data), data, tracked: tracked.has(relative), mode: stat.mode & 0o777 });
   }
   return files;
+}
+export async function snapshot(store: Store, runID: string, repo: string, paths: string[]): Promise<ContextFile[]> {
+  return (await captureContext(repo, paths)).map(({data,...file}) => ({...file, artifact: store.artifact(runID, 'context', data)}));
 }
 export async function materialize(store: Store, cwd: string, files: ContextFile[]) {
   const tracked = new Set((await git(cwd, ['ls-files','-z'])).stdout.split('\0'));

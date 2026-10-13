@@ -2,11 +2,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { PROTOCOL, Fault, invariant, type State } from './types.js';
 import { digest, mkdir, readJson, writeJson, durableWrite, uid, inside } from './io.js';
+import { validateStoredState } from './lifecycle.js';
 
 export const responseBytes = (value: unknown) => Buffer.byteLength(JSON.stringify({ content: [{ type: 'text', text: JSON.stringify(value) }], isError: false }));
 
 export class Store {
   state: State;
+  uncertain = false;
   constructor(public root: string) {
     mkdir(root);
     this.state = readJson<State>(path.join(root, 'state.json')) ?? { protocol: PROTOCOL, revision: 0, runs: [], requests: {}, events: [], metrics: { responses: 0, response_bytes: 0, mutations: 0 } };
@@ -25,19 +27,28 @@ export class Store {
       }
     }
     invariant(this.state.protocol === PROTOCOL, 'UPDATE_PENDING', 'Journal format differs.');
+    validateStoredState(this.state);
     this.state.metrics = readJson<State['metrics']>(path.join(root, 'metrics.json')) ?? this.state.metrics;
     this.state.metrics.mutations = Object.keys(this.state.requests).length;
   }
   save() {
+    invariant(!this.uncertain, 'REQUEST_UNCERTAIN', 'Storage delivery is uncertain. Restart and reconcile the durable journal before further mutations.');
+    validateStoredState(this.state);
     this.state.revision++;
-    const fd = fs.openSync(path.join(this.root, 'journal.jsonl'), 'a', 0o600);
-    try { fs.writeFileSync(fd, `${JSON.stringify({ hash: digest(this.state), state: this.state })}\n`); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
-    writeJson(path.join(this.root, 'state.json'), this.state);
+    try {
+      const fd = fs.openSync(path.join(this.root, 'journal.jsonl'), 'a', 0o600);
+      try { fs.writeFileSync(fd, `${JSON.stringify({ hash: digest(this.state), state: this.state })}\n`); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+      writeJson(path.join(this.root, 'state.json'), this.state);
+    } catch (e) {
+      this.uncertain = true;
+      throw new Fault('REQUEST_UNCERTAIN', 'Journal/snapshot delivery is uncertain. No further work will dispatch before restart and reconciliation.', { reason: (e as Error).message });
+    }
   }
   event(run_id: string, type: string, data: unknown) {
     this.state.events.push({ seq: (this.state.events.at(-1)?.seq ?? 0) + 1, run_id, type, data }); this.save();
   }
   async mutation(id: string, payload: unknown, action: () => Promise<unknown>) {
+    invariant(!this.uncertain, 'REQUEST_UNCERTAIN', 'Storage delivery is uncertain. Restart and reconcile before changing state.');
     const key = digest(payload); const prior = this.state.requests[id];
     if (prior) {
       invariant(prior.hash === key, 'IDEMPOTENCY_CONFLICT', 'Request ID was already used with different content.');
@@ -47,9 +58,12 @@ export class Store {
     this.state.requests[id] = { hash: key, status: 'intent' }; this.state.metrics.mutations++; this.save();
     let result;
     try { result = await action(); } catch (e) {
+      if (this.uncertain || e instanceof Fault && e.code === 'REQUEST_UNCERTAIN') throw e;
       result = { error: { code: e instanceof Fault ? e.code : 'INTERNAL', message: (e as Error).message, ...(e instanceof Fault && e.details !== undefined ? { details: e.details } : {}) } };
     }
-    this.state.requests[id] = { hash: key, status: 'done', result }; this.save(); return result;
+    this.state.requests[id] = { hash: key, status: 'done', result };
+    try { this.save(); } catch (e) { this.state.requests[id] = { hash: key, status: 'intent' }; throw e; }
+    return result;
   }
   artifact(run: string, name: string, content: string | Buffer) {
     const id = `${run}/${uid('artifact')}-${name}`;
