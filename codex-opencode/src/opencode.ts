@@ -90,7 +90,7 @@ export async function launchOpenCode(spec: WorkerSpec, state: WorkerState, save:
   for (const name of allowed) for (const [key, value] of Object.entries(overlay.mcp[name])) invariant(digest(effective.mcp?.[name]?.[key]) === digest(value), 'MCP_POLICY', `Effective MCP connection differs from the verified profile: ${name}.${key}`);
   enforceHttpPolicy(effective,overlay);
   const context={spec,state,save},intent=beginProcess(context);
-  const child: ChildProcess = spawn(spec.executable, [...spec.executable_args, 'serve', '--hostname=127.0.0.1','--port=0','--pure'], { cwd: spec.directory, env, detached: true, windowsHide: true, stdio: ['ignore','pipe','pipe'] });
+  const child: ChildProcess = spawn(spec.executable, [...spec.executable_args, 'serve', '--hostname=127.0.0.1','--port=0','--pure'], { cwd: spec.directory, env, detached: process.platform!=='win32', windowsHide: true, stdio: ['ignore','pipe','pipe'] });
   child.on('error', error => { state.error = error.message; save(); });
   invariant(child.pid, 'SPAWN', 'OpenCode failed to start.');
   await registerProcess(context,child,intent);
