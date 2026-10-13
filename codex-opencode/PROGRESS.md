@@ -37,3 +37,12 @@
 - The portable plugin validator accepts Windows CRLF checkouts. Local installed MCP verification exposed all 12 tools and confirmed authenticated service connection and explicit stop.
 - Final code/test commit `f8bf06d59298b8d5e5cdc4035cad43bea6bdca37` passed [Windows and macOS Node 22 CI](https://github.com/youwonsock/tool-utility/actions/runs/35706776306): macOS 23 passed; Windows 22 passed, 0 failed, 1 Unix-only process-group test skipped. Windows worker cancellation tests exercise `taskkill /T`. Type checking and plugin validation passed on both systems.
 - The failed live-model run was explicitly cancelled and its service stopped; evidence was retained. A new real-model parallel implementation → correction → final validation → reviewed fast-forward remains pending replacement-model selection. No Codex token-saving percentage is claimed.
+
+## 2026-10-13
+
+- Added literal lifecycle types and grouped transition checks for runs, tasks, attempts, validations and worker phases. Legacy names and protocol 1 remain compatible; unknown persisted states report `STATE_CORRUPT`, invalid transitions report `STATE_TRANSITION`.
+- Corrections immediately make the old result unreviewable before the next scheduler tick and across restarts. Cancellation intent is saved before control delivery and overrides late validation results; uncertain termination keeps leases and slots.
+- Split submission into complete preflight, owned preparation and journal publication. Durable manifests recover committed responses or clean unchanged unpublished resources. Storage uncertainty fences dispatch without replaying models; changed prepared checkouts are preserved.
+- Added structured rejection evidence with tracked diffs, changed-file reasons, 64 KiB UTF-8 previews, sizes/hashes and explicit omissions for binary/authentication/symlink targets. Diagnostic failure retains the original rejection reason.
+- Added 18 regression tests to the original 23. Local macOS / Node 25.2.1: `npm run check` passed strict type checking, all 41 tests, and plugin validation. Tests use mock OpenCode HTTP plus real temporary Git repositories and processes; no paid model calls or installed-plugin deployment were performed.
+- Prepared Node 22 CI for `macos-15` and `windows-latest`, scoped to the delegation tool and its workflow. Remote results are recorded separately once observed.
