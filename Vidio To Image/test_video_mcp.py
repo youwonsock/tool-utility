@@ -39,9 +39,14 @@ class MCPProtocolTests(unittest.IsolatedAsyncioTestCase):
 
             config = configuration(root)["mcpServers"]["video-tools"]
             self.assertEqual(config["command"], str(Path(sys.executable).absolute()))
-            parameters = StdioServerParameters(command=config["command"],
-                args=config["args"] + ["--ffmpeg", ffmpeg],
-                env={**os.environ, "PYTHONUNBUFFERED": "1"})
+            portable = os.environ.get('VIDEO_TOOLS_TEST_MCP')
+            environment = {**os.environ, "PYTHONUNBUFFERED": "1"}
+            if portable:
+                environment.update(PATH=os.environ.get('VIDEO_TOOLS_ISOLATED_PATH', '/usr/bin:/bin:/usr/sbin:/sbin'),
+                                   PYTHONPATH='', PYTHONHOME='')
+            parameters = StdioServerParameters(command=portable or config["command"],
+                args=["--workspace", str(root)] if portable else config["args"] + ["--ffmpeg", ffmpeg],
+                env=environment)
             async with stdio_client(parameters) as (read, write):
                 async with ClientSession(read, write) as session:
                     await session.initialize()
@@ -93,4 +98,14 @@ class MCPProtocolTests(unittest.IsolatedAsyncioTestCase):
                     finished_cancel = await call("cancel_job", {"job_id": job["job_id"]})
                     self.assertFalse(finished_cancel["accepted"])
                     self.assertEqual(len((await call("list_jobs"))["jobs"]), 3)
+                    long_job = await call('start_frame_extraction', {'video_path': 'input.mp4',
+                        'output_directory': 'cancel-output', 'interval': 0.005, 'width': 1280, 'height': 720})
+                    cancelled = await call('cancel_job', {'job_id': long_job['job_id']})
+                    self.assertTrue(cancelled['accepted'])
+                    for _ in range(100):
+                        state = await call('get_job', {'job_id': long_job['job_id']})
+                        if state['status'] in {'cancelled', 'failed', 'completed'}: break
+                        await asyncio.sleep(.05)
+                    self.assertEqual(state['status'], 'cancelled', state)
+                    self.assertFalse(list((root / 'cancel-output').glob('frame_*.png')))
 

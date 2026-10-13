@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 
-APP_TITLE = "MP4 → 이미지 추출기"
+APP_TITLE = "영상 이미지 추출 · 편집"
 INDIVIDUAL_OUTPUT_MODE = "개별 이미지 저장"
 GRID_OUTPUT_MODE = "격자 합치기"
 OUTPUT_MODES = (INDIVIDUAL_OUTPUT_MODE, GRID_OUTPUT_MODE)

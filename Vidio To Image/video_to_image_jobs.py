@@ -4,6 +4,7 @@ from __future__ import annotations
 import threading
 import time
 import uuid
+import copy
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Callable
@@ -85,7 +86,7 @@ class JobManager:
             job = self._job(job_id)
             return {"job_id": job.id, "kind": job.kind, "status": job.status,
                     "progress_percent": job.progress, "output_frames": job.frames,
-                    "created_at": job.created_at, "result": job.result, "error": job.error}
+                    "created_at": job.created_at, "result": copy.deepcopy(job.result), "error": job.error}
 
     def list(self) -> list[dict]:
         with self._lock:
@@ -100,11 +101,11 @@ class JobManager:
                 job.status = "cancelling"
             return {"accepted": accepted, **self.get(job_id)}
 
-    def close(self) -> None:
+    def close(self, wait: bool = True) -> None:
         with self._lock:
             self._closed = True
             for job in self._jobs.values():
                 if job.status not in TERMINAL:
                     job.cancel.set()
-        self._executor.shutdown(wait=True)
+        self._executor.shutdown(wait=wait)
 

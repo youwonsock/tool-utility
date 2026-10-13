@@ -1,13 +1,13 @@
 # Vidio To Image — 영상 이미지 추출 및 MCP 영상 편집
 
-Vidio To Image는 **Windows용 이미지 추출 GUI와 에이전트용 MCP 서버를 함께 제공하는 영상 처리 도구**입니다. 동영상의 원하는 구간에서 PNG/JPG 프레임이나 2×2·3×3 격자 이미지를 추출하고, MCP를 연결한 에이전트는 영상 정보 조회부터 구간 자르기·크롭·회전·반전·크기 조절·배속·음소거까지 수행할 수 있습니다.
+Vidio To Image는 **Windows·macOS용 이미지 추출·영상 편집 GUI와 에이전트용 MCP 서버를 함께 제공하는 영상 처리 도구**입니다. 동영상의 원하는 구간에서 PNG/JPG 프레임이나 2×2·3×3 격자 이미지를 추출하고, MCP를 연결한 에이전트는 영상 정보 조회부터 구간 자르기·크롭·회전·반전·크기 조절·배속·음소거까지 수행할 수 있습니다.
 
 | 제공 방식 | 지원 기능 | 시작하기 |
 | --- | --- | --- |
-| Windows GUI | 화면에서 이미지 추출 설정, 합성 샘플 미리보기, 추출·취소 | [GUI 설치 및 실행](#gui-설치-및-실행), [GUI 사용 방법](#gui-사용-방법) |
+| Windows·Mac GUI | 이미지 추출·격자 합성·영상 편집·진행률·취소 | [GUI 설치 및 실행](#gui-설치-및-실행), [GUI 사용 방법](#gui-사용-방법) |
 | 로컬 MCP 서버 (`video-tools`, stdio) | 에이전트가 9개 도구로 영상 분석·이미지 추출·영상 편집·작업 관리·결과 이미지 확인 | [MCP 설정 및 사용](#mcp-설정-및-사용), [MCP 도구 명세](#mcp-도구-명세) |
 
-GUI와 MCP는 같은 프레임 추출 로직을 사용합니다. GUI는 Tkinter 기반의 이미지 추출 화면이며, 영상 편집 기능은 MCP 도구로 제공합니다. 이 문서에서 두 사용 방식의 설치, 설정, 사용법을 함께 안내합니다.
+GUI와 MCP는 공용 영상 처리 서비스와 작업 관리 코드를 사용합니다. GUI의 이미지 추출·영상 편집 탭에서 직접 작업하거나, GUI 없이 MCP 서버를 통해 에이전트가 작업할 수 있습니다. 작업 기록은 각 프로세스에서 독립적으로 관리합니다. 이 문서에서 두 사용 방식의 설치, 설정, 사용법을 함께 안내합니다.
 
 ## GUI 주요 기능
 
@@ -20,7 +20,43 @@ GUI와 MCP는 같은 프레임 추출 로직을 사용합니다. GUI는 Tkinter 
 - FFmpeg 작업 진행률 표시와 추출 취소
 - 설정을 `%APPDATA%\VideoToImage\settings.json`에 저장
 
-## GUI 설치 및 실행
+## 설치 없는 배포본 실행
+
+최종 사용자에게는 소스 대신 운영체제에 맞는 ZIP을 제공합니다. 압축을 해제하면 Python, FFmpeg, MCP SDK 설치나 최초 실행 다운로드 없이 실행할 수 있습니다. 필요한 런타임과 FFmpeg는 GUI·MCP 실행기가 같은 배포본 안에서 공유합니다. 실행 파일만 따로 복사하지 말고 배포 폴더 또는 Mac 앱 전체를 이동하세요.
+
+| 배포 파일 | GUI 실행 | MCP 실행 파일 |
+|---|---|---|
+| `VideoToImage-win64.zip` | `VideoToImage.exe` 더블클릭 | 같은 폴더의 `video-tools-mcp.exe` |
+| `VideoToImage-macos-arm64.zip` | `VideoToImage.app` 더블클릭 | `VideoToImage.app/Contents/MacOS/video-tools-mcp` |
+| `VideoToImage-macos-x86_64.zip` | `VideoToImage.app` 더블클릭 | `VideoToImage.app/Contents/MacOS/video-tools-mcp` |
+
+Mac은 내부용 ad-hoc 서명 배포입니다. 최초 실행 시 macOS의 보안 승인이 필요할 수 있으며, 시스템 설정 → 개인정보 보호 및 보안에서 해당 앱의 실행을 승인합니다. 보안 기능을 전체적으로 끄지 않습니다. 임의 경로로 실행되는 App Translocation 상태에서도 앱 내부 리소스를 사용하며, MCP 설정을 만들 때는 실제 배포 위치를 선택하세요.
+
+GUI의 **MCP 연결 설정**에서 영상 작업 폴더를 선택하고 JSON을 복사·저장한 뒤 사용하는 MCP 클라이언트에 등록합니다. 배포본을 옮기면 설정을 다시 생성하세요. 서버 설치나 GUI 실행은 필요하지 않습니다. 등록 설정은 네이티브 MCP 실행 파일과 `--workspace` 인자를 사용합니다.
+
+Windows 설정은 기존 `%APPDATA%/VideoToImage/settings.json`에, Mac 설정은 `~/Library/Application Support/VideoToImage/settings.json`에 저장합니다. 이전 Mac의 `~/AppData/Roaming/VideoToImage/settings.json`은 새 설정이 없을 때 가져오며 원본은 보존합니다.
+
+## GUI 영상 편집
+
+공통 영상 파일과 처리 구간을 선택한 뒤 **영상 편집** 탭에서 결과 MP4 경로, 크롭, 회전, 반전, 출력 크기, 배속, 음소거, CRF를 지정합니다. 크롭 좌표는 자동 회전 적용 후 원본 영상 픽셀 기준입니다. 크기를 지정하면 비율을 유지하고 여백을 추가합니다. 출력은 H.264/AAC MP4이며 원본과 같은 경로를 사용할 수 없습니다.
+
+기본값은 크롭·크기 조절 없음, 회전 0도, 배속 1배, CRF 20, 반전·음소거·덮어쓰기 꺼짐입니다. 진행률·취소·결과 경로를 표시하며, Mac의 Command+Q도 작업을 정리하고 설정을 저장합니다. GUI 미리보기는 추출 배치를 보여주는 합성 샘플이며 실제 영상 플레이어가 아닙니다.
+
+## 개발자의 소스 실행
+
+다음 설치 명령과 실행 스크립트는 **개발 환경용**입니다. 위 ZIP 사용자는 실행할 필요가 없습니다.
+
+### Mac 소스 실행
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements-mcp.txt
+.venv/bin/python video_to_image.py
+```
+
+Tk가 포함된 Python이 필요합니다. 단순 import 대신 실제 Tk 창 생성으로 환경을 확인하세요.
+
+### Windows 소스 실행
 
 ### 간편 실행
 
@@ -137,7 +173,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\install_mcp.ps1 -Workspace
 
 ### Linux/macOS 설치
 
-GUI의 공식 대상은 Windows이며, 공통 처리 계층과 MCP 서버는 다음과 같이 설치할 수 있습니다.
+소스에서 GUI 또는 MCP 서버를 개발·실행하려면 다음과 같이 환경을 준비합니다. 배포본 사용자에게는 이 설치가 필요하지 않습니다.
 
 ```bash
 python3 -m venv .venv
@@ -278,28 +314,25 @@ FFmpeg는 PATH의 실행 파일을 우선 사용하며 없으면 `imageio-ffmpeg
 - `read_image`는 `max_width`(64~2048, 기본 1280)를 가로·세로 상한으로 삼아 축소한 미리보기를 반환하며 원본 이미지를 수정하지 않습니다. `list_media`의 `limit`은 1~500입니다.
 - 최대 동시 작업 2개, 대기 포함 8개, 추출 샘플 10,000개, 이미지/영상 프레임당 64메가픽셀, FFmpeg 실행 시간 1시간으로 제한합니다.
 
-## GUI EXE 및 ZIP 패키지 만들기
+## 개발자의 배포 빌드 및 검증
 
-PyInstaller로 FFmpeg를 포함한 폴더형 실행 파일을 만들려면 다음을 실행합니다.
+네이티브 Windows x64, Mac arm64 또는 Mac x86_64에서 Python **3.14.6**과 Tk를 준비하고 다음 명령을 사용합니다. 단일 공용 Spec이 GUI·MCP 실행기와 공유 런타임을 수집합니다. 운영체제별 어댑터에는 설정·글꼴·입력·프로세스 처리 차이만 둡니다.
 
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-.\build.ps1
+```bash
+python -m venv .venv
+# Windows에서는 .venv/Scripts/python.exe 사용
+.venv/bin/python -m pip install -r requirements-release.txt
+.venv/bin/python build_portable.py --package
+.venv/bin/python verify_portable.py
 ```
 
-실행 파일은 다음 위치에 생성됩니다.
+기존 Windows `build.ps1`, `package.ps1`과 Mac `build_mac.sh`는 동일한 공용 빌드 코드를 호출합니다. 생성물은 `dist/`에 저장되며 ZIP SHA-256도 기록합니다. 배포본은 내장 FFmpeg만으로 정보를 조회하므로 외부 ffprobe가 없어도 동일하게 동작합니다.
 
-```text
-dist\VideoToImage\VideoToImage.exe
-```
+라이선스와 빌드 기록은 Windows `_internal/licenses`, Mac `Contents/Resources/licenses`에서 확인합니다. 실제 FFmpeg 버전·빌드 설정·바이너리 해시·원본 제공처·소스 릴리스 정보를 기록합니다. FFmpeg의 GPL 구성요소와 각 패키지 고지를 유지해야 합니다.
 
-배포용 ZIP은 다음 명령으로 만듭니다.
+`verify_portable.py`는 한글·공백이 있는 임시 경로에 배포본을 복사하고 외부 Python/FFmpeg/ffprobe 경로를 제거한 환경에서 GUI 자체 검사와 실제 MCP 연결·미디어·취소·종료를 검증합니다. 결과는 `test-output/portable-verification.json`과 `gui-portable.json`입니다. 개발용 `--self-test-report <경로>`는 사용자 설정 대신 임시 설정을 사용합니다.
 
-```powershell
-.\package.ps1
-```
-
-ZIP 파일은 `dist\VideoToImage-win64.zip`에 생성됩니다.
+검증 목표, 발견 문제, 수정과 재검증 기록은 [IMPLEMENTATION.md](IMPLEMENTATION.md)에 기록합니다.
 
 ## 문제 해결
 
@@ -332,5 +365,5 @@ ZIP 파일은 `dist\VideoToImage-win64.zip`에 생성됩니다.
 python -m unittest discover -v
 ```
 
-실제 FFmpeg 및 MCP 연결 테스트까지 실행하려면 먼저 `python -m pip install -r requirements-mcp.txt`를 실행하세요. 합성 영상과 MCP stdio 클라이언트로 파일 보존, 특수문자 접두사, 추출 시점, 끝 구간·부분 격자, JPG 크기, 영상 편집·오디오, 취소, 작업 폴더 제한, 도구 목록·호출·이미지 반환을 검사합니다. 의존성이 없는 MCP/이미지 통합 테스트는 건너뜁니다. GitHub Actions에서는 Windows와 Linux 양쪽에서 전체 테스트를 실행합니다.
+실제 FFmpeg 및 MCP 연결 테스트까지 실행하려면 먼저 `python -m pip install -r requirements-mcp.txt`를 실행하세요. 합성 영상과 MCP stdio 클라이언트로 파일 보존, 특수문자 접두사, 추출 시점, 끝 구간·부분 격자, JPG 크기, 영상 편집·오디오, 취소, 작업 폴더 제한, 도구 목록·호출·이미지 반환을 검사합니다. 의존성이 없는 MCP/이미지 통합 테스트는 건너뜁니다. GitHub Actions에서는 Windows·Linux·Mac arm64·Mac x86_64에서 회귀 검사를 실행하고, Windows와 Mac에서는 네이티브 배포본까지 검증합니다. GUI 검사에는 `VIDEO_TOOLS_GUI_TESTS=1`을 지정합니다.
 

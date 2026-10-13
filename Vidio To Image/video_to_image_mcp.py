@@ -4,6 +4,9 @@ from __future__ import annotations
 import argparse
 import asyncio
 import io
+import os
+import sys
+import anyio
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from pathlib import Path
@@ -11,15 +14,27 @@ from typing import Any, Literal
 
 from mcp.server.fastmcp import FastMCP, Image
 from mcp.types import ToolAnnotations
+from mcp.server.stdio import stdio_server
 from PIL import Image as PillowImage
 
 from video_to_image_backend import find_ffmpeg, probe_video
 from video_to_image_domain import SIZE_MODES, resolve_size_plan
 from video_to_image_edit import EditRequest, edit_video
-from video_to_image_jobs import JobManager
+from video_to_image_service import VideoService
 from video_to_image_media import MAX_OUTPUT_PIXELS, ExtractionRequest, extract_images
 
 MEDIA_EXTENSIONS = {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v", ".png", ".jpg", ".jpeg"}
+
+
+class VideoToolsMCP(FastMCP):
+    async def run_stdio_async(self) -> None:
+        # The SDK's default UTF-8 wrappers borrow (and eventually close) the
+        # original process buffers. Own duplicate handles so frozen Python's
+        # shutdown flush cannot fail after a successful MCP session.
+        with os.fdopen(os.dup(sys.stdin.fileno()), 'r', encoding='utf-8', errors='replace') as incoming, \
+             os.fdopen(os.dup(sys.stdout.fileno()), 'w', encoding='utf-8', buffering=1) as outgoing:
+            async with stdio_server(anyio.wrap_file(incoming), anyio.wrap_file(outgoing)) as (read, write):
+                await self._mcp_server.run(read, write, self._mcp_server.create_initialization_options())
 
 
 class Workspace:
@@ -48,8 +63,9 @@ class Workspace:
 
 def create_server(workspace: Path, ffmpeg_path: str | None = None) -> FastMCP:
     scope = Workspace(workspace)
-    ffmpeg = ffmpeg_path or find_ffmpeg()
-    jobs = JobManager()
+    service = VideoService(ffmpeg_path)
+    ffmpeg = service.ffmpeg
+    jobs = service.jobs
 
     @asynccontextmanager
     async def lifespan(_server):
@@ -58,7 +74,7 @@ def create_server(workspace: Path, ffmpeg_path: str | None = None) -> FastMCP:
         finally:
             await asyncio.to_thread(jobs.close)
 
-    server = FastMCP(
+    server = VideoToolsMCP(
         "video-tools",
         instructions="로컬 영상 도구. server_info와 list_media로 작업 폴더를 확인하세요. "
                      "경로는 이 폴더 기준입니다. start_*는 작업 ID를 반환합니다. "
@@ -69,6 +85,16 @@ def create_server(workspace: Path, ffmpeg_path: str | None = None) -> FastMCP:
     )
     read_only = ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False)
     writes = ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=False)
+
+    def present(job):
+        result = job.get("result")
+        if result:
+            for key in ("output_path", "output_directory"):
+                if key in result:
+                    result[key] = scope.relative(Path(result[key]))
+            if "files" in result:
+                result["files"] = [scope.relative(Path(p)) for p in result["files"]]
+        return job
 
     @server.tool(annotations=read_only)
     def server_info() -> dict[str, Any]:
@@ -128,17 +154,14 @@ def create_server(workspace: Path, ffmpeg_path: str | None = None) -> FastMCP:
                                  (width, height) if width is not None and height is not None else None,
                                  grid_size > 1, (grid_size, grid_size))
 
-        def operation(cancel, progress):
+        def prepare(cancel):
             # Re-resolve before work to also catch moved/replaced parent links.
             info = probe_video(ffmpeg, scope.resolve(str(source), existing=True), cancel)
             request = ExtractionRequest(ffmpeg, source, scope.resolve(str(output)), prefix, image_format,
                                         start, info.duration if end is None else end, interval, overwrite,
                                         grid_size > 1, (grid_size, grid_size), plan)
-            result = extract_images(request, cancel, progress)
-            return {"saved_count": result.count, "skipped_count": result.skipped,
-                    "generated_count": result.generated, "files": [scope.relative(p) for p in result.files],
-                    "output_directory": scope.relative(result.output_dir)}
-        return jobs.submit("extract_frames", operation)
+            return request
+        return present(service.start_extraction(prepare))
 
     @server.tool(annotations=writes)
     def start_video_edit(
@@ -159,24 +182,22 @@ def create_server(workspace: Path, ffmpeg_path: str | None = None) -> FastMCP:
         if crop is not None and len(crop) != 4:
             raise ValueError("crop은 [x, y, width, height]여야 합니다.")
 
-        def operation(cancel, progress):
+        def prepare(cancel):
             request = EditRequest(ffmpeg, scope.resolve(str(source), existing=True), scope.resolve(str(output)),
                                   start, end, width, height, tuple(crop) if crop is not None else None,
                                   rotation, flip_horizontal, flip_vertical, speed, mute, overwrite, crf)
-            result = edit_video(request, cancel, progress)
-            result["output_path"] = scope.relative(Path(result["output_path"]))
-            return result
-        return jobs.submit("edit_video", operation)
+            return request
+        return present(service.start_edit(prepare))
 
     @server.tool(annotations=read_only)
     def get_job(job_id: str) -> dict[str, Any]:
         """Get queued/running/cancelling/completed/failed/cancelled status and outputs."""
-        return jobs.get(job_id)
+        return present(jobs.get(job_id))
 
     @server.tool(annotations=read_only)
     def list_jobs() -> dict[str, Any]:
         """List up to 100 recent jobs; history is cleared on server restart."""
-        return {"jobs": jobs.list()}
+        return {"jobs": [present(job) for job in jobs.list()]}
 
     @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False))
     def cancel_job(job_id: str) -> dict[str, Any]:
@@ -184,7 +205,7 @@ def create_server(workspace: Path, ffmpeg_path: str | None = None) -> FastMCP:
         Cancellation before publication discards staged output. If publication
         already started, the job may complete and returns the committed files.
         """
-        return jobs.cancel(job_id)
+        return present(jobs.cancel(job_id))
 
     @server.tool(annotations=read_only)
     async def read_image(image_path: str, max_width: int = 1280) -> Image:
