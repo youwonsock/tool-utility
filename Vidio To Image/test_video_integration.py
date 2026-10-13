@@ -108,6 +108,28 @@ class MediaIntegrationTests(unittest.TestCase):
         self.assertAlmostEqual(info.duration, 4, delta=0.05)
         self.assertTrue(info.has_audio)
 
+    def test_ffmpeg_only_rotation_metadata_and_oriented_crop(self):
+        rotated = self.output / 'metadata-rotation.mp4'
+        subprocess.run([self.ffmpeg, '-v', 'error', '-display_rotation', '90', '-i', str(self.source),
+                        '-c', 'copy', str(rotated)], check=True, capture_output=True, timeout=30)
+        with patch.dict('os.environ', {'VIDEO_TOOLS_FFMPEG_ONLY': '1'}):
+            info = probe_video(self.ffmpeg, rotated)
+            self.assertEqual(info.display_size, (36, 64))
+            self.assertEqual(abs(info.rotation), 90)
+            result = edit_video(EditRequest(self.ffmpeg, rotated, self.output / 'oriented.mp4',
+                                           end=1, crop=(1, 1, 20, 30), mute=True))
+        self.assertEqual((result['width'], result['height']), (20, 30))
+
+    def test_ffmpeg_only_fractional_frame_rate(self):
+        fractional = self.output / 'fractional.mp4'
+        subprocess.run([self.ffmpeg, '-v', 'error', '-i', str(self.source), '-r', '30000/1001',
+                        '-c:v', 'libx264', '-an', str(fractional)], check=True, capture_output=True, timeout=30)
+        with patch.dict('os.environ', {'VIDEO_TOOLS_FFMPEG_ONLY': '1'}):
+            info = probe_video(self.ffmpeg, fractional)
+        self.assertEqual(info.probe_backend, 'ffmpeg')
+        self.assertAlmostEqual(info.fps, 30000 / 1001, delta=.01)
+        self.assertAlmostEqual(info.duration, 4, delta=.15)
+
     def test_edit_trim_resize_rotate_speed_and_audio(self):
         output = self.output / "edited.mp4"
         result = edit_video(EditRequest(self.ffmpeg, self.source, output, start=1, end=3,
