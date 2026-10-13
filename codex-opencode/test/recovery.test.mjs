@@ -31,14 +31,19 @@ test('unknown launch holds leases; proven reboot interrupts without dispatch',as
 test('service restart during cancellation confirms stop and does not dispatch a replacement',async t=>{
   const f=await fixture(t,{service:true}),audit=path.join(f.dir,'audit.jsonl'),saved={...process.env};Object.assign(process.env,f.env,{FAKE_AUDIT:audit});
   t.after(async()=>{try{await remoteCall(f.data,cli,'',{},'/stop');}catch{}for(const k of Object.keys(process.env))if(!(k in saved))delete process.env[k];Object.assign(process.env,saved);});
-  const s=await remoteCall(f.data,cli,'submit_tasks',{request_id:'cancel-case',repo:f.repo,tasks:[task('a',{delay:60000})]});
-  let r;for(let i=0;i<150;i++){r=readState(f.data).runs[0];if(r?.tasks[0].attempts[0]?.worker?.prompt_intent)break;await sleep(100);}assert.ok(r.tasks[0].attempts[0].worker.prompt_intent);
+  const gate=path.join(f.dir,'finish-after-cancel');
+  const s=await remoteCall(f.data,cli,'submit_tasks',{request_id:'cancel-case',repo:f.repo,tasks:[task('a',{wait_file:gate})]});
+  let r;const promptDeadline=Date.now()+60000;
+  do{r=readState(f.data).runs[0];if(fs.existsSync(audit)&&fs.readFileSync(audit,'utf8').trim().split('\n').map(JSON.parse).some(e=>e.event==='prompt')&&r?.tasks[0].attempts[0]?.worker?.prompt_accepted)break;await sleep(100);}while(Date.now()<promptDeadline);
+  assert.equal(r.tasks[0].attempts[0].worker.prompt_accepted,true);assert.equal(await alive(r.tasks[0].attempts[0].worker.server),true);
   const cancel=await remoteCall(f.data,cli,'cancel_run',{request_id:'stop-request',run_id:s.run_id});assert.ok(['cancelling','cancelled'].includes(cancel.state));
   const descriptor=JSON.parse(fs.readFileSync(path.join(f.data,'service.json')));await terminate(descriptor.owner,false);await connect(f.data,cli);
   // Windows process-tree termination and CIM ownership checks can exceed 15 s
   // on hosted runners. Await the terminal state, then verify the actual server.
-  const deadline=Date.now()+60000;
-  while(Date.now()<deadline){r=readState(f.data).runs[0];if(r.state==='cancelled')break;await sleep(100);}assert.equal(r.state,'cancelled');
+  const deadline=Date.now()+120000;
+  while(Date.now()<deadline){r=readState(f.data).runs[0];if(r.state==='cancelled')break;await sleep(100);}
+  if(r.state!=='cancelled'){const a=r.tasks[0].attempts[0],job=JSON.parse(fs.readFileSync(path.join(a.job_dir,'worker.json')));t.diagnostic(JSON.stringify({run:r.state,attempt:a.state,phase:job.phase,stopped:job.stopped,error:job.error,host_alive:await alive(job.host),server_alive:await alive(job.server)}));}
+  assert.equal(r.state,'cancelled');
   const stopped=r.tasks[0].attempts[0].worker;assert.equal(stopped.stopped,true);assert.equal(await alive(stopped.server),false);
   const events=fs.readFileSync(audit,'utf8').trim().split('\n').map(JSON.parse);assert.equal(events.filter(e=>e.event==='prompt').length,1);assert.equal(r.tasks[0].attempts.length,1);
 });

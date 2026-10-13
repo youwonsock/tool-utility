@@ -47,6 +47,8 @@ No paid model invocation or installed-plugin activation is part of this work.
 | MP-24 | Windows npm CLI wrappers passed version checks but produced no persistent server/STDIO responses, while the direct Claude binary initialized. | Keep POSIX process groups; avoid detaching Windows wrapper roots and continue owned taskkill /T termination. | All four native Windows connections passed after repair; POSIX native checks and Windows cancellation/restart also passed. |
 | MP-25 | The daemon-restart fixture waited only 15 seconds after an arbitrary 8-second model delay; Windows CIM/verification completion exceeded that bound. | Use a physical completion gate, bounded state convergence and confirmed stop; retain exactly one prompt and cached retransmission checks. | Physical-gate fixture passed on both OSes and observed exactly one prompt after server restart. |
 
+| MP-26 | A repeated Windows run did not reach cancelled within the former 60-second recovery window; the fixture cancelled at intent rather than confirmed native receipt. | Hold implementation with a physical gate, confirm receipt/live server before cancellation, and observe terminal state/processes with bounded diagnostics. | Repeated CI exposed the timing assumption; final recheck required without weakening uncertain-termination leases. |
+
 ## Final goal/result comparison
 
 Code/test acceptance commit: `417028c65813e2c0dbfa5ac5247481cba60ceae8`.
