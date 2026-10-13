@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import atexit
+from platforms import current
+from video_to_image_runtime import bundled, bundled_ffmpeg
 import json
 import math
 import os
@@ -47,46 +49,8 @@ def _unregister_process(process: subprocess.Popen) -> None:
 def terminate_process_tree(process: Optional[subprocess.Popen]) -> None:
     """FFmpeg와 그 자식 프로세스를 종료하고 완료될 때까지 기다린다."""
 
-    if process is None:
-        return
-
-    if process.poll() is None:
-        if sys.platform == "win32":
-            try:
-                subprocess.run(
-                    ["taskkill", "/PID", str(process.pid), "/T", "/F"],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    creationflags=windows_creation_flags(),
-                    check=False,
-                    timeout=5,
-                )
-            except (OSError, subprocess.TimeoutExpired):
-                # taskkill을 사용할 수 없는 환경에서는 Popen의 기본 종료로
-                # 최소한 FFmpeg 본체라도 정리한다.
-                try:
-                    process.terminate()
-                except OSError:
-                    pass
-        else:
-            try:
-                process.terminate()
-            except OSError:
-                pass
-
-    try:
-        process.wait(timeout=2)
-    except subprocess.TimeoutExpired:
-        try:
-            process.kill()
-        except OSError:
-            pass
-        try:
-            process.wait(timeout=2)
-        except (OSError, subprocess.TimeoutExpired):
-            pass
-    except (OSError, subprocess.SubprocessError):
-        pass
+    if process is not None:
+        current.stop_process(process, owned=process.pid in _ACTIVE_PROCESSES)
 
 
 def terminate_all_processes() -> None:
@@ -113,20 +77,11 @@ ProbeCancelled = OperationCancelled
 def find_ffmpeg() -> str:
     """PATH 또는 imageio-ffmpeg가 제공하는 FFmpeg 실행 파일을 찾는다."""
 
-    if getattr(sys, "frozen", False):
-        executable_root = Path(sys.executable).resolve().parent
-        bundle_root = Path(getattr(sys, "_MEIPASS", executable_root))
-        ffmpeg_directories = (
-            executable_root / "ffmpeg",
-            executable_root / "_internal" / "ffmpeg",
-            bundle_root / "ffmpeg",
-        )
-        for directory in ffmpeg_directories:
-            if not directory.exists():
-                continue
-            candidates = sorted(directory.glob("ffmpeg*.exe"))
-            if candidates:
-                return str(candidates[0])
+    if bundled():
+        executable = bundled_ffmpeg()
+        if not executable.is_file():
+            raise RuntimeError(f"배포본의 FFmpeg 파일이 없습니다: {executable}. 배포 파일 전체를 다시 압축 해제하세요.")
+        return str(executable)
 
     path_ffmpeg = shutil.which("ffmpeg")
     if path_ffmpeg:
@@ -167,7 +122,7 @@ def _capture(command: list[str], cancel: Optional[threading.Event], timeout: flo
         raise OperationCancelled()
     process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace",
-                               creationflags=process_creation_flags())
+                               **current.process_options())
     _register_process(process)
     deadline = time.monotonic() + timeout
     try:
@@ -203,7 +158,7 @@ def probe_video(ffmpeg: str, video_path: Path, cancel_event: Optional[threading.
         raise ValueError(f"영상 파일을 찾을 수 없습니다: {video_path}")
     sibling = Path(ffmpeg).resolve().with_name("ffprobe.exe" if sys.platform == "win32" else "ffprobe")
     ffprobe = str(sibling) if sibling.is_file() else shutil.which("ffprobe")
-    if ffprobe:
+    if ffprobe and not bundled() and not os.environ.get("VIDEO_TOOLS_FFMPEG_ONLY"):
         code, output, error = _capture([ffprobe, "-v", "error", "-protocol_whitelist", "file,pipe",
                                        "-show_format", "-show_streams", "-of", "json", str(video_path)], cancel_event)
         if code == 0:
@@ -257,7 +212,7 @@ def run_ffmpeg(command: list[str], cancel: threading.Event, duration: float,
         raise OperationCancelled()
     process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace",
-                               creationflags=process_creation_flags())
+                               **current.process_options())
     _register_process(process)
     lines: queue.Queue[Optional[str]] = queue.Queue(maxsize=256)
     reader_stop = threading.Event()

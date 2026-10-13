@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field, asdict
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +22,41 @@ from video_to_image_domain import (
 )
 
 
-SETTINGS_PATH = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / "VideoToImage" / "settings.json"
+from video_to_image_runtime import default_settings_path
+
+SETTINGS_PATH = default_settings_path()
+
+
+@dataclass(frozen=True)
+class EditingSettings:
+    output: str = ""
+    crop_enabled: bool = False
+    crop_x: str = "0"
+    crop_y: str = "0"
+    crop_width: str = "640"
+    crop_height: str = "360"
+    resize_enabled: bool = False
+    width: str = "1280"
+    height: str = "720"
+    rotation: str = "0"
+    flip_horizontal: bool = False
+    flip_vertical: bool = False
+    speed: str = "1"
+    mute: bool = False
+    overwrite: bool = False
+    crf: str = "20"
+
+def editing_from_dict(raw):
+    defaults = asdict(EditingSettings())
+    if not isinstance(raw, dict):
+        return EditingSettings()
+    normalized = {}
+    for key, default in defaults.items():
+        value = raw.get(key, default)
+        normalized[key] = value if isinstance(value, type(default)) else default
+    if normalized['rotation'] not in ('0', '90', '180', '270'):
+        normalized['rotation'] = '0'
+    return EditingSettings(**normalized)
 
 
 @dataclass(frozen=True)
@@ -40,6 +75,7 @@ class AppSettings:
     size_height: str = "1080"
     overwrite: bool = False
     geometry: str = ""
+    editing: EditingSettings = field(default_factory=EditingSettings)
 
 
 def _text_value(raw: dict[str, Any], key: str, default: str) -> str:
@@ -119,12 +155,26 @@ def settings_from_dict(raw: dict[str, Any]) -> AppSettings:
         size_height=_text_value(raw, "size_height", AppSettings.size_height),
         overwrite=overwrite if isinstance(overwrite, bool) else AppSettings.overwrite,
         geometry=geometry if isinstance(geometry, str) else AppSettings.geometry,
+        editing=editing_from_dict(raw.get("editing")),
     )
 
 
-def load_settings(path: Path = SETTINGS_PATH) -> AppSettings:
+def load_settings(path: Path | None = None) -> AppSettings:
     """설정 파일을 읽고 실패하면 기본 설정을 반환한다."""
 
+    implicit = path is None
+    path = path if path is not None else default_settings_path()
+    if implicit and sys.platform == "darwin" and not path.exists():
+        legacy = Path.home() / "AppData/Roaming/VideoToImage/settings.json"
+        if legacy.is_file():
+            try:
+                raw = json.loads(legacy.read_text(encoding="utf-8"))
+                if isinstance(raw, dict):
+                    settings = settings_from_dict(raw)
+                    save_settings(settings, path)
+                    return settings
+            except (OSError, UnicodeError, json.JSONDecodeError):
+                pass
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except (FileNotFoundError, OSError, UnicodeError, json.JSONDecodeError):
@@ -134,9 +184,10 @@ def load_settings(path: Path = SETTINGS_PATH) -> AppSettings:
     return settings_from_dict(raw)
 
 
-def save_settings(settings: AppSettings, path: Path = SETTINGS_PATH) -> bool:
+def save_settings(settings: AppSettings, path: Path | None = None) -> bool:
     """설정을 기존 JSON 키와 호환되는 형식으로 저장한다."""
 
+    path = path if path is not None else default_settings_path()
     raw = {
         "output": settings.output,
         "prefix": settings.prefix,
@@ -150,6 +201,7 @@ def save_settings(settings: AppSettings, path: Path = SETTINGS_PATH) -> bool:
         "size_height": settings.size_height,
         "overwrite": settings.overwrite,
         "geometry": settings.geometry,
+        "editing": asdict(settings.editing),
     }
     temporary_path: Path | None = None
     try:
