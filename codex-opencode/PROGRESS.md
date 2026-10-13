@@ -57,4 +57,12 @@
 - Node 22 local full suite reached 69 passes. The final suite adds alias, resume-quiescence and complete resource-preflight checks (74 total); exact final results are recorded in the PR validation evidence after completion.
 - Real model-free connections passed for OpenCode 1.18.30, Codex 0.146.0, Claude bundled 2.1.296 and Kilo 7.4.23. Default model resolution is not provider authentication or model-task validation.
 - Actions run 38417136124 passed macOS automated/native checks. Windows functional command/recovery checks passed, while two installation errors identified Node 22 Unicode overwrite behavior. The fix replaces owned generated-skill targets and reduces repeated package copies. Final-source Windows/macOS checks remain mandatory.
-- Issues MP-01 through MP-18 and goal/result comparison are recorded in docs/implementation-audit.md. Native IDE/desktop GUI and model-task behavior remain explicitly unconfirmed; no authored GUI was introduced.
+- Issues MP-01 through MP-25 and goal/result comparison are recorded in docs/implementation-audit.md. Native IDE/desktop GUI and model-task behavior remain explicitly unconfirmed; no authored GUI was introduced.
+
+### Final acceptance
+
+- Code/test commit `417028c65813e2c0dbfa5ac5247481cba60ceae8` passed [all four Node 22 CI jobs](https://github.com/youwonsock/tool-utility/actions/runs/38432215456): macOS 74 passed; Windows 71 passed, 0 failed, 3 Unix-only tests skipped; native connections for all four platforms passed on both OSes.
+- Exact local npm run check: 74 passed, 0 failed, strict type checking and plugin validation passed. Official plugin/skill validators passed, including generated standalone skills.
+- Windows native npm wrapper pipes required non-detached roots; owned taskkill /T termination remains enforced. The daemon-restart regression now uses a physical completion gate and confirms stopped state and exactly one prompt, without relying on an 8-second implementation delay or 15-second completion window.
+- SDK packaging shares identical dependency instances and preserves nearer nested versions/peer graphs. The source-relocated installation initializes the real bundled Claude runtime, including on Windows; current local deployment assets are 312 MiB rather than 512 MiB.
+- The accepted plan, 25 repair items and completed requirement comparison are in docs/platform-plan.md and docs/implementation-audit.md. Real paid-model tasks, provider authentication and native GUI behavior remain unconfirmed. The existing installed plugin was not activated or replaced.
