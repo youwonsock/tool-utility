@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { Store } from './store.js';
-import { BASELINE, PROTOCOL, STORE_FORMAT, WORKER_FORMAT, VERSION, backendVersions, platforms, Fault, invariant, schemas, type Attempt, type AttemptState, type Run, type Task, type TaskSpec, type ToolName, type WorkerSpec, type WorkerState, type Resource, type SubmitArgs, type WorkerSelection, type Model } from './types.js';
+import { BASELINE, CLAUDE_RUNTIME_VERSION, PROTOCOL, STORE_FORMAT, WORKER_FORMAT, VERSION, backendVersions, platforms, Fault, invariant, schemas, type Attempt, type AttemptState, type Run, type Task, type TaskSpec, type ToolName, type WorkerSpec, type WorkerState, type Resource, type SubmitArgs, type WorkerSelection, type Model } from './types.js';
 import { uid, digest, readJson, writeJson, mkdir, exec, alive, terminate, sleep, inside, processIdentity, bootId, treeAlive } from './io.js';
 import { branch, clean, git, head, repository, worktree, materialize, validateScope, resultCommit, integrate, targetReady, checkContext, contextHash } from './git.js';
 import { probeResources, resolvedConfig, launchOpenCode, inspectSession } from './opencode.js';
@@ -110,7 +110,7 @@ export class Engine {
     finally { const stopped=await backend.confirmStopped();state.stopped=stopped;writeJson(path.join(jobDir,'worker.json'),state);if(!stopped){connection.healthy=false;connection.error='Diagnostic runtime termination could not be confirmed.';} }
     return { version: VERSION, protocol: PROTOCOL, node: process.versions.node, platform: process.platform,
       storage_format:STORE_FORMAT,worker_format:WORKER_FORMAT,worker:publicWorker(selected),backend_version:state.backend_version,
-      opencode: selected.platform==='opencode'?version.stdout.trim():undefined, baseline:selected.baseline, compatible:version.code===0&&(selected.platform==='codex'?version.stdout.trim()===`codex-cli ${selected.baseline}`:version.stdout.trim()===selected.baseline),
+      opencode: selected.platform==='opencode'?version.stdout.trim():undefined, baseline:selected.baseline, compatible:version.code===0&&(selected.platform==='codex'?version.stdout.trim()===`codex-cli ${selected.baseline}`:selected.platform==='claude-code'&&selected.executable!=='bundled'?version.stdout.trim().split(' ')[0]===CLAUDE_RUNTIME_VERSION:version.stdout.trim()===selected.baseline),
       connection, provider_authentication: 'Not exercised by doctor; a real model request is required to verify provider credentials.',
       backends:platforms.map(platform=>({platform,baseline:backendVersions[platform],connection:platform===selected.platform?connection:{healthy:null,checked:false},experimental:platform==='codex'})),repo,
       resources: this.store.state.runs.flatMap(r => r.resources.map(p => ({ run_id: r.id, resource_key: p.resource_key, expected_instance: p.expected_instance, project_bound: p.project_bound }))),

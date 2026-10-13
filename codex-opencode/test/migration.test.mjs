@@ -55,7 +55,7 @@ test('migration preserves reviewed commits, validation history, context and reje
   const s=await submit(f,[task('a',{files:{'a.txt':'approved'}},{context_files:['AGENTS.md']})]);
   const run=await until(f,s.run_id,r=>r.tasks[0].state==='needs_review');await ready(f,run);
   await callOk(f,'submit_tasks',{request_id:'legacy-append',run_id:run.id,tasks:[task('b',{files:{'outside.txt':'rejected evidence'}})]});
-  await until(f,run.id,r=>r.tasks[1].state==='needs_review');f.engine.stop();
+  await until(f,run.id,r=>r.tasks[1].state==='needs_review');f.engine.stop();await f.engine.serial(async()=>{});
   const attempts=[...run.tasks.flatMap(task=>task.attempts),...run.validation_history.map(v=>v.attempt)];
   const deadline=Date.now()+30000;
   while((await Promise.all(attempts.map(a=>alive(a.worker?.host)))).some(Boolean)){assert.ok(Date.now()<deadline,'Worker hosts must exit before migration');await sleep(100);}
