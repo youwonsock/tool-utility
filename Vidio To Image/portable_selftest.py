@@ -2,6 +2,7 @@
 import json
 import time
 import tempfile
+import subprocess
 from pathlib import Path
 from unittest.mock import patch
 from dataclasses import replace
@@ -20,16 +21,40 @@ def run_gui_test(report: Path):
             callback_errors = []
             app.report_callback_exception = lambda kind, value, tb: callback_errors.append(str(value))
             app.update()
+            evidence['layout_sizes'] = []
+            for width, height in ((760, 760), (1100, 900)):
+                app.geometry(f'{width}x{height}')
+                app.update()
+                assert app.start_button.winfo_rootx() + app.start_button.winfo_width() <= app.winfo_rootx() + app.winfo_width()
+                for widget in app.editor.widgets:
+                    assert widget.winfo_x() >= 0
+                    assert widget.winfo_x() + widget.winfo_width() <= widget.master.winfo_width(), str(widget)
+                evidence['layout_sizes'].append([width, height])
             app.withdraw()
             evidence['window_system'] = app.tk.call('tk', 'windowingsystem')
             evidence['font'] = app.font_family
             source = root / '한글 input [1].mp4'
             make_video(source, app.service.ffmpeg)
             info = app.service.inspect(source)
-            app.video_path = source
-            app.video_var.set(str(source))
             app.output_var.set(str(root / 'captures'))
-            app.messages.put(ProbeCompleted(source, app.service.ffmpeg, info.duration, info))
+            with patch('video_to_image.filedialog.askopenfilename', return_value=str(source)):
+                app._choose_video()
+            from video_to_image_editor import show_mcp_configuration
+            import tkinter as tk
+            from tkinter import ttk
+            show_mcp_configuration(app)
+            dialog = next(w for w in app.winfo_children() if isinstance(w, tk.Toplevel))
+            body = dialog.winfo_children()[0]
+            workspace_entry = next(w for w in body.winfo_children() if isinstance(w, ttk.Entry) and int(w.grid_info()['row']) == 1)
+            dialog.setvar(workspace_entry.cget('textvariable'), str(root))
+            generate = next(w for w in body.winfo_children() if isinstance(w, ttk.Frame)).winfo_children()[0]
+            generate.invoke()
+            config_text = next(w for w in body.winfo_children() if isinstance(w, tk.Text))
+            entry = json.loads(config_text.get('1.0', 'end'))['mcpServers']['video-tools']
+            assert entry['args'][-2:] == ['--workspace', str(root.resolve())], entry
+            assert Path(entry['command']).is_file(), entry
+            evidence['gui_mcp_configuration'] = True
+            dialog.destroy()
             def finish():
                 deadline = time.monotonic() + 30
                 while app.current_job and time.monotonic() < deadline:
@@ -54,6 +79,11 @@ def run_gui_test(report: Path):
                 result = finish()
                 assert result['saved_count'] == 4, result
                 evidence['extraction'] = result['saved_count']
+                from PIL import Image
+                evidence['frame_pixels'] = []
+                for path in result['files']:
+                    with Image.open(path) as image:
+                        evidence['frame_pixels'].append(list(image.convert('RGB').getpixel((32, 18))))
                 app.format_var.set('JPG')
                 app.output_mode_var.set('격자 합치기')
                 app.grid_size_var.set('2 × 2')
@@ -82,6 +112,7 @@ def run_gui_test(report: Path):
                 assert not errors.called, errors.call_args
                 assert not callback_errors, callback_errors
                 evidence['editing'] = result
+                evidence['edit_fps'] = app.service.inspect(Path(result['output_path'])).fps
                 f['output'].set(str(root / 'crop.mp4'))
                 f['crop_enabled'].set(True)
                 f['crop_x'].set('1'); f['crop_y'].set('1')
@@ -93,6 +124,19 @@ def run_gui_test(report: Path):
                 assert (crop_result['width'], crop_result['height']) == (30, 20), crop_result
                 evidence['crop_flip_crf'] = True
                 f['speed'].set('2')
+                app.notebook.select(0); app.update()
+                app.output_mode_var.set('개별 이미지 저장')
+                app.size_width_var.set('1280'); app.size_height_var.set('720')
+                app.prefix_var.set('cancel'); app.interval_var.set('0.005')
+                app._start()
+                app._cancel()
+                deadline = time.monotonic() + 10
+                while app.current_job and time.monotonic() < deadline:
+                    app.update(); time.sleep(.02)
+                assert not app.current_job, 'GUI cancellation did not finish'
+                assert app.service.jobs.list()[0]['status'] == 'cancelled'
+                assert not list((root / 'captures').glob('cancel_*.jpg'))
+                evidence['gui_cancel'] = True
                 app._save_settings()
                 assert (root / 'settings.json').is_file()
                 evidence['settings'] = True

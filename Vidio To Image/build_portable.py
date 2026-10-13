@@ -27,6 +27,7 @@ def prepare():
     app.withdraw()
     app.update_idletasks()
     tk_version = app.tk.call('package', 'provide', 'Tk')
+    tk_libraries = {name: Path(str(app.tk.call('set', name))) for name in ('tcl_library', 'tk_library')}
     app.destroy()
     if metadata.version('pyinstaller') != '6.22.3':
         raise SystemExit('Install the locked release dependencies (PyInstaller 6.22.3).')
@@ -53,18 +54,25 @@ def prepare():
     python_license = Path(sysconfig.get_path('stdlib')) / 'LICENSE.txt'
     if python_license.is_file():
         shutil.copy2(python_license, legal / 'Python-LICENSE.txt')
-    (legal / 'FFmpeg-license.txt').write_text(run([str(target), '-L'], capture_output=True, text=True, encoding="utf-8").stdout)
+    for name, location in tk_libraries.items():
+        for parent in (location, location.parent, location.parent.parent):
+            license = parent / 'license.terms'
+            if license.is_file():
+                shutil.copy2(license, legal / (name + '-license.terms'))
+                break
+    (legal / 'FFmpeg-license.txt').write_text(run([str(target), '-L'], capture_output=True, text=True, encoding="utf-8").stdout, encoding='utf-8')
     (legal / 'FFmpeg-provenance.txt').write_text(
         'Provider: imageio-ffmpeg 0.6.0 platform wheel\n'
         'Provider source/build information: https://github.com/imageio/imageio-ffmpeg/tree/v0.6.0\n'
         'FFmpeg source releases: https://ffmpeg.org/releases/\n'
-        'Binary configuration and exact upstream version:\n' + version)
+        'Binary configuration and exact upstream version:\n' + version, encoding='utf-8')
     manifest = {'python': platform.python_version(), 'tk': tk_version, 'platform': platform.system(),
                 'architecture': platform.machine(), 'dependencies': packages,
                 'ffmpeg_original_sha256': hashlib.sha256(vendor.read_bytes()).hexdigest(),
                 'ffmpeg_version': version, 'required_encoders': ['libx264', 'aac'],
-                'source_commit': run(['git', 'rev-parse', 'HEAD'], capture_output=True, text=True, encoding="utf-8").stdout.strip()}
-    (legal / 'build-manifest.json').write_text(json.dumps(manifest, indent=2))
+                'source_commit': run(['git', 'rev-parse', 'HEAD'], capture_output=True, text=True, encoding="utf-8").stdout.strip(),
+                'source_dirty': bool(run(['git', 'diff', '--name-only'], capture_output=True, text=True, encoding='utf-8').stdout)}
+    (legal / 'build-manifest.json').write_text(json.dumps(manifest, indent=2), encoding='utf-8')
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
