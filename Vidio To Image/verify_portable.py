@@ -34,17 +34,17 @@ def main():
         try:
             report = output / 'gui-portable.json'
             gui = subprocess.run([str(binaries / ('VideoToImage' + suffix)), '--self-test-report', str(report)],
-                                 env=environment, cwd=relocated, capture_output=True, text=True, timeout=120)
+                                 env=environment, cwd=relocated, capture_output=True, text=True, encoding="utf-8", timeout=120)
             if gui.returncode:
-                raise RuntimeError(report.read_text() if report.exists() else gui.stderr)
-            evidence['gui'] = json.loads(report.read_text())
+                raise RuntimeError(report.read_text(encoding="utf-8") if report.exists() else gui.stderr)
+            evidence['gui'] = json.loads(report.read_text(encoding="utf-8"))
             if evidence['gui']['status'] != 'passed': raise RuntimeError(str(evidence['gui']))
             tests_env = {**environment, 'VIDEO_TOOLS_TEST_MCP': str(binaries / ('video-tools-mcp' + suffix)),
                          'VIDEO_TOOLS_TEST_FFMPEG': str(media), 'VIDEO_TOOLS_FFMPEG_ONLY': '1',
                          'VIDEO_TOOLS_ISOLATED_PATH': isolated_path}
             tests = subprocess.run([sys.executable, '-m', 'unittest', 'test_video_integration', 'test_video_mcp',
                                     'test_video_portable.PortableTests.test_mcp_shutdown_preserves_process_stdio', '-v'],
-                                   env=tests_env, cwd=ROOT, capture_output=True, text=True, timeout=180)
+                                   env=tests_env, cwd=ROOT, capture_output=True, text=True, encoding="utf-8", timeout=180)
             evidence['integration'] = {'returncode': tests.returncode, 'stdout': tests.stdout, 'stderr': tests.stderr}
             if tests.returncode: raise RuntimeError(tests.stderr)
             # Check actual binary storage, ignoring bundle resource symlinks.

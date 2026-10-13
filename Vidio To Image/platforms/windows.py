@@ -29,3 +29,9 @@ def stop_process(process, owned=True):
 def wheel_units(delta):
     return -int(delta / 120)
 
+def bind_precise_scroll(root, tag, canvas):
+    pass
+
+def install_quit_handler(root, callback):
+    pass
+

@@ -39,3 +39,19 @@ def stop_process(process, owned=True):
 def wheel_units(delta):
     return -int(delta / 120) if abs(delta) >= 120 else (-1 if delta > 0 else 1 if delta < 0 else 0)
 
+def bind_precise_scroll(root, tag, canvas):
+    if not root.tk.call('info', 'commands', 'tk::PreciseScrollDeltas'):
+        return
+    def precise(event):
+        if event.widget.winfo_toplevel() != root:
+            return
+        _x, y = root.tk.call('tk::PreciseScrollDeltas', event.delta)
+        region = canvas.bbox('all')
+        if region and region[3] > region[1]:
+            canvas.yview_moveto(canvas.yview()[0] - int(y) / (region[3] - region[1]))
+        return 'break'
+    root.bind_class(tag, '<TouchpadScroll>', precise)
+
+def install_quit_handler(root, callback):
+    pass
+

@@ -116,8 +116,7 @@ class VideoToImageApp(tk.Tk):
         self._build_ui()
         self.message_after_id = self.after(100, self._drain_messages)
         self.protocol("WM_DELETE_WINDOW", self._close)
-        if self.tk.call("tk", "windowingsystem") == "aqua":
-            self.createcommand("tk::mac::Quit", self._close)
+        current.install_quit_handler(self, self._close)
 
     def _build_style(self) -> None:
         style = ttk.Style(self)
@@ -196,9 +195,12 @@ class VideoToImageApp(tk.Tk):
             if event.widget.winfo_toplevel() == self:
                 units = current.wheel_units(event.delta)
                 if units: canvas.yview_scroll(units, "units")
-        self.bind("<MouseWheel>", wheel)
-        self.bind("<Button-4>", lambda event: canvas.yview_scroll(-1, 'units'))
-        self.bind("<Button-5>", lambda event: canvas.yview_scroll(1, 'units'))
+                return 'break'
+        self.scroll_tag = 'VideoToolsScroll' + self._w
+        self.bind_class(self.scroll_tag, '<MouseWheel>', wheel)
+        self.bind_class(self.scroll_tag, '<Button-4>', lambda event: (canvas.yview_scroll(-1, 'units'), 'break')[1])
+        self.bind_class(self.scroll_tag, '<Button-5>', lambda event: (canvas.yview_scroll(1, 'units'), 'break')[1])
+        current.bind_precise_scroll(self, self.scroll_tag, canvas)
 
         ttk.Label(outer, text=APP_TITLE, style="Title.TLabel").pack(anchor="w")
         ttk.Label(
@@ -211,6 +213,7 @@ class VideoToImageApp(tk.Tk):
         self._build_file_card(outer)
         self._build_range_card(outer)
         self.notebook = ttk.Notebook(outer)
+        self.notebook.enable_traversal()
         self.notebook.pack(fill='both', expand=True, pady=(2, 12))
         self.extract_tab = ttk.Frame(self.notebook, style='App.TFrame')
         self.edit_tab = ttk.Frame(self.notebook, style='App.TFrame')
@@ -220,6 +223,11 @@ class VideoToImageApp(tk.Tk):
         self._build_preview_card(self.extract_tab)
         self.editor = EditingControls(self, self.edit_tab, self._editing_settings)
         self.notebook.bind('<<NotebookTabChanged>>', self._mode_changed)
+        def scrollable(widget):
+            widget.bindtags((self.scroll_tag,) + widget.bindtags())
+            for child in widget.winfo_children(): scrollable(child)
+        scrollable(outer)
+        canvas.bindtags((self.scroll_tag,) + canvas.bindtags())
 
         progress_area = ttk.Frame(root, style="App.TFrame", padding=(28, 8, 28, 14))
         progress_area.pack(fill="x")
