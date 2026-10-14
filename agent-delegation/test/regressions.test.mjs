@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Store, Engine, Fault, uid, sleep, writeJson, readJson, WORKER_FORMAT, transition, moveRun, rejectedEvidence } from '../dist/index.mjs';
-import { fixture, task, submit, review, callOk, cli, fake, git } from './helpers.mjs';
+import { fixture, task, submit, review, callOk, cli, git } from './helpers.mjs';
 
 async function controlled(t) {
   const f = await fixture(t);
@@ -34,7 +34,7 @@ test('a correction makes its previous result unreviewable before dispatch and af
     assert.equal(result.error?.code, 'REVIEW');
   }
   const store = new Store(f.data);
-  const engine = new Engine(store,cli,{opencode:process.execPath,opencode_args:[fake],concurrency:2});
+  const engine = new Engine(store,cli,{concurrency:2});
   const recovered = {...f,store,engine,call:(name,args)=>engine.call(name,args)};
   const denied = await recovered.call('review_task',{...args,request_id:uid('stale'),decision:'approve'});
   assert.equal(denied.error?.code,'REVIEW');
@@ -127,7 +127,7 @@ test('a crash after checkout creation is fenced and its unpublished checkout is 
   assert.equal(fs.existsSync(prepared.integration_dir),true);
   await f.engine.tick();
   assert.equal(prepared.tasks[0].attempts.length,0);
-  const store=new Store(f.data),engine=new Engine(store,cli,{opencode:process.execPath,opencode_args:[fake],concurrency:2});
+  const store=new Store(f.data),engine=new Engine(store,cli,{concurrency:2});
   await engine.recoverPreparations();
   assert.equal(store.state.runs.length,0);
   assert.equal(fs.existsSync(prepared.integration_dir),false);
@@ -147,7 +147,7 @@ test('journal publication survives snapshot failure and retransmission without r
   assert.equal(f.store.uncertain,true);
   await f.engine.tick();
   assert.equal(f.store.state.runs[0].tasks[0].attempts.length,0);
-  const store=new Store(f.data),engine=new Engine(store,cli,{opencode:process.execPath,opencode_args:[fake],concurrency:2});
+  const store=new Store(f.data),engine=new Engine(store,cli,{concurrency:2});
   const recovered=await engine.call('submit_tasks',args);
   assert.equal(recovered.run_id,store.state.runs[0].id);
   assert.equal(store.state.runs.length,1);
@@ -269,7 +269,7 @@ test('a committed submission can recover its response after its manifest was rem
   };
   await assert.rejects(f.call('submit_tasks',args),e=>e.code==='REQUEST_UNCERTAIN');
   assert.equal(fs.existsSync(path.join(f.data,'submissions',request_id)),false);
-  const store=new Store(f.data),engine=new Engine(store,cli,{opencode:process.execPath,opencode_args:[fake],concurrency:2});
+  const store=new Store(f.data),engine=new Engine(store,cli,{concurrency:2});
   const result=await engine.call('submit_tasks',args);
   assert.equal(result.run_id,store.state.runs[0].id);assert.equal(store.state.runs.length,1);
   assert.equal(store.state.runs[0].tasks[0].attempts.length,0);
@@ -282,13 +282,13 @@ test('recovery preserves user changes in an unpublished prepared checkout', asyn
   await assert.rejects(f.call('submit_tasks',args),e=>e.code==='REQUEST_UNCERTAIN');
   const run=f.store.state.runs[0],original=fs.readFileSync(path.join(run.integration_dir,'base.txt'));
   fs.writeFileSync(path.join(run.integration_dir,'base.txt'),'user change');
-  const store=new Store(f.data),engine=new Engine(store,cli,{opencode:process.execPath,opencode_args:[fake],concurrency:2});
+  const store=new Store(f.data),engine=new Engine(store,cli,{concurrency:2});
   await engine.recoverPreparations();
   assert.equal(fs.readFileSync(path.join(run.integration_dir,'base.txt'),'utf8'),'user change');
   assert.equal(store.state.runs.length,0);
   await assert.rejects(engine.call('submit_tasks',args),e=>e.code==='REQUEST_UNCERTAIN');
   fs.writeFileSync(path.join(run.integration_dir,'base.txt'),original);
-  const cleanupEngine=new Engine(new Store(f.data),cli,{opencode:process.execPath,opencode_args:[fake],concurrency:2});
+  const cleanupEngine=new Engine(new Store(f.data),cli,{concurrency:2});
   await cleanupEngine.recoverPreparations();
   assert.equal(fs.existsSync(run.integration_dir),false);
 });
