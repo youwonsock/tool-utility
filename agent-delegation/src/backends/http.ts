@@ -9,7 +9,7 @@ import type { Answer, BackendContext, Observation, WorkerBackend } from './contr
 import { permissionKey } from './policy.js';
 import { verificationShell } from '../shell.js';
 import { executableVersion, reportedVersion } from './version.js';
-import { loadSdk, requireSdkMethods } from '../runtime.js';
+import { loadSdk, requireSdkMethods, callSdkFactory } from '../runtime.js';
 
 // Each generated SDK remains owned by its corresponding native runtime.
 export class HttpBackend implements WorkerBackend {
@@ -23,7 +23,7 @@ export class HttpBackend implements WorkerBackend {
       save();return;
     }
     const worker=spec.worker;
-    const {createKiloClient}=await loadSdk(worker,state.runtime!);
+    const sdk=await loadSdk(worker,state.runtime!);
     const version=await executableVersion(spec);
     const initial=await resolvedConfig(spec.executable,spec.executable_args,spec.directory,workerEnvironment(worker));
     state.verification_shell=verificationShell(worker.shell,initial.shell);save();
@@ -43,7 +43,7 @@ export class HttpBackend implements WorkerBackend {
       invariant(runtime.child.exitCode===null&&!state.error,'BACKEND_START','Kilo exited before announcing its endpoint.');await sleep(100);
     }
     invariant(state.url,'BACKEND_START','Kilo did not announce its endpoint.');
-    this.client=createKiloClient({baseUrl:state.url,directory:spec.directory,headers:{authorization:`Basic ${Buffer.from(`kilo:${spec.password}`).toString('base64')}`},
+    this.client=callSdkFactory(sdk,worker,{baseUrl:state.url,directory:spec.directory,headers:{authorization:`Basic ${Buffer.from(`kilo:${spec.password}`).toString('base64')}`},
       fetch:((input:any,init:any)=>fetch(input,{...init,signal:init?.signal??AbortSignal.timeout(30000)})) as typeof fetch});
     requireSdkMethods(this.client,httpSdkMethods,worker);
     const health=(await this.client.global.health({throwOnError:true})).data;

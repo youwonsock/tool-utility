@@ -9,7 +9,7 @@ import { workerEnvironment } from './profiles.js';
 import { connection } from './backends/policy.js';
 import { verificationShell } from './shell.js';
 import { executableVersion, reportedVersion } from './backends/version.js';
-import { loadSdk, requireSdkMethods } from './runtime.js';
+import { loadSdk, requireSdkMethods, callSdkFactory } from './runtime.js';
 
 export async function resolvedConfig(executable: string, args: string[], directory: string, env = process.env) {
   const r = await exec(executable, [...args, 'debug','config','--pure'], { cwd: directory, env, timeout: 60000 });
@@ -79,7 +79,7 @@ export async function selectModel(client: any, config: Record<string, any>, spec
   return model;
 }
 export async function launchOpenCode(spec: WorkerSpec, state: WorkerState, save: () => void) {
-  const {createOpencodeClient}=await loadSdk(spec.worker,state.runtime!);
+  const sdk=await loadSdk(spec.worker,state.runtime!);
   const version = await executableVersion(spec);
   const initial = await resolvedConfig(spec.executable, spec.executable_args, spec.directory,spec.worker?workerEnvironment(spec.worker):process.env);
   state.verification_shell=verificationShell(spec.worker?.shell,initial.shell);save();
@@ -107,7 +107,7 @@ export async function launchOpenCode(spec: WorkerSpec, state: WorkerState, save:
     await sleep(100);
   }
   invariant(state.url, 'OPENCODE_START', 'OpenCode did not announce its localhost endpoint.');
-  const client = createOpencodeClient({ baseUrl: state.url, directory: spec.directory,
+  const client = callSdkFactory(sdk,spec.worker,{ baseUrl: state.url, directory: spec.directory,
     headers: { authorization: `Basic ${Buffer.from(`opencode:${spec.password}`).toString('base64')}` },
     fetch: ((input: any, init?: any) => fetch(input, { ...init, signal: init?.signal ?? AbortSignal.timeout(30000) })) as typeof fetch,
   });

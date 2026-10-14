@@ -11,7 +11,7 @@ import { connection, toolPolicy, permissionKey } from './policy.js';
 import { beginProcess, registerProcess, stopOwned } from './process.js';
 import type { Answer, BackendContext, Observation, WorkerBackend } from './contract.js';
 import { reportedVersion } from './version.js';
-import { loadSdk, requireSdkMethods, runtimeFault, findExecutable } from '../runtime.js';
+import { loadSdk, requireSdkMethods, runtimeFault, findExecutable, callSdkFactory } from '../runtime.js';
 
 class PromptQueue<T> implements AsyncIterable<T> {
   private waiting?: (value:IteratorResult<T>)=>void;
@@ -91,7 +91,7 @@ export class ClaudeBackend implements WorkerBackend {
     let claimed=false;
     const spawnConfigured=options.spawnClaudeCodeProcess as (options:any)=>ChildProcessWithoutNullStreams;
     options.spawnClaudeCodeProcess=(options:any)=>{const first=!claimed;claimed=true;return spawnConfigured({...options,...(first?{delegationIntent:launchIntent}:{})});};
-    this.query=sdk.query({prompt:this.queue,options});
+    this.query=callSdkFactory(sdk,spec.worker,{prompt:this.queue,options});
     requireSdkMethods(this.query,['initializationResult','getContextUsage','setModel','interrupt','close'],spec.worker);
     if(typeof this.query?.[Symbol.asyncIterator]!=='function')throw runtimeFault('SDK_INCOMPATIBLE',spec.worker,'Claude SDK query does not provide an async message stream.');
     void (async()=>{
