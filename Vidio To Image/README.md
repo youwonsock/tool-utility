@@ -18,7 +18,8 @@ GUI와 MCP는 공용 영상 처리 서비스와 작업 관리 코드를 사용�
 - 현재 설정을 반영한 합성 샘플 미리보기
 - PNG/JPG 형식, 저장 폴더, 파일명 접두사, 기존 파일 덮어쓰기 설정
 - FFmpeg 작업 진행률 표시와 추출 취소
-- 설정을 `%APPDATA%\VideoToImage\settings.json`에 저장
+- 구간 자르기·크롭·회전·반전·크기 조절·배속·음소거·CRF 영상 편집
+- Windows는 `%APPDATA%\VideoToImage\settings.json`, Mac은 `~/Library/Application Support/VideoToImage/settings.json`에 설정 저장
 
 ## 설치 없는 배포본 실행
 
@@ -29,6 +30,8 @@ GUI와 MCP는 공용 영상 처리 서비스와 작업 관리 코드를 사용�
 | `VideoToImage-win64.zip` | `VideoToImage.exe` 더블클릭 | 같은 폴더의 `video-tools-mcp.exe` |
 | `VideoToImage-macos-arm64.zip` | `VideoToImage.app` 더블클릭 | `VideoToImage.app/Contents/MacOS/video-tools-mcp` |
 | `VideoToImage-macos-x86_64.zip` | `VideoToImage.app` 더블클릭 | `VideoToImage.app/Contents/MacOS/video-tools-mcp` |
+
+검증된 배포본은 [최종 CI 실행의 Artifacts](https://github.com/youwonsock/tool-utility/actions/runs/38375537712)에서 받을 수 있습니다. `video-tools-windows-latest`, `video-tools-macos-15`(Apple Silicon), `video-tools-macos-15-intel` 중 해당 환경을 선택하세요. GitHub 로그인이 필요하며, 받은 아티팩트 ZIP을 풀고 `dist/` 안의 배포 ZIP을 다시 풀면 실행 파일이 나옵니다. 아티팩트에는 SHA-256과 GUI·MCP 검증 보고서도 포함됩니다.
 
 Mac은 내부용 ad-hoc 서명 배포입니다. 최초 실행 시 macOS의 보안 승인이 필요할 수 있으며, 시스템 설정 → 개인정보 보호 및 보안에서 해당 앱의 실행을 승인합니다. 보안 기능을 전체적으로 끄지 않습니다. 임의 경로로 실행되는 App Translocation 상태에서도 앱 내부 리소스를 사용하며, MCP 설정을 만들 때는 실제 배포 위치를 선택하세요.
 
@@ -223,7 +226,7 @@ Linux/macOS에서는 다음과 같이 실행합니다.
 
 stdio 서버는 클라이언트의 프로토콜 입력을 기다리므로 실행 후 일반 메뉴가 표시되지 않습니다. MCP 전용 서버의 stdout은 프로토콜 전용이며 설치 로그를 출력하지 않습니다.
 
-소스 실행에서는 FFmpeg를 PATH 또는 `imageio-ffmpeg`에서 찾습니다. 배포본은 동봉 FFmpeg를 사용합니다. 특정 버전을 사용하려면 MCP 설정의 `args`에 `--ffmpeg`와 실행 파일 경로를 추가하세요. ffprobe가 있으면 JSON 메타데이터를 사용하고, 없으면 FFmpeg의 정보 출력을 사용합니다. FFmpeg만 있는 환경에서는 영상 길이 표시의 정밀도가 낮을 수 있습니다.
+소스 실행에서는 FFmpeg를 PATH 또는 `imageio-ffmpeg`에서 찾습니다. 소스 환경에 ffprobe가 있으면 JSON 메타데이터를 사용하고, 없으면 FFmpeg의 정보 출력을 사용합니다. 배포본은 동봉 FFmpeg만으로 영상을 처리하고 메타데이터를 조회합니다. 특정 버전을 사용하려면 MCP 설정의 `args`에 `--ffmpeg`와 실행 파일 경로를 추가하세요. FFmpeg 정보 출력의 영상 길이는 소수 둘째 자리까지만 표시될 수 있습니다.
 
 서버는 공식 MCP Python SDK의 `mcp==1.30.0`을 사용하며, 버전은 `requirements-mcp.txt`에 고정되어 있습니다. [공식 v1 문서](https://py.sdk.modelcontextprotocol.io/v1/)
 
@@ -336,11 +339,11 @@ python -m venv .venv
 
 ## 문제 해결
 
-- `FFmpeg 실행 파일을 찾지 못했습니다`가 표시되면 `.venv`가 활성화된 상태인지 확인하고 `install.ps1`을 다시 실행합니다.
+- 배포본에서 FFmpeg 파일이 없다는 오류가 나면 ZIP 전체를 다시 풀고 배포 폴더 또는 Mac 앱 전체를 함께 이동하세요. 소스 실행에서 FFmpeg를 찾지 못하면 해당 가상환경에 `requirements-mcp.txt` 의존성이 설치됐는지 확인합니다.
 - 동영상 분석이 실패하면 FFmpeg가 읽을 수 있는 파일인지, 파일 경로에 접근할 수 있는지 확인합니다.
 - 기존 파일을 덮어쓰지 않으려면 `기존 파일 덮어쓰기`를 끈 상태로 실행합니다. 이 경우 새로 생성된 파일만 완료 수에 포함됩니다.
 - 출력 폴더를 저장소 안에 지정하면 생성된 이미지가 많아질 수 있으므로, 개발 저장소에서는 `test-output`, `resolution-test`, `mosaic-test`, `packaging-feature-test` 같은 테스트 출력 폴더를 사용합니다.
-- MCP 도구가 표시되지 않으면 `mcp-config.local.json`의 Python 경로가 이 프로젝트의 가상환경인지 확인하고, [클라이언트 연결](#클라이언트-연결)에 따라 설정을 등록한 뒤 서버를 다시 시작합니다.
+- MCP 도구가 표시되지 않으면 배포본의 **MCP 연결 설정**을 다시 생성하고 클라이언트에 등록한 뒤 서버를 다시 시작합니다. 소스 실행에서는 `mcp-config.local.json`의 Python 경로가 이 프로젝트의 가상환경인지도 확인하세요.
 - MCP에서 파일을 찾지 못하거나 작업 폴더 오류가 나면 `server_info`의 `workspace`와 입력 경로를 확인합니다. 상대 경로는 저장소가 아니라 해당 작업 폴더를 기준으로 해석합니다.
 
 ## 개발자 확인
