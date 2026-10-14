@@ -1,0 +1,8 @@
+.build/
+__pycache__/
+*.py[co]
+.DS_Store
+*.log
+mcp-config.local.json
+
+# Native .pyd modules and the unpacked portable runtimes are distribution files.

@@ -1,4 +1,0 @@
--r requirements.txt
-mcp==1.30.0
-Pillow>=10.4,<13
-
