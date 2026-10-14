@@ -6,9 +6,52 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import asyncio
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
+
+def compare_frame_signatures(actual, expected):
+    if len(actual) != len(expected):
+        raise RuntimeError('GUI/MCP frame count mismatch')
+    for index, (received, wanted) in enumerate(zip(actual, expected)):
+        if received['size'] != wanted['size']:
+            raise RuntimeError(f'GUI/MCP frame geometry mismatch at frame {index}')
+        if received['rgb_sha256'] != wanted['rgb_sha256']:
+            raise RuntimeError(f'GUI/MCP pixel mismatch at frame {index}')
+
+async def compare_gui_mcp(executable, ffmpeg, workspace, environment, gui):
+    from mcp import ClientSession, StdioServerParameters
+    from mcp.client.stdio import stdio_client
+    from media_test_support import image_signature, make_video
+    workspace.mkdir()
+    make_video(workspace / 'input.mp4', str(ffmpeg))
+    async with stdio_client(StdioServerParameters(command=str(executable), args=['--workspace', str(workspace)], env=environment)) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            async def call(name, args):
+                response = await session.call_tool(name, args)
+                if response.isError: raise RuntimeError(str(response.content))
+                return response.structuredContent
+            async def finish(job):
+                for _ in range(300):
+                    state = await call('get_job', {'job_id': job['job_id']})
+                    if state['status'] == 'completed': return state['result']
+                    if state['status'] in {'failed', 'cancelled'}: raise RuntimeError(str(state))
+                    await asyncio.sleep(.05)
+                raise TimeoutError('MCP parity job did not finish')
+            frames = await finish(await call('start_frame_extraction', {'video_path': 'input.mp4', 'output_directory': 'frames'}))
+            signatures = [image_signature(workspace / path) for path in frames['files']]
+            compare_frame_signatures(signatures, gui['frame_signatures'])
+            edited = await finish(await call('start_video_edit', {'video_path': 'input.mp4', 'output_path': 'edited.mp4',
+                'start': 1, 'end': 3, 'rotation': 90, 'speed': 2, 'mute': True, 'width': 128, 'height': 72}))
+            info = await call('inspect_video', {'video_path': 'edited.mp4'})
+            for key in ('width', 'height', 'has_audio'):
+                if edited[key] != gui['editing'][key]: raise RuntimeError(f'GUI/MCP {key} mismatch')
+            if abs(edited['duration'] - gui['editing']['duration']) > .1 or abs(info['fps'] - gui['edit_fps']) > .01:
+                raise RuntimeError('GUI/MCP timing mismatch')
+            return {'identical_frame_pixels': True, 'matching_frame_count_geometry': True,
+                    'matching_edit_geometry_timing_audio': True}
 
 def main():
     evidence = {'platform': platform.system(), 'architecture': platform.machine(), 'status': 'running'}
@@ -21,6 +64,7 @@ def main():
             shutil.copytree(ROOT / 'dist/VideoToImage.app', product, symlinks=True)
             binaries = product / 'Contents/MacOS'
             media = product / 'Contents/Frameworks/media/ffmpeg'
+            legal = product / 'Contents/Resources/licenses'
             isolated_path = '/usr/bin:/bin:/usr/sbin:/sbin'
             subprocess.run(['codesign', '--verify', '--deep', '--strict', str(product)], check=True)
         else:
@@ -28,10 +72,18 @@ def main():
             shutil.copytree(ROOT / 'dist/VideoToImage', product)
             binaries = product
             media = product / '_internal/media/ffmpeg.exe'
+            legal = product / '_internal/licenses'
             isolated_path = str(Path(os.environ['SystemRoot']) / 'System32')
         suffix = '.exe' if sys.platform == 'win32' else ''
         environment = {**os.environ, 'PATH': isolated_path, 'PYTHONPATH': '', 'PYTHONHOME': ''}
         try:
+            required_notices = ['Python-LICENSE.txt', 'tcl_library-license.terms',
+                                'tk_library-license.terms', 'FFmpeg-license.txt', 'FFmpeg-provenance.txt']
+            for name in required_notices:
+                path = legal / name
+                if not path.is_file() or not path.stat().st_size:
+                    raise RuntimeError(f'Packaged runtime notice is missing: {name}')
+            evidence['license_inventory'] = required_notices
             report = output / 'gui-portable.json'
             gui = subprocess.run([str(binaries / ('VideoToImage' + suffix)), '--self-test-report', str(report)],
                                  env=environment, cwd=relocated, capture_output=True, text=True, encoding="utf-8", timeout=120)
@@ -47,6 +99,8 @@ def main():
                                    env=tests_env, cwd=ROOT, capture_output=True, text=True, encoding="utf-8", timeout=180)
             evidence['integration'] = {'returncode': tests.returncode, 'stdout': tests.stdout, 'stderr': tests.stderr}
             if tests.returncode: raise RuntimeError(tests.stderr)
+            evidence['gui_mcp_parity'] = asyncio.run(compare_gui_mcp(binaries / ('video-tools-mcp' + suffix),
+                 media, relocated / 'parity workspace', environment, evidence['gui']))
             # Check actual binary storage, ignoring bundle resource symlinks.
             copies = [p for p in product.rglob('*') if p.name in ('ffmpeg', 'ffmpeg.exe') and p.is_file() and not p.is_symlink()]
             if len(copies) != 1: raise RuntimeError(f'Expected one shared FFmpeg binary, found {copies}')
