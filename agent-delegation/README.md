@@ -19,7 +19,7 @@ flowchart LR
 ## 요구 사항
 
 - Windows 또는 macOS, Node.js **22 이상**, Git. 지시자는 공식 MCP를 지원하는 로컬 CLI·IDE·데스크톱으로 연결합니다.
-- 구현자 기준: OpenCode CLI·SDK **1.18.30**, Codex CLI **0.146.0**, Claude Agent SDK **0.3.296**와 번들 CLI **2.1.296**, Kilo CLI·SDK **7.4.23**. 선택한 구현자의 네이티브 인증을 사용합니다. 기존 MCP SDK **1.30.0**와 Zod **3.25.76**는 유지하고 Claude의 Zod 4 의존성은 별도 런타임 패키지로 격리합니다. Codex app-server 연동은 실험 기능입니다.
+- SDK 고정 버전: OpenCode **1.18.30**, Claude Agent SDK **0.3.296**와 번들 CLI **2.1.296**, Kilo **7.4.23**, MCP **1.30.0**, Zod **3.25.76**. Claude의 Zod 4 의존성은 별도 런타임 패키지로 격리합니다. CLI 검증 기준은 OpenCode **1.18.30**, Codex **0.146.0**, Kilo **7.4.23**이며 설치된 CLI는 버전이 달라도 API·세션·필수 권한 정책이 호환되면 사용합니다. `doctor.compatible`은 모델 호출 없이 확인한 초기화·정책·세션 생성과 프로세스 종료 결과를 나타내고 `backend_version`은 실제 런타임 버전입니다. 선택한 구현자의 네이티브 인증을 사용하며 Codex app-server 연동은 실험 기능입니다.
 - 작업 대상은 이름 있는 브랜치가 체크아웃된 Git 저장소 루트여야 합니다. 추적 파일 수정과 미추적 소스 파일이 없어야 합니다. ignored 규칙·스펙은 `context_files`로 지정합니다.
 - 기본 동시 실행 수 2, 시도 제한 시간 60분, 최초 시도 이후 수정 재시도 3회. 서비스 전체 제한은 `AGENT_DELEGATION_CONCURRENCY`, 실행별 제한은 `settings`로 지정합니다.
 

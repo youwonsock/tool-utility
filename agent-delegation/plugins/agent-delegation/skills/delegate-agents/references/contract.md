@@ -29,6 +29,8 @@ Verification runs in the common command runner. Its default selection and Bash/Z
 
 Local profiles.json contains `{profiles: {name: {platform, executable, args?, native_profile?, env_refs?, shell?}}}`. native_profile is Codex-only. env_refs maps target variable names to existing environment variable names and cannot disable the worker recursion guard. Profiles are snapshotted at submission; they contain configuration, not copied credential files. A per-platform `<platform>-default` profile overrides its builtin default.
 
+SDK dependencies are pinned; installed native CLI versions are accepted when required APIs and policies work. `doctor.compatible` reports model-free initialization, effective policy, session creation and confirmed process termination. `baseline` is the test reference; `backend_version` is the actual runtime. A successful diagnostic does not verify paid model execution or provider credentials.
+
 A resource profile is supplied on initial `submit_tasks`:
 
 ```json

@@ -3,13 +3,14 @@ import path from 'node:path';
 import { createKiloClient } from '@kilocode/sdk/v2/client';
 import { createOpencodeClient } from '@opencode-ai/sdk/v2/client';
 import { invariant, type Model, type InputRequest, type WorkerSpec } from '../types.js';
-import { exec, sleep, writeJson, digest } from '../io.js';
+import { sleep, writeJson, digest } from '../io.js';
 import { launchOpenCode, resolvedConfig, restrictions, enforceHttpPolicy } from '../opencode.js';
 import { workerEnvironment } from '../profiles.js';
 import { spawnRuntime, stopOwned } from './process.js';
 import type { Answer, BackendContext, Observation, WorkerBackend } from './contract.js';
 import { permissionKey } from './policy.js';
 import { verificationShell } from '../shell.js';
+import { executableVersion, reportedVersion } from './version.js';
 
 // Each generated SDK remains owned by its corresponding native runtime.
 export class HttpBackend implements WorkerBackend {
@@ -20,12 +21,10 @@ export class HttpBackend implements WorkerBackend {
     const {spec,state,save}=this.context;
     if(spec.worker?.platform!=='kilo') {
       const api=await launchOpenCode(spec,state,save);this.client=api.client;this.log=api.log;
-      state.backend='opencode';state.backend_version='1.18.30';
       save();return;
     }
     const worker=spec.worker;
-    const version=await exec(spec.executable,[...spec.executable_args,'--version']);
-    invariant(version.code===0&&version.stdout.trim()===worker.baseline,'BACKEND_VERSION',`Expected Kilo ${worker.baseline}; found ${version.stdout.trim()}.`);
+    const version=await executableVersion(spec);
     const initial=await resolvedConfig(spec.executable,spec.executable_args,spec.directory,workerEnvironment(worker));
     state.verification_shell=verificationShell(worker.shell,initial.shell);save();
     const overlay=restrictions(initial,spec.resources,spec.directory);
@@ -47,8 +46,9 @@ export class HttpBackend implements WorkerBackend {
     this.client=createKiloClient({baseUrl:state.url,directory:spec.directory,headers:{authorization:`Basic ${Buffer.from(`kilo:${spec.password}`).toString('base64')}`},
       fetch:((input:any,init:any)=>fetch(input,{...init,signal:init?.signal??AbortSignal.timeout(30000)})) as typeof fetch});
     const health=(await this.client.global.health({throwOnError:true})).data;
-    invariant(health.healthy&&health.version===worker.baseline,'BACKEND_VERSION','Unexpected Kilo API version.');
+    invariant(health?.healthy===true&&reportedVersion(health.version,'Kilo')===version,'BACKEND_API','Kilo health API did not identify the launched runtime.');
     const providers=(await this.client.provider.list({}, {throwOnError:true})).data;
+    invariant(providers&&Array.isArray(providers.all)&&Array.isArray(providers.connected)&&providers.default&&typeof providers.default==='object','BACKEND_API','Kilo provider API returned an incompatible response.');
     let model=spec.model as Model|undefined;
     if(!model&&initial.model){const [providerID,...parts]=String(initial.model).split('/');model={providerID:providerID!,modelID:parts.join('/')};}
     if(!model){const provider=providers.all.find((p:any)=>providers.connected.includes(p.id));if(provider)model={providerID:provider.id,modelID:providers.default[provider.id]};}
@@ -61,6 +61,7 @@ export class HttpBackend implements WorkerBackend {
     let session:any;
     try {session=(await this.client.session.create({title:`delegation:${spec.id}`,agent:'delegate-worker',...(state.model?{model:{id:(state.model as Model).modelID,providerID:(state.model as Model).providerID}}:{})},{throwOnError:true})).data;}
     catch {const matches=(await this.client.session.list({}, {throwOnError:true})).data.filter((s:any)=>s.title===`delegation:${spec.id}`);invariant(matches.length===1,'SESSION_UNCERTAIN','Session response was lost; no session was created again.');session=matches[0];}
+    invariant(typeof session?.id==='string'&&session.id.length>0,'BACKEND_API','Native session API did not return a session ID. No session was created again.');
     state.session_id=session.id;save();
   }
   async dispatch(prompt:string,requestID:string) {

@@ -4,12 +4,13 @@ import crypto from 'node:crypto';
 import spawn from 'cross-spawn';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import type { Options, Query, PermissionResult } from '@agent-delegation/claude-runtime';
-import { invariant, CLAUDE_RUNTIME_VERSION, type InputRequest } from '../types.js';
+import { invariant, type InputRequest } from '../types.js';
 import { writeJson, digest } from '../io.js';
 import { workerEnvironment } from '../profiles.js';
 import { connection, toolPolicy, permissionKey } from './policy.js';
 import { beginProcess, registerProcess, stopOwned } from './process.js';
 import type { Answer, BackendContext, Observation, WorkerBackend } from './contract.js';
+import { reportedVersion } from './version.js';
 
 class PromptQueue<T> implements AsyncIterable<T> {
   private waiting?: (value:IteratorResult<T>)=>void;
@@ -100,7 +101,7 @@ export class ClaudeBackend implements WorkerBackend {
     })();
     this.initialization=await this.query.initializationResult();
     await Promise.all(this.registrations);
-    invariant(this.initialization.claude_code_version===CLAUDE_RUNTIME_VERSION,'BACKEND_VERSION','Claude SDK runtime version differs from its pinned bundle.');
+    reportedVersion(this.initialization.claude_code_version,'Claude Code');
     invariant(this.initialization.hooks_applied===true,'MCP_POLICY','Claude did not confirm worker hook registration.');
     const usage=await this.query.getContextUsage({detail:'summary'});
     invariant(typeof usage.model==='string'&&usage.model.length>0,'MODEL_UNAVAILABLE','Claude did not identify its current native model.');

@@ -6,6 +6,40 @@ import { createBackend, resolveWorker, uid, sleep, connection, restrictions } fr
 import { fixture, cli } from './helpers.mjs';
 import { mockProfiles, selection } from './native-helpers.mjs';
 
+async function diagnose(t,platform,args=[]) {
+  const f=await fixture(t);f.engine.stop();mockProfiles(f);
+  const file=path.join(f.data,'profiles.json'),profiles=JSON.parse(fs.readFileSync(file));
+  const audit=path.join(f.dir,'native-audit.jsonl');
+  const previous=process.env.AGENT_DELEGATION_TEST_AUDIT;
+  process.env.AGENT_DELEGATION_TEST_AUDIT=audit;
+  t.after(()=>{if(previous===undefined)delete process.env.AGENT_DELEGATION_TEST_AUDIT;else process.env.AGENT_DELEGATION_TEST_AUDIT=previous;});
+  Object.assign(profiles.profiles[`mock-${platform}`],{args:[...profiles.profiles[`mock-${platform}`].args,...args],env_refs:{FAKE_AUDIT:'AGENT_DELEGATION_TEST_AUDIT'}});
+  fs.writeFileSync(file,JSON.stringify(profiles));
+  const result=await f.engine.doctor({worker:selection(platform),repo:f.repo});
+  const events=fs.existsSync(audit)?fs.readFileSync(audit,'utf8').trim().split('\n').map(JSON.parse):[];
+  assert.equal(events.filter(e=>e.event==='prompt').length,0);
+  return result;
+}
+
+for(const [platform,version]of Object.entries({opencode:'1.19.0',codex:'0.162.1','claude-code':'2.1.300',kilo:'7.4.24'})) {
+  test(`${platform} accepts an installed CLI with matching APIs and a different version`,async t=>{
+    const result=await diagnose(t,platform,[`--native-version=${version}`,...(platform==='codex'?['--untrusted-unsupported']:[])]);
+    assert.equal(result.connection.healthy,true,JSON.stringify(result));
+    assert.equal(result.compatible,true);assert.equal(result.backend_version,version);
+  });
+  test(`${platform} rejects incompatible policy even when the CLI version is recognized`,async t=>{
+    const result=await diagnose(t,platform,['--incompatible-policy']);
+    assert.equal(result.connection.healthy,false);assert.equal(result.compatible,false);
+    assert.match(result.connection.error,/policy|configuration|hook/i);
+  });
+}
+
+for(const platform of ['opencode','kilo'])test(`${platform} rejects an incompatible session API without dispatching a prompt`,async t=>{
+  const result=await diagnose(t,platform,['--invalid-session']);
+  assert.equal(result.connection.healthy,false);assert.equal(result.compatible,false);
+  assert.match(result.connection.error,/session/i);
+});
+
 async function native(t,platform,model,extraArgs=[]) {
   const f=await fixture(t);f.engine.stop();mockProfiles(f);
   if(extraArgs.length){const file=path.join(f.data,'profiles.json'),profiles=JSON.parse(fs.readFileSync(file));profiles.profiles[`mock-${platform}`].args.push(...extraArgs);fs.writeFileSync(file,JSON.stringify(profiles));}

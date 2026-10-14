@@ -5,7 +5,6 @@ export const STORE_FORMAT = 2;
 export const WORKER_FORMAT = 2;
 export const VERSION = '1.0.0';
 export const BASELINE = '1.18.30';
-export const CLAUDE_RUNTIME_VERSION = '2.1.296';
 export const platforms = ['opencode','codex','claude-code','kilo'] as const;
 export type Platform = typeof platforms[number];
 export const backendVersions: Record<Platform,string> = { opencode: BASELINE, codex: '0.146.0', 'claude-code': '0.3.296', kilo: '7.4.23' };

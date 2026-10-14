@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { Store } from './store.js';
-import { CLAUDE_RUNTIME_VERSION, PROTOCOL, STORE_FORMAT, WORKER_FORMAT, VERSION, backendVersions, platforms, Fault, invariant, schemas, type Attempt, type AttemptState, type Run, type Task, type TaskSpec, type ToolName, type WorkerSpec, type WorkerState, type Resource, type SubmitArgs, type WorkerSelection } from './types.js';
-import { uid, digest, readJson, writeJson, mkdir, exec, alive, terminate, sleep, inside, processIdentity, bootId, treeAlive } from './io.js';
+import { PROTOCOL, STORE_FORMAT, WORKER_FORMAT, VERSION, backendVersions, platforms, Fault, invariant, schemas, type Attempt, type AttemptState, type Run, type Task, type TaskSpec, type ToolName, type WorkerSpec, type WorkerState, type Resource, type SubmitArgs, type WorkerSelection } from './types.js';
+import { uid, digest, readJson, writeJson, mkdir, alive, terminate, sleep, inside, processIdentity, bootId, treeAlive } from './io.js';
 import { branch, clean, git, head, repository, worktree, materialize, validateScope, resultCommit, integrate, targetReady, checkContext, contextHash } from './git.js';
 import { probeResources } from './opencode.js';
 
@@ -93,7 +93,6 @@ export class Engine {
   }
   async doctor(args: { repo?: string; worker?:WorkerSelection }) {
     const selected=resolveWorker(this.store.root,args.worker);
-    const version = selected.executable==='bundled'?{stdout:'0.3.296',code:0}:await exec(selected.executable, [...selected.executable_args, '--version']).catch(()=>({stdout:'',code:1}));
     const repo = args.repo ? await repository(args.repo) : undefined;
     const doctorID = uid('doctor'), jobDir = path.join(this.store.root, 'diagnostics', doctorID); mkdir(jobDir);
     const state: WorkerState = { protocol: WORKER_FORMAT, id: doctorID, phase: 'doctor', updated: Date.now(), prompt_id: '', verification: [], inputs: [], replies: {} };
@@ -108,7 +107,7 @@ export class Engine {
     finally { const stopped=await backend.confirmStopped();state.stopped=stopped;writeJson(path.join(jobDir,'worker.json'),state);if(!stopped){connection.healthy=false;connection.error='Diagnostic runtime termination could not be confirmed.';} }
     return { version: VERSION, protocol: PROTOCOL, node: process.versions.node, platform: process.platform,
       storage_format:STORE_FORMAT,worker_format:WORKER_FORMAT,worker:publicWorker(selected),backend_version:state.backend_version,
-      baseline:selected.baseline, compatible:version.code===0&&(selected.platform==='codex'?version.stdout.trim()===`codex-cli ${selected.baseline}`:selected.platform==='claude-code'&&selected.executable!=='bundled'?version.stdout.trim().split(' ')[0]===CLAUDE_RUNTIME_VERSION:version.stdout.trim()===selected.baseline),
+      baseline:selected.baseline, compatible:connection.healthy,
       connection, provider_authentication: 'Not exercised by doctor; a real model request is required to verify provider credentials.',
       backends:platforms.map(platform=>({platform,baseline:backendVersions[platform],connection:platform===selected.platform?connection:{healthy:null,checked:false},experimental:platform==='codex'})),repo,
       resources: this.store.state.runs.flatMap(r => r.resources.map(p => ({ run_id: r.id, resource_key: p.resource_key, expected_instance: p.expected_instance, project_bound: p.project_bound }))),
