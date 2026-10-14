@@ -39,7 +39,7 @@
     "uvicorn": "0.54.0"
   },
   "profile": "windows-x64",
-  "input_sha256": "bef540b6b757434f4d1f99a92900d5a822bc1dc492913086f0a8e68184af1f82",
+  "input_sha256": "19dbd1edbcf91cb6d3270d515889cab38d1dcff540315896afc644c939787f80",
   "provider": {
     "triple": "x86_64-pc-windows-msvc",
     "archive_sha256": "dce851f280b986764037bd952d40819e94ccceb08ac914004123f43ce17f4095",
@@ -217,8 +217,13 @@
   "ffmpeg_original_sha256": "2ce797a0f88d7f067180338fb227f7b1928ea727bd9a4d7a1d022f7c52af71a3",
   "ffmpeg_version": "ffmpeg version 7.1-essentials_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers\nbuilt with gcc 14.2.0 (Rev1, Built by MSYS2 project)\nconfiguration: --enable-gpl --enable-version3 --enable-static --disable-w32threads --disable-autodetect --enable-fontconfig --enable-iconv --enable-gnutls --enable-libxml2 --enable-gmp --enable-bzlib --enable-lzma --enable-zlib --enable-libsrt --enable-libssh --enable-libzmq --enable-avisynth --enable-sdl2 --enable-libwebp --enable-libx264 --enable-libx265 --enable-libxvid --enable-libaom --enable-libopenjpeg --enable-libvpx --enable-mediafoundation --enable-libass --enable-libfreetype --enable-libfribidi --enable-libharfbuzz --enable-libvidstab --enable-libvmaf --enable-libzimg --enable-amf --enable-cuda-llvm --enable-cuvid --enable-dxva2 --enable-d3d11va --enable-d3d12va --enable-ffnvcodec --enable-libvpl --enable-nvdec --enable-nvenc --enable-vaapi --enable-libgme --enable-libopenmpt --enable-libopencore-amrwb --enable-libmp3lame --enable-libtheora --enable-libvo-amrwbenc --enable-libgsm --enable-libopencore-amrnb --enable-libopus --enable-libspeex --enable-libvorbis --enable-librubberband\nlibavutil      59. 39.100 / 59. 39.100\nlibavcodec     61. 19.100 / 61. 19.100\nlibavformat    61.  7.100 / 61.  7.100\nlibavdevice    61.  3.100 / 61.  3.100\nlibavfilter    10.  4.100 / 10.  4.100\nlibswscale      8.  3.100 /  8.  3.100\nlibswresample   5.  3.100 /  5.  3.100\nlibpostproc    58.  3.100 / 58.  3.100\n",
   "signed_macho_files": 0,
-  "total_bytes": 186455280,
+  "total_bytes": 184660097,
   "files": {
+    "licenses/FFmpeg-GPLv2.txt": {
+      "mode": "100644",
+      "size": 18092,
+      "sha256": "8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643"
+    },
     "licenses/FFmpeg-license.txt": {
       "mode": "100644",
       "size": 606,
@@ -3459,41 +3464,6 @@
       "size": 2194,
       "sha256": "2b8d5503fd492a5494649525fd02ab1e152f6c5d09479b6555e820efffe2d625"
     },
-    "python/Lib/site-packages/adodbapi/test/adodbapitest.py": {
-      "mode": "100644",
-      "size": 56197,
-      "sha256": "678e2f35232ec761dd782ce9484ff6bfe82b499d48adecab1796f80ec8570e67"
-    },
-    "python/Lib/site-packages/adodbapi/test/adodbapitestconfig.py": {
-      "mode": "100644",
-      "size": 6403,
-      "sha256": "aac7232a69eb9318444c54dde2ec90f95b1880f2c2af1c4f650f7672c30f2c67"
-    },
-    "python/Lib/site-packages/adodbapi/test/dbapi20.py": {
-      "mode": "100644",
-      "size": 33346,
-      "sha256": "1d2386d14d9d2f2f23deadf234108f832c6231b50a84818b3c745a18853ea4c1"
-    },
-    "python/Lib/site-packages/adodbapi/test/is64bit.py": {
-      "mode": "100644",
-      "size": 1013,
-      "sha256": "e1c57f6c090638f0a27d16e5e2ac97e90e5882976bab4c9e86d5962c45d98d3f"
-    },
-    "python/Lib/site-packages/adodbapi/test/setuptestframework.py": {
-      "mode": "100644",
-      "size": 3017,
-      "sha256": "f4b59bb95c2e1e86816551008ffda9ad20cf1fe492c2d639291fcac30d6914b0"
-    },
-    "python/Lib/site-packages/adodbapi/test/test_adodbapi_dbapi20.py": {
-      "mode": "100644",
-      "size": 5832,
-      "sha256": "79cb38c04afd4d8d5a1914ec51ee5ac242af2eae8df11667b50787100b7529a2"
-    },
-    "python/Lib/site-packages/adodbapi/test/tryconnection.py": {
-      "mode": "100644",
-      "size": 1027,
-      "sha256": "08b1969773cfb6198c780282631b7fbd4a35f5ba91a3892e3b0698d5169274ae"
-    },
     "python/Lib/site-packages/annotated_types/__init__.py": {
       "mode": "100644",
       "size": 13273,
@@ -3503,11 +3473,6 @@
       "mode": "100644",
       "size": 0,
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-    },
-    "python/Lib/site-packages/annotated_types/test_cases.py": {
-      "mode": "100644",
-      "size": 6310,
-      "sha256": "d867472acb57b81ce97f78972828e6bc5669ca4db33fd1e6f645c6183846068e"
     },
     "python/Lib/site-packages/annotated_types-0.8.0.dist-info/INSTALLER": {
       "mode": "100644",
@@ -4024,16 +3989,6 @@
       "size": 0,
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
-    "python/Lib/site-packages/certifi/tests/__init__.py": {
-      "mode": "100644",
-      "size": 0,
-      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-    },
-    "python/Lib/site-packages/certifi/tests/test_certify.py": {
-      "mode": "100644",
-      "size": 467,
-      "sha256": "7c179d1edf37f7e912b133663735fb46c6338d5d0e5f8915d11c3bc287d227b8"
-    },
     "python/Lib/site-packages/certifi-2026.7.22.dist-info/INSTALLER": {
       "mode": "100644",
       "size": 4,
@@ -4212,7 +4167,7 @@
     "python/Lib/site-packages/cffi-2.1.1.dist-info/RECORD": {
       "mode": "100644",
       "size": 2661,
-      "sha256": "5ebf577e8c1264e761584d06bd3954d8f48d290b207371331899d29590a8a7f4"
+      "sha256": "83b1b8e38ff20c5c7d0f6958952c59065310160d043f655446288e478b2ebe75"
     },
     "python/Lib/site-packages/cffi-2.1.1.dist-info/REQUESTED": {
       "mode": "100644",
@@ -5432,7 +5387,7 @@
     "python/Lib/site-packages/httpx-0.28.1.dist-info/RECORD": {
       "mode": "100644",
       "size": 2509,
-      "sha256": "fb982a514a873151c35a9b67204b1cb6ae53c4a5fba52595ef609d00e544cf93"
+      "sha256": "90dc1e9d4b7116918cfeb153d24b8be19af4c4ef98ab22522f8f241d5bcdfd63"
     },
     "python/Lib/site-packages/httpx-0.28.1.dist-info/REQUESTED": {
       "mode": "100644",
@@ -5587,7 +5542,7 @@
     "python/Lib/site-packages/idna-3.20.dist-info/RECORD": {
       "mode": "100644",
       "size": 1435,
-      "sha256": "8520fc881bb1c66cc09dcd6a6c2fa202732b5ddf80faa77417518f55ec2eab1f"
+      "sha256": "d1605c94081e8c2de0bc79e395dbfbab586a82d4bcedc5bff5df229eab108578"
     },
     "python/Lib/site-packages/idna-3.20.dist-info/REQUESTED": {
       "mode": "100644",
@@ -5734,16 +5689,6 @@
       "size": 2566,
       "sha256": "b7da93f03c70b73092e31537e33fffab87ff0cfb4667b345dc6cb1c78388679a"
     },
-    "python/Lib/site-packages/isapi/test/extension_simple.py": {
-      "mode": "100644",
-      "size": 4341,
-      "sha256": "a14def11dbd37a3ba84dba2c176ca619c9793fa6d125cfe36eae920c5b063b48"
-    },
-    "python/Lib/site-packages/isapi/test/README.txt": {
-      "mode": "100644",
-      "size": 115,
-      "sha256": "76738b0e2e7a43d0471aa74546cfd174e4c6b37d0678bf58665f94cf22144de2"
-    },
     "python/Lib/site-packages/isapi/threaded_extension.py": {
       "mode": "100644",
       "size": 7555,
@@ -5869,71 +5814,6 @@
       "size": 7198,
       "sha256": "960cabc951ea1628d2151033f79721dd5376173fa84c5ca18fd39b732e4ffc22"
     },
-    "python/Lib/site-packages/jsonschema/tests/__init__.py": {
-      "mode": "100644",
-      "size": 0,
-      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-    },
-    "python/Lib/site-packages/jsonschema/tests/_suite.py": {
-      "mode": "100644",
-      "size": 8374,
-      "sha256": "da4d17f7537b74e1e141ce66ad8bf8d0e29fd707a2a23e91301a9680b4faf8f2"
-    },
-    "python/Lib/site-packages/jsonschema/tests/fuzz_validate.py": {
-      "mode": "100644",
-      "size": 1114,
-      "sha256": "7d403bc932488a1682c09a659147a165ec81f381dc5c472ab58e683c95c83bb2"
-    },
-    "python/Lib/site-packages/jsonschema/tests/test_cli.py": {
-      "mode": "100644",
-      "size": 28544,
-      "sha256": "03cf6be4b387cbea5e2cf640e580e439a3135aacd03bfc364eef16173fefa613"
-    },
-    "python/Lib/site-packages/jsonschema/tests/test_deprecations.py": {
-      "mode": "100644",
-      "size": 15754,
-      "sha256": "c86ea6911247a531db5a8c692c2e72e47edf93c7ab18eb3c7fff55e2d081121f"
-    },
-    "python/Lib/site-packages/jsonschema/tests/test_exceptions.py": {
-      "mode": "100644",
-      "size": 24301,
-      "sha256": "aec12a763927533ddd13225bebf0e232874f1d7b094c45b30ebc54b1c83c1b9a"
-    },
-    "python/Lib/site-packages/jsonschema/tests/test_format.py": {
-      "mode": "100644",
-      "size": 3188,
-      "sha256": "7959b948c69617694e3cedbc6cf03036f92242f1c240acbe327b808047217c47"
-    },
-    "python/Lib/site-packages/jsonschema/tests/test_jsonschema_test_suite.py": {
-      "mode": "100644",
-      "size": 8461,
-      "sha256": "b407f192733ae4e47d2f20cf1eed699046a899b2e08d12e727a14f8963ddc638"
-    },
-    "python/Lib/site-packages/jsonschema/tests/test_types.py": {
-      "mode": "100644",
-      "size": 6977,
-      "sha256": "705e752930e676cc74e8cac87387d72add17f5f22c560c39ba14fc09a9956bc5"
-    },
-    "python/Lib/site-packages/jsonschema/tests/test_utils.py": {
-      "mode": "100644",
-      "size": 4163,
-      "sha256": "b1aa3be28d4fc9833105fab07a8910378f021524baca1264e459027cc2793ec2"
-    },
-    "python/Lib/site-packages/jsonschema/tests/test_validators.py": {
-      "mode": "100644",
-      "size": 87949,
-      "sha256": "bb397e6a0c8ba193d3b9fa2e2074b114f7cf62b7487633708c7703ff93725381"
-    },
-    "python/Lib/site-packages/jsonschema/tests/typing/__init__.py": {
-      "mode": "100644",
-      "size": 0,
-      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-    },
-    "python/Lib/site-packages/jsonschema/tests/typing/test_all_concrete_validators_match_protocol.py": {
-      "mode": "100644",
-      "size": 1238,
-      "sha256": "2395d4979658512668dc03e4175d25f0c9df934f685caaaf5d6b6d186777b039"
-    },
     "python/Lib/site-packages/jsonschema/validators.py": {
       "mode": "100644",
       "size": 47159,
@@ -5962,7 +5842,7 @@
     "python/Lib/site-packages/jsonschema-4.26.0.dist-info/RECORD": {
       "mode": "100644",
       "size": 4142,
-      "sha256": "8cdf7f7a02e52d6e0bf85dac9f389e2b4b8074555e5c0ef5cd88adbe1330268b"
+      "sha256": "a085f9f47697ca206e8db4193c3bb93e3254d8a98d4d6c83264ec29ccd9e6b55"
     },
     "python/Lib/site-packages/jsonschema-4.26.0.dist-info/REQUESTED": {
       "mode": "100644",
@@ -6083,16 +5963,6 @@
       "mode": "100644",
       "size": 4819,
       "sha256": "3d5392088261606c559b603f385329c9f1ab45b5d667eb990687453b055d405e"
-    },
-    "python/Lib/site-packages/jsonschema_specifications/tests/__init__.py": {
-      "mode": "100644",
-      "size": 0,
-      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-    },
-    "python/Lib/site-packages/jsonschema_specifications/tests/test_jsonschema_specifications.py": {
-      "mode": "100644",
-      "size": 1106,
-      "sha256": "5a46d8456e80e85a19d2b8af4a17ea54b482b00887276c7c4f1a840894d73d36"
     },
     "python/Lib/site-packages/jsonschema_specifications-2025.9.1.dist-info/INSTALLER": {
       "mode": "100644",
@@ -6767,7 +6637,7 @@
     "python/Lib/site-packages/mcp-1.30.0.dist-info/RECORD": {
       "mode": "100644",
       "size": 10489,
-      "sha256": "36e9699501aff95c18f7896dbe105c1ebd74c93e60807b62b5e6f3463981c5df"
+      "sha256": "2d50ab9fa87bbb1a84dd931f2c78307a4fa7acb5394a3fa2ca54e092a5b644d4"
     },
     "python/Lib/site-packages/mcp-1.30.0.dist-info/REQUESTED": {
       "mode": "100644",
@@ -8482,7 +8352,7 @@
     "python/Lib/site-packages/python_dotenv-1.2.4.dist-info/RECORD": {
       "mode": "100644",
       "size": 1469,
-      "sha256": "d401827312ab43266cff4d46005ec05fb0b43de2a171ef0e903e5db630d6990c"
+      "sha256": "1b08bd8e938ed6b6b6604df7033296bdf5ce642f7e6f9d4b139fc62c38a725b2"
     },
     "python/Lib/site-packages/python_dotenv-1.2.4.dist-info/REQUESTED": {
       "mode": "100644",
@@ -9192,7 +9062,7 @@
     "python/Lib/site-packages/pywin32-312.dist-info/RECORD": {
       "mode": "100644",
       "size": 55330,
-      "sha256": "2df484d6125867e2267ec412fe199b14a6b02afe9cd95bd02f319857b39c4583"
+      "sha256": "d8a24f2a14f9477abc63b7d014b35d149afe0aae49764d956f2b6f4ec2128306"
     },
     "python/Lib/site-packages/pywin32-312.dist-info/REQUESTED": {
       "mode": "100644",
@@ -9278,36 +9148,6 @@
       "mode": "100644",
       "size": 2729,
       "sha256": "727f4478075a6936e7303742e094488621295c38df95174708e2c5af0d5984b0"
-    },
-    "python/Lib/site-packages/referencing/tests/__init__.py": {
-      "mode": "100644",
-      "size": 0,
-      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-    },
-    "python/Lib/site-packages/referencing/tests/test_core.py": {
-      "mode": "100644",
-      "size": 37854,
-      "sha256": "79aa74080688db7be33086d5c848fddaa2dd769de21c7dc0c42e7908a50de0b5"
-    },
-    "python/Lib/site-packages/referencing/tests/test_exceptions.py": {
-      "mode": "100644",
-      "size": 934,
-      "sha256": "ede39d1f2a1b5ccb7bfa1e409e71fbbbc8b0dae1cf687ed4e01b3d2612e08d6a"
-    },
-    "python/Lib/site-packages/referencing/tests/test_jsonschema.py": {
-      "mode": "100644",
-      "size": 11687,
-      "sha256": "e109e35163803009f9c9e03c66d95d264848e78bf02962560742c3ccd771e717"
-    },
-    "python/Lib/site-packages/referencing/tests/test_referencing_suite.py": {
-      "mode": "100644",
-      "size": 2335,
-      "sha256": "c03eaf78c7cbb14bb4b3830b8e6ee94bc720e1c21f2fb14c044367824ef7cc22"
-    },
-    "python/Lib/site-packages/referencing/tests/test_retrieval.py": {
-      "mode": "100644",
-      "size": 3719,
-      "sha256": "bdc6e77c0e13a957aa5335b4ef7c0efa72dea9522fd2b41958d5afd33f649b8f"
     },
     "python/Lib/site-packages/referencing/typing.py": {
       "mode": "100644",
@@ -10022,7 +9862,7 @@
     "python/Lib/site-packages/uvicorn-0.54.0.dist-info/RECORD": {
       "mode": "100644",
       "size": 4630,
-      "sha256": "4e3e42893f2223e503404dec90e2a84c519af1d8b9f0157e5eb5d9fb6bcb5535"
+      "sha256": "7d35dd0e6b7a8e50ffcdc31650215a278d1445226baebf23c89651016f6a332e"
     },
     "python/Lib/site-packages/uvicorn-0.54.0.dist-info/REQUESTED": {
       "mode": "100644",
@@ -10684,156 +10524,6 @@
       "size": 42496,
       "sha256": "0582ec19772bc11d9e745a2f7094b5f6ad0df76024bc1e8ab6df32314d674e28"
     },
-    "python/Lib/site-packages/win32/test/handles.py": {
-      "mode": "100644",
-      "size": 5630,
-      "sha256": "68f9e42ba6111c049d83159d1e2e02b2227a0ca9200745f6a3efbc514d91e695"
-    },
-    "python/Lib/site-packages/win32/test/test_clipboard.py": {
-      "mode": "100644",
-      "size": 4084,
-      "sha256": "c97debf161802fcffdbf14cda4314b34cefec5fc66d40a208e59564cdceff09a"
-    },
-    "python/Lib/site-packages/win32/test/test_exceptions.py": {
-      "mode": "100644",
-      "size": 8227,
-      "sha256": "42bc8a7dcacbfb3927be243b59fa10e50fae2297f25d11348ac91088e2e28651"
-    },
-    "python/Lib/site-packages/win32/test/test_odbc.py": {
-      "mode": "100644",
-      "size": 8577,
-      "sha256": "fd8bcf516d1f00234b56d6a56e026c5e26a11701619d2e9f4045102d9fa20c80"
-    },
-    "python/Lib/site-packages/win32/test/test_pywintypes.py": {
-      "mode": "100644",
-      "size": 4139,
-      "sha256": "113dd57572b58c191cb2bb0230dd16795fdb2e996b41caffa2c8112d85db9317"
-    },
-    "python/Lib/site-packages/win32/test/test_security.py": {
-      "mode": "100644",
-      "size": 6232,
-      "sha256": "13d18725643797ef91e78f7bcbe1eb6fc816aa2e9f9927643437c826d0a0e29f"
-    },
-    "python/Lib/site-packages/win32/test/test_sspi.py": {
-      "mode": "100644",
-      "size": 8377,
-      "sha256": "a4795d509bc78e6a3ff04fe1d807ee89eb81e7a12b3bfa38a8fd0511a1bcb4d9"
-    },
-    "python/Lib/site-packages/win32/test/test_win32api.py": {
-      "mode": "100644",
-      "size": 12470,
-      "sha256": "69c390cdd09b6b0e3bc421040ab5f67eee6785973cbfa4963cc4dc0c98356304"
-    },
-    "python/Lib/site-packages/win32/test/test_win32clipboard.py": {
-      "mode": "100644",
-      "size": 2013,
-      "sha256": "6cf993d3d485d21a662c47005a237f6116c1629c29368982e513d79136a7705b"
-    },
-    "python/Lib/site-packages/win32/test/test_win32cred.py": {
-      "mode": "100644",
-      "size": 3457,
-      "sha256": "0399c61993315a7b5cb8917d1189b3ebe1939ec3cf91450765174cf4b3ac312a"
-    },
-    "python/Lib/site-packages/win32/test/test_win32crypt.py": {
-      "mode": "100644",
-      "size": 4907,
-      "sha256": "45b13d0437370b43ab7faf1267fe48da74bc17d2aad4c152b8296f70f431c161"
-    },
-    "python/Lib/site-packages/win32/test/test_win32event.py": {
-      "mode": "100644",
-      "size": 4487,
-      "sha256": "9664dc1aeecf1dc7300b5f2338dad2ecc764ec344a58598c8b17981965eafa2a"
-    },
-    "python/Lib/site-packages/win32/test/test_win32file.py": {
-      "mode": "100644",
-      "size": 42586,
-      "sha256": "daa3e1cd01c50208ff5f278a1f42e75b1d67f135f55b4f5b9d4f3eb6e149fd6c"
-    },
-    "python/Lib/site-packages/win32/test/test_win32gui.py": {
-      "mode": "100644",
-      "size": 6761,
-      "sha256": "0d0ca6351e932abc9a9f18aed396c340da11cca66e54e6f3f87be3cb1d873417"
-    },
-    "python/Lib/site-packages/win32/test/test_win32guistruct.py": {
-      "mode": "100644",
-      "size": 9610,
-      "sha256": "b09485b004a1161172161b2aa7be74367fbca1571bc14deb817fa809d2d11008"
-    },
-    "python/Lib/site-packages/win32/test/test_win32inet.py": {
-      "mode": "100644",
-      "size": 3515,
-      "sha256": "4eccbdd14f4c8e79f8fca774802b46e9c9853322574b0099a5238f4071212026"
-    },
-    "python/Lib/site-packages/win32/test/test_win32net.py": {
-      "mode": "100644",
-      "size": 658,
-      "sha256": "7dcee41f7390ed2bfe8900bc4adf1ec0aed55c70348df5b1d9906ab910d16f38"
-    },
-    "python/Lib/site-packages/win32/test/test_win32pipe.py": {
-      "mode": "100644",
-      "size": 4949,
-      "sha256": "082c9687fee7aacd9575bb34ed001995deca49f3a1d9995d25cf4d1a0badf62b"
-    },
-    "python/Lib/site-packages/win32/test/test_win32print.py": {
-      "mode": "100644",
-      "size": 705,
-      "sha256": "c6f842c62e7b8b811f3955f71a7ffd98b8e6225abf3bbf9880cd23a286bbac4c"
-    },
-    "python/Lib/site-packages/win32/test/test_win32profile.py": {
-      "mode": "100644",
-      "size": 433,
-      "sha256": "bda9b91ee8bd1b8f0a86eb742bc68c7fab05625efbbaef506bb755e3eee158b2"
-    },
-    "python/Lib/site-packages/win32/test/test_win32rcparser.py": {
-      "mode": "100644",
-      "size": 2533,
-      "sha256": "e1d9b9885a0d065f49bfbcced451844908355192570d4e9cb62359475db2c135"
-    },
-    "python/Lib/site-packages/win32/test/test_win32timezone.py": {
-      "mode": "100644",
-      "size": 327,
-      "sha256": "de93045e9665cf388cc56fd3953ed67c8d63fbfde819f4b063d4c1f577dff8a4"
-    },
-    "python/Lib/site-packages/win32/test/test_win32trace.py": {
-      "mode": "100644",
-      "size": 11650,
-      "sha256": "4da06ded58aa6be672cbe31596f8714d4446a5523d9c1878664d07b331aa1b59"
-    },
-    "python/Lib/site-packages/win32/test/test_win32ts.py": {
-      "mode": "100644",
-      "size": 439,
-      "sha256": "72af46c5caa3422bc8a15707362177dfa71c3d7f8979e3bba8240eda799a8035"
-    },
-    "python/Lib/site-packages/win32/test/test_win32wnet.py": {
-      "mode": "100644",
-      "size": 5827,
-      "sha256": "48998c849a0141c5dbb522e8982873d357333bf00a942eb66bf24bdc19008ba9"
-    },
-    "python/Lib/site-packages/win32/test/testall.py": {
-      "mode": "100644",
-      "size": 7234,
-      "sha256": "a427ce5433d444297574aa38fcda129d5cf66d7f104be79ae4a3187c519bacd3"
-    },
-    "python/Lib/site-packages/win32/test/win32rcparser/python.bmp": {
-      "mode": "100644",
-      "size": 778,
-      "sha256": "19623132815dada9ea5c7c4883227f768bc904d7c2c5cfce4259d21b14df1cb1"
-    },
-    "python/Lib/site-packages/win32/test/win32rcparser/python.ico": {
-      "mode": "100644",
-      "size": 766,
-      "sha256": "2e7402ed1683a751bb5222a0379e5d8a50e3467e35c0d0d35b2a3cca645372dc"
-    },
-    "python/Lib/site-packages/win32/test/win32rcparser/test.h": {
-      "mode": "100644",
-      "size": 1215,
-      "sha256": "65fea10a4a2d310dc323011b08fba1a59de366d9acddad89c62e92656cdd94db"
-    },
-    "python/Lib/site-packages/win32/test/win32rcparser/test.rc": {
-      "mode": "100644",
-      "size": 6474,
-      "sha256": "46383d85f6698a4795bf3e379c015d3a1725f1491eefc80f9de1f0b27ca3addc"
-    },
     "python/Lib/site-packages/win32/timer.pyd": {
       "mode": "100644",
       "size": 17920,
@@ -11324,246 +11014,6 @@
       "size": 3174,
       "sha256": "76785263c142a12fb301cb54a6d79589bab415b6253f87115d35be4adf802211"
     },
-    "python/Lib/site-packages/win32com/test/__init__.py": {
-      "mode": "100644",
-      "size": 44,
-      "sha256": "6abc1eab725d375ebdf16f8d6e863afa0b088b612d1cd2f65fba4719b21887ab"
-    },
-    "python/Lib/site-packages/win32com/test/daodump.py": {
-      "mode": "100644",
-      "size": 2333,
-      "sha256": "3350b8c5288d066d94806c954e5b640a9762c013ae0ff896fd03ccb59883f623"
-    },
-    "python/Lib/site-packages/win32com/test/errorSemantics.py": {
-      "mode": "100644",
-      "size": 8767,
-      "sha256": "276f3208058949d99c0ac94377f7c422d23469ca0a7217d2ea4e125955825071"
-    },
-    "python/Lib/site-packages/win32com/test/GenTestScripts.py": {
-      "mode": "100644",
-      "size": 2672,
-      "sha256": "000fda8e2bfcc0290ac82cc17fbb413105d015ba632f3d70511693430d1bbfe3"
-    },
-    "python/Lib/site-packages/win32com/test/pippo.idl": {
-      "mode": "100644",
-      "size": 1916,
-      "sha256": "46508d7085032de588ac0ace2a950065333fb45e50ff96eb10dfdf3eb54da2ad"
-    },
-    "python/Lib/site-packages/win32com/test/pippo_server.py": {
-      "mode": "100644",
-      "size": 2726,
-      "sha256": "4be5d08b68fdd410c96032af2d3bfc9ff35119280d35aeb93eec665c842ea922"
-    },
-    "python/Lib/site-packages/win32com/test/policySemantics.py": {
-      "mode": "100644",
-      "size": 3226,
-      "sha256": "56edd3237e52babc471f5d91671f4c2db3e018ab2399477d78225833401fc755"
-    },
-    "python/Lib/site-packages/win32com/test/readme.txt": {
-      "mode": "100644",
-      "size": 815,
-      "sha256": "4196bf21a475f107eba07f0d75259e9c3ce3a838c5099be8493de4449f0cd217"
-    },
-    "python/Lib/site-packages/win32com/test/testAccess.py": {
-      "mode": "100644",
-      "size": 5874,
-      "sha256": "1ac64a6818c0954d45cd60f37ef668e84ab1369822e285e0138e8071acf4f1b2"
-    },
-    "python/Lib/site-packages/win32com/test/testADOEvents.py": {
-      "mode": "100644",
-      "size": 2878,
-      "sha256": "b8bda3a6996d7979da4344d812d24252aae118fb3c35066bc8cd6bd77b95ad61"
-    },
-    "python/Lib/site-packages/win32com/test/testall.py": {
-      "mode": "100644",
-      "size": 10711,
-      "sha256": "b8fd4f0cecd3315957e7e06e71ef85a2cf2a0fca09078b4bcbcfe58be96143e7"
-    },
-    "python/Lib/site-packages/win32com/test/testArrays.py": {
-      "mode": "100644",
-      "size": 2485,
-      "sha256": "5226ac77b15fff3f9825567de68d5bc7940d0f337266a295fd58e7b287142a7e"
-    },
-    "python/Lib/site-packages/win32com/test/testAXScript.py": {
-      "mode": "100644",
-      "size": 1388,
-      "sha256": "4923e38e705d4f321e96a2ec74f98e7cb72607d808104a56d8e6431ef9fd4939"
-    },
-    "python/Lib/site-packages/win32com/test/testClipboard.py": {
-      "mode": "100644",
-      "size": 5952,
-      "sha256": "8d257e56663a70afd6a8c9597bef4add58365362b4ab081cc6d2df9f8cacfb4a"
-    },
-    "python/Lib/site-packages/win32com/test/testCollections.py": {
-      "mode": "100644",
-      "size": 4400,
-      "sha256": "072faf431b47fc4ce64d6db4930324c1d1aaf84dac43b083e3db4ff4f4625527"
-    },
-    "python/Lib/site-packages/win32com/test/testConversionErrors.py": {
-      "mode": "100644",
-      "size": 713,
-      "sha256": "a80afe5eebaa824ee6ba51f9a53c8a1500ab73404d4e08f3642b939c1332fcff"
-    },
-    "python/Lib/site-packages/win32com/test/testDates.py": {
-      "mode": "100644",
-      "size": 1908,
-      "sha256": "6abc1968e58b73522276809bacf161d9888d7dbc5669c7b043a8d78a9fc992d2"
-    },
-    "python/Lib/site-packages/win32com/test/testDCOM.py": {
-      "mode": "100644",
-      "size": 1766,
-      "sha256": "a1e836d88960135eee2b313ba2c5646c9970d0fe62eb5af96d91c985b99d4f35"
-    },
-    "python/Lib/site-packages/win32com/test/testDictionary.py": {
-      "mode": "100644",
-      "size": 2862,
-      "sha256": "5bb03d5eccabf9d075026fde1673cce9ed4cab32fb9c3cf92bf372aae07aab02"
-    },
-    "python/Lib/site-packages/win32com/test/testDictionary.vbs": {
-      "mode": "100644",
-      "size": 584,
-      "sha256": "220ef5b5968b2d36146865fb3b4e09fe9ee1a7b55781c26514c12869235120c6"
-    },
-    "python/Lib/site-packages/win32com/test/testDynamic.py": {
-      "mode": "100644",
-      "size": 2774,
-      "sha256": "ab22a01569aaaef0dc50335c12badf56f2f8772d473b63c3bcd2e05b5f6e38b1"
-    },
-    "python/Lib/site-packages/win32com/test/testExchange.py": {
-      "mode": "100644",
-      "size": 3361,
-      "sha256": "e957ec079057f13ce3011e47c54646ffc106c4b961a4ad3bf6c3621673c550dc"
-    },
-    "python/Lib/site-packages/win32com/test/testExplorer.py": {
-      "mode": "100644",
-      "size": 4599,
-      "sha256": "470cfec0fe294f953d3479b565b461ba29dafe7e391eb01c34ad654d41032170"
-    },
-    "python/Lib/site-packages/win32com/test/testGatewayAddresses.py": {
-      "mode": "100644",
-      "size": 5342,
-      "sha256": "7ec0e68d9bca6db4b287e60049502d32951eab6f2254486b67abe446ff364035"
-    },
-    "python/Lib/site-packages/win32com/test/testGIT.py": {
-      "mode": "100644",
-      "size": 4766,
-      "sha256": "cc12ba64f54033ad542fd13555f0ae5a980405744d88c0cda54065f7de733c8a"
-    },
-    "python/Lib/site-packages/win32com/test/testInterp.vbs": {
-      "mode": "100644",
-      "size": 268,
-      "sha256": "7916f7ac1ffe253f11da5ba8cea48c719ae41acb570235246aa086a1851d1d1c"
-    },
-    "python/Lib/site-packages/win32com/test/testIterators.py": {
-      "mode": "100644",
-      "size": 4769,
-      "sha256": "f29e2961cd794e55fb018230328dc79292c2569a8e75a80d3665ce1536dd5e94"
-    },
-    "python/Lib/site-packages/win32com/test/testmakepy.py": {
-      "mode": "100644",
-      "size": 3083,
-      "sha256": "b97a5fa4ee3459aa004bf5962cb05237f1a964902b8a6a1bd47f6ab3f005d312"
-    },
-    "python/Lib/site-packages/win32com/test/testMarshal.py": {
-      "mode": "100644",
-      "size": 6285,
-      "sha256": "d141bd15ea7b6e50425e84fce1082f9530a761ee67badfbd37cc4f09c5a3daaf"
-    },
-    "python/Lib/site-packages/win32com/test/testMSOffice.py": {
-      "mode": "100644",
-      "size": 5663,
-      "sha256": "29667fafff61a380c64b029f7007eabee2d2c7eb9b3437802f7b1ff93a9a940b"
-    },
-    "python/Lib/site-packages/win32com/test/testMSOfficeEvents.py": {
-      "mode": "100644",
-      "size": 4161,
-      "sha256": "2131c946a659b1aa5d8ede1cfd0ed23161b28871a3b0e989c2c91a68ea2f5422"
-    },
-    "python/Lib/site-packages/win32com/test/testPersist.py": {
-      "mode": "100644",
-      "size": 6465,
-      "sha256": "89c76ae697a4ec68f2782dbb9865166dbc8b07fb746164b0ea0b35175735cdb8"
-    },
-    "python/Lib/site-packages/win32com/test/testPippo.py": {
-      "mode": "100644",
-      "size": 2652,
-      "sha256": "ecaaf9bd5914b710812c6d90da7f4c42ec3b0bb84239a7146e955aeb6616f53a"
-    },
-    "python/Lib/site-packages/win32com/test/testPyComTest.py": {
-      "mode": "100644",
-      "size": 40884,
-      "sha256": "249cd7cae07d7db0da1782dbf64254bca2b60048d0aa053af50ee3bfed74240b"
-    },
-    "python/Lib/site-packages/win32com/test/Testpys.sct": {
-      "mode": "100644",
-      "size": 1098,
-      "sha256": "3f872f36230d20623d7145bcf30e996e8ed89fbb8dad9165c3cbbe7908156708"
-    },
-    "python/Lib/site-packages/win32com/test/testPyScriptlet.js": {
-      "mode": "100644",
-      "size": 1120,
-      "sha256": "32bb631a293f02a3634af8e68fa9afc8d46b417ea4a5e29029070940fb06b477"
-    },
-    "python/Lib/site-packages/win32com/test/testROT.py": {
-      "mode": "100644",
-      "size": 793,
-      "sha256": "26228dbc50cf0f82955f26d138a6b885521a5d7e879c0b7572c544c8aa10b217"
-    },
-    "python/Lib/site-packages/win32com/test/testServers.py": {
-      "mode": "100644",
-      "size": 1401,
-      "sha256": "440f63511b2286fcb1c699bea3588d46138df9fce0f1add9894640c812b6c951"
-    },
-    "python/Lib/site-packages/win32com/test/testShell.py": {
-      "mode": "100644",
-      "size": 9691,
-      "sha256": "17daa96ffba4a3f0b00f8ba63dcf28bc8af81f3eea0261d8f38ef93ad72f2d75"
-    },
-    "python/Lib/site-packages/win32com/test/testStorage.py": {
-      "mode": "100644",
-      "size": 3707,
-      "sha256": "acc7f703a48c3446677ee557f1628cc7f016469329f6c771d5cc2ed2d6836c59"
-    },
-    "python/Lib/site-packages/win32com/test/testStreams.py": {
-      "mode": "100644",
-      "size": 4336,
-      "sha256": "d60c2f8e1d4f3bcddddeda334bf96a698d0130037055d58f3bb91fb6948c3d71"
-    },
-    "python/Lib/site-packages/win32com/test/testvb.py": {
-      "mode": "100644",
-      "size": 20718,
-      "sha256": "77a14c3bca5f4581b075c613e8c1fdce38d1a2b6438f5c6326ecec5c730683e0"
-    },
-    "python/Lib/site-packages/win32com/test/testvbscript_regexp.py": {
-      "mode": "100644",
-      "size": 1138,
-      "sha256": "099458de8abfb443544d56e7adc21dfa212bd65c26f3a8b6e9a472a0b6e7f943"
-    },
-    "python/Lib/site-packages/win32com/test/testWMI.py": {
-      "mode": "100644",
-      "size": 486,
-      "sha256": "0247370919204e0f0ec289134e5dbc7b6479aa6b7be3d9470091346b93603fe0"
-    },
-    "python/Lib/site-packages/win32com/test/testxslt.js": {
-      "mode": "100644",
-      "size": 581,
-      "sha256": "a539c6280cc2dc90f3d5bc7f86c1bcaeccff234eb3056712641bcc6cc7207980"
-    },
-    "python/Lib/site-packages/win32com/test/testxslt.py": {
-      "mode": "100644",
-      "size": 948,
-      "sha256": "63f90a8085a9ae2f46b2f903a1fbc61ddc23aaf2e2e359fbd6d022c1ea57d8f0"
-    },
-    "python/Lib/site-packages/win32com/test/testxslt.xsl": {
-      "mode": "100644",
-      "size": 2111,
-      "sha256": "af4a7c10dc6bfd7f515afcd37f5f1fb6c4fb330e1feb04728ac48aae83a590f6"
-    },
-    "python/Lib/site-packages/win32com/test/util.py": {
-      "mode": "100644",
-      "size": 7961,
-      "sha256": "a2dfe4db81f9bcd343148f4df6f36a7899f30cfa31a37deaa83bbcfbcfcd819b"
-    },
     "python/Lib/site-packages/win32com/universal.py": {
       "mode": "100644",
       "size": 8761,
@@ -11894,31 +11344,6 @@
       "size": 4275,
       "sha256": "2451f6ed6abde4463b6d91b2acf54c80df81fe0245e33df52605c589eafe0de2"
     },
-    "python/Lib/site-packages/win32comext/axscript/test/debugTest.pys": {
-      "mode": "100644",
-      "size": 217,
-      "sha256": "fb12f2fb8d59c953113f72e9dae310a8ab8e4182e104af33e9759e5eba71520b"
-    },
-    "python/Lib/site-packages/win32comext/axscript/test/debugTest.vbs": {
-      "mode": "100644",
-      "size": 89,
-      "sha256": "09cd2238812c44cf22c3e86bc57ab3271ada9b7873646b52b48252101ff47c5a"
-    },
-    "python/Lib/site-packages/win32comext/axscript/test/leakTest.py": {
-      "mode": "100644",
-      "size": 4851,
-      "sha256": "2aceb867225499c7c5458857b10fd744e7183b1dfaa6f8970057c12caf63a583"
-    },
-    "python/Lib/site-packages/win32comext/axscript/test/testHost.py": {
-      "mode": "100644",
-      "size": 7939,
-      "sha256": "f9d0a2271332210a0a1bae7b9b24ee1a8902f9e90899a1889e8927e5cf17b83b"
-    },
-    "python/Lib/site-packages/win32comext/axscript/test/testHost4Dbg.py": {
-      "mode": "100644",
-      "size": 2735,
-      "sha256": "bd8d2ad6e10eb85af06e54f7d9972a212739501844768810ce6d39f1e29a42ef"
-    },
     "python/Lib/site-packages/win32comext/bits/__init__.py": {
       "mode": "100644",
       "size": 198,
@@ -11929,16 +11354,6 @@
       "size": 66048,
       "sha256": "5116d949d5e77a4a3a38bb84ad8c631c7d9a2d6428dc8b9813007f89ff380741"
     },
-    "python/Lib/site-packages/win32comext/bits/test/show_all_jobs.py": {
-      "mode": "100644",
-      "size": 1567,
-      "sha256": "8404d0ea12eb455b9e11559616c46182ad91aa26d60afba86802ae363e128f6f"
-    },
-    "python/Lib/site-packages/win32comext/bits/test/test_bits.py": {
-      "mode": "100644",
-      "size": 3999,
-      "sha256": "9c741049f2fa6aafbaec38b41ac3eae55e58f0e45ee6f7f46e292986a286068c"
-    },
     "python/Lib/site-packages/win32comext/directsound/__init__.py": {
       "mode": "100644",
       "size": 139,
@@ -11948,21 +11363,6 @@
       "mode": "100644",
       "size": 79360,
       "sha256": "cf9a5013615a7edb8c73b211b40a81a8af431cd13fb7b31f097dbdaeda9f64c0"
-    },
-    "python/Lib/site-packages/win32comext/directsound/test/__init__.py": {
-      "mode": "100644",
-      "size": 66,
-      "sha256": "f6c9f9a9e628a45ddb1a83bded6879e3ca2d57f348fd914526e9ab18ec9fa713"
-    },
-    "python/Lib/site-packages/win32comext/directsound/test/ds_record.py": {
-      "mode": "100644",
-      "size": 1463,
-      "sha256": "42750daf729f869747a318e15f35eeb6a8a62e487d4524f588d9407c7b96444b"
-    },
-    "python/Lib/site-packages/win32comext/directsound/test/ds_test.py": {
-      "mode": "100644",
-      "size": 13395,
-      "sha256": "8438240beec36e3707e9b4d8126df21173adf02ea72aa930e89e8fae48f57eca"
     },
     "python/Lib/site-packages/win32comext/ifilter/__init__.py": {
       "mode": "100644",
@@ -12063,11 +11463,6 @@
       "mode": "100644",
       "size": 49543,
       "sha256": "79592468b566e9d89a3803cc67cf2c6d4f2b4eef173ecc3bb9f0593be9c2612a"
-    },
-    "python/Lib/site-packages/win32comext/propsys/test/testpropsys.py": {
-      "mode": "100644",
-      "size": 211,
-      "sha256": "26adbe11952b87491a214fc8adee3933baee378d30c25a18754afcb223bed2f3"
     },
     "python/Lib/site-packages/win32comext/shell/__init__.py": {
       "mode": "100644",
@@ -12179,21 +11574,6 @@
       "size": 51346,
       "sha256": "9d994dbf243e6f0975be33951fe13bd7eff26961345ad2541757a4769fea3c30"
     },
-    "python/Lib/site-packages/win32comext/shell/test/testShellFolder.py": {
-      "mode": "100644",
-      "size": 603,
-      "sha256": "172fefd2ca27efe8fe03a636dea56d523151dc0a1cf5a8ebb56a0c68a719ef65"
-    },
-    "python/Lib/site-packages/win32comext/shell/test/testShellItem.py": {
-      "mode": "100644",
-      "size": 2960,
-      "sha256": "800104ba787c00913768d1f33e397e715f607cde13dbc36eb78c0787a6695c59"
-    },
-    "python/Lib/site-packages/win32comext/shell/test/testSHFileOperation.py": {
-      "mode": "100644",
-      "size": 2167,
-      "sha256": "476132cfb10763e7587b90013a8f2575aa9485e45012671f7522266638d9da49"
-    },
     "python/Lib/site-packages/win32comext/taskscheduler/__init__.py": {
       "mode": "100644",
       "size": 198,
@@ -12203,26 +11583,6 @@
       "mode": "100644",
       "size": 54784,
       "sha256": "7e124943da771b7ef70d4957b9198e985d21a42f4bf4cc6119163d394420ba0d"
-    },
-    "python/Lib/site-packages/win32comext/taskscheduler/test/test_addtask.py": {
-      "mode": "100644",
-      "size": 2278,
-      "sha256": "1e6b352a5fb035fdbb31fe65cf5ce3661b22d145287f01cd9e7f6a859bcbcb2c"
-    },
-    "python/Lib/site-packages/win32comext/taskscheduler/test/test_addtask_1.py": {
-      "mode": "100644",
-      "size": 2160,
-      "sha256": "3ab9c3b4fc7ff12c86d2ed3feda83a7a65dad61946158bdaec7a1f8b07b2eafa"
-    },
-    "python/Lib/site-packages/win32comext/taskscheduler/test/test_addtask_2.py": {
-      "mode": "100644",
-      "size": 1659,
-      "sha256": "4147098f7eccea0f1c09fc8a5d555bc27c38c752cc0658d1af75e9582043341e"
-    },
-    "python/Lib/site-packages/win32comext/taskscheduler/test/test_localsystem.py": {
-      "mode": "100644",
-      "size": 75,
-      "sha256": "d3ca23012e3c5ba44bb146d10f8e63d1226183f6363451d94faaa34f856b8a0d"
     },
     "python/Lib/site.py": {
       "mode": "100644",
@@ -13028,66 +12388,6 @@
       "mode": "100644",
       "size": 90112,
       "sha256": "e7bfe329b335e5d7a3cd37f48f92e0dee90fb7f8fe79560b772c7ae652a21a18"
-    },
-    "python/Scripts/.empty": {
-      "mode": "100644",
-      "size": 0,
-      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-    },
-    "python/Scripts/cffi-gen-src.exe": {
-      "mode": "100644",
-      "size": 108380,
-      "sha256": "7fe21533397591a7290008dce4da99657f2c327abb7948fe8e4eca28660de5c4"
-    },
-    "python/Scripts/dotenv.exe": {
-      "mode": "100644",
-      "size": 108377,
-      "sha256": "933170c2c9059da06a10328da574359576174cb285f3fd26026955baebf7ccf4"
-    },
-    "python/Scripts/httpx.exe": {
-      "mode": "100644",
-      "size": 108369,
-      "sha256": "89f0b4c9001920921b5c315c5916297374356fc49c6cb22707f0f5ed30c0d435"
-    },
-    "python/Scripts/idna.exe": {
-      "mode": "100644",
-      "size": 108372,
-      "sha256": "81ee24c6a9062731834af215063095c0375d70b7938d85bea35aaa014f425d9c"
-    },
-    "python/Scripts/jsonschema.exe": {
-      "mode": "100644",
-      "size": 108378,
-      "sha256": "1a9e8819666f9f75721feb2163bf584ea841569cb50786ccfc90ca95f7f1abea"
-    },
-    "python/Scripts/mcp.exe": {
-      "mode": "100644",
-      "size": 108369,
-      "sha256": "ed53b298a4aff596af4dcb14cd37e3056a8c004b79ac08de70236e05bf56d05e"
-    },
-    "python/Scripts/pywin32_postinstall.exe": {
-      "mode": "100644",
-      "size": 108397,
-      "sha256": "74e3977f649378574e416e145ee7c073d0cd01c26154112021acf4fbe6cad0e6"
-    },
-    "python/Scripts/pywin32_postinstall.py": {
-      "mode": "100644",
-      "size": 25576,
-      "sha256": "453dd1a2020102b3148510856a2bd6925d8db15670afd70d35dda172c5d4054e"
-    },
-    "python/Scripts/pywin32_testall.exe": {
-      "mode": "100644",
-      "size": 108393,
-      "sha256": "7e4a17f68cbd0512cbb22e562f20bb1ad2dcfb4eea83508c22390f4770929a4e"
-    },
-    "python/Scripts/pywin32_testall.py": {
-      "mode": "100644",
-      "size": 3847,
-      "sha256": "158be3c78ded85dbdb91669888b3135f7f51c6c14bd1cfb5a3ec58dae76506a0"
-    },
-    "python/Scripts/uvicorn.exe": {
-      "mode": "100644",
-      "size": 108376,
-      "sha256": "554a4d19a01f5d95111f6795ca80891bc70b1dab3354e3884238a4e8639ec5ab"
     },
     "python/tcl/dde1.4/pkgIndex.tcl": {
       "mode": "100644",

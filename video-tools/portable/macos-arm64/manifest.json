@@ -38,7 +38,7 @@
     "idna": "3.20"
   },
   "profile": "macos-arm64",
-  "input_sha256": "bef540b6b757434f4d1f99a92900d5a822bc1dc492913086f0a8e68184af1f82",
+  "input_sha256": "19dbd1edbcf91cb6d3270d515889cab38d1dcff540315896afc644c939787f80",
   "provider": {
     "triple": "aarch64-apple-darwin",
     "archive_sha256": "994adadc202c5df0b4570192cc9a70e3f2c131e512f4a125c56efa8562f44b28",
@@ -211,8 +211,13 @@
   "ffmpeg_original_sha256": "6d175a4743ca50256e89a8cdd731100f9cee33bd79aeea46894d209410dc6617",
   "ffmpeg_version": "ffmpeg version 7.1 Copyright (c) 2000-2024 the FFmpeg developers\nbuilt with Apple clang version 13.1.6 (clang-1316.0.21.2.5)\nconfiguration: --prefix=/Volumes/tempdisk/sw --extra-cflags=-fno-stack-check --arch=arm64 --cc=/usr/bin/clang --enable-gpl --enable-libvmaf --enable-libopenjpeg --enable-libopus --enable-libmp3lame --enable-libx264 --enable-libx265 --enable-libvpx --enable-libwebp --enable-libass --enable-libfreetype --enable-fontconfig --enable-libtheora --enable-libvorbis --enable-libsnappy --enable-libaom --enable-libvidstab --enable-libzimg --enable-libsvtav1 --enable-libharfbuzz --enable-libkvazaar --pkg-config-flags=--static --enable-ffplay --enable-postproc --enable-neon --enable-runtime-cpudetect --disable-indev=qtkit --disable-indev=x11grab_xcb\nlibavutil      59. 39.100 / 59. 39.100\nlibavcodec     61. 19.100 / 61. 19.100\nlibavformat    61.  7.100 / 61.  7.100\nlibavdevice    61.  3.100 / 61.  3.100\nlibavfilter    10.  4.100 / 10.  4.100\nlibswscale      8.  3.100 /  8.  3.100\nlibswresample   5.  3.100 /  5.  3.100\nlibpostproc    58.  3.100 / 58.  3.100\n",
   "signed_macho_files": 41,
-  "total_bytes": 147966991,
+  "total_bytes": 147725799,
   "files": {
+    "licenses/FFmpeg-GPLv2.txt": {
+      "mode": "100644",
+      "size": 18092,
+      "sha256": "8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643"
+    },
     "licenses/FFmpeg-license.txt": {
       "mode": "100644",
       "size": 661,
@@ -838,69 +843,6 @@
       "size": 49368728,
       "sha256": "6d175a4743ca50256e89a8cdd731100f9cee33bd79aeea46894d209410dc6617"
     },
-    "python/bin/cffi-gen-src": {
-      "mode": "100755",
-      "size": 246,
-      "sha256": "f0e43356186bea771960c7ab329c905388263fdf04e66b20f8a45d2dd2d282f9"
-    },
-    "python/bin/dotenv": {
-      "mode": "100755",
-      "size": 243,
-      "sha256": "1407e0b048407a952a887e9f015237720d9d6b9a892a1308093f892f19291043"
-    },
-    "python/bin/httpx": {
-      "mode": "100755",
-      "size": 235,
-      "sha256": "09afe472ab2a063086be58525102445ab5fbf23378599e08288dcd6301e6810a"
-    },
-    "python/bin/idle3": {
-      "mode": "120000",
-      "symlink": "idle3.14"
-    },
-    "python/bin/idle3.14": {
-      "mode": "100755",
-      "size": 156,
-      "sha256": "b5f1229959ef0f3ad4ae8166c7c2c9315ce4ac48b52d83e1a63f200a12f433eb"
-    },
-    "python/bin/idna": {
-      "mode": "100755",
-      "size": 238,
-      "sha256": "2a87ccf2d598f92f1e753bd12cd7a94f9bf84cefb757103ab9f23023bba691cb"
-    },
-    "python/bin/jsonschema": {
-      "mode": "100755",
-      "size": 244,
-      "sha256": "f7168562cd83fa5e0191831f50f72ab49d9122fc7bbce422eef2860d4b756473"
-    },
-    "python/bin/mcp": {
-      "mode": "100755",
-      "size": 235,
-      "sha256": "8edfdb9fd5cacb7f20f4cea516774efe0d68ad28796875690be64e584466312a"
-    },
-    "python/bin/pip": {
-      "mode": "100755",
-      "size": 234,
-      "sha256": "6b2d4f132bd52fbd90053369933e659411b42edd81e06f866c810870ef5de515"
-    },
-    "python/bin/pip3": {
-      "mode": "100755",
-      "size": 234,
-      "sha256": "6b2d4f132bd52fbd90053369933e659411b42edd81e06f866c810870ef5de515"
-    },
-    "python/bin/pip3.14": {
-      "mode": "100755",
-      "size": 234,
-      "sha256": "6b2d4f132bd52fbd90053369933e659411b42edd81e06f866c810870ef5de515"
-    },
-    "python/bin/pydoc3": {
-      "mode": "120000",
-      "symlink": "pydoc3.14"
-    },
-    "python/bin/pydoc3.14": {
-      "mode": "100755",
-      "size": 141,
-      "sha256": "7888559d571099a0b03578410400ab7fe848267f2f0adbf2b977f985ed198dbc"
-    },
     "python/bin/python": {
       "mode": "120000",
       "symlink": "python3.14"
@@ -909,24 +851,10 @@
       "mode": "120000",
       "symlink": "python3.14"
     },
-    "python/bin/python3-config": {
-      "mode": "120000",
-      "symlink": "python3.14-config"
-    },
     "python/bin/python3.14": {
       "mode": "100755",
       "size": 18970560,
       "sha256": "69d5d7633be933a8e4df3c1d6ce4a4883233f0b24660ceaeb8720c4e9f368cee"
-    },
-    "python/bin/python3.14-config": {
-      "mode": "100755",
-      "size": 2127,
-      "sha256": "33ed753633ec27fa04383ef76fb3e012def4b6ff643f90c2022591523a0dcb53"
-    },
-    "python/bin/uvicorn": {
-      "mode": "100755",
-      "size": 242,
-      "sha256": "6a08d8cfba35257520dc539493633b2f1c91e6d875596d68d2b7a7f123468db9"
     },
     "python/lib/itcl4.3.8/itcl.tcl": {
       "mode": "100644",
@@ -4056,11 +3984,6 @@
       "size": 0,
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
-    "python/lib/python3.14/site-packages/annotated_types/test_cases.py": {
-      "mode": "100644",
-      "size": 6310,
-      "sha256": "d867472acb57b81ce97f78972828e6bc5669ca4db33fd1e6f645c6183846068e"
-    },
     "python/lib/python3.14/site-packages/annotated_types-0.8.0.dist-info/INSTALLER": {
       "mode": "100644",
       "size": 4,
@@ -4575,16 +4498,6 @@
       "mode": "100644",
       "size": 0,
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-    },
-    "python/lib/python3.14/site-packages/certifi/tests/__init__.py": {
-      "mode": "100644",
-      "size": 0,
-      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-    },
-    "python/lib/python3.14/site-packages/certifi/tests/test_certify.py": {
-      "mode": "100755",
-      "size": 467,
-      "sha256": "7c179d1edf37f7e912b133663735fb46c6338d5d0e5f8915d11c3bc287d227b8"
     },
     "python/lib/python3.14/site-packages/certifi-2026.7.22.dist-info/INSTALLER": {
       "mode": "100644",
@@ -6341,71 +6254,6 @@
       "size": 7198,
       "sha256": "960cabc951ea1628d2151033f79721dd5376173fa84c5ca18fd39b732e4ffc22"
     },
-    "python/lib/python3.14/site-packages/jsonschema/tests/__init__.py": {
-      "mode": "100644",
-      "size": 0,
-      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-    },
-    "python/lib/python3.14/site-packages/jsonschema/tests/_suite.py": {
-      "mode": "100644",
-      "size": 8374,
-      "sha256": "da4d17f7537b74e1e141ce66ad8bf8d0e29fd707a2a23e91301a9680b4faf8f2"
-    },
-    "python/lib/python3.14/site-packages/jsonschema/tests/fuzz_validate.py": {
-      "mode": "100644",
-      "size": 1114,
-      "sha256": "7d403bc932488a1682c09a659147a165ec81f381dc5c472ab58e683c95c83bb2"
-    },
-    "python/lib/python3.14/site-packages/jsonschema/tests/test_cli.py": {
-      "mode": "100644",
-      "size": 28544,
-      "sha256": "03cf6be4b387cbea5e2cf640e580e439a3135aacd03bfc364eef16173fefa613"
-    },
-    "python/lib/python3.14/site-packages/jsonschema/tests/test_deprecations.py": {
-      "mode": "100644",
-      "size": 15754,
-      "sha256": "c86ea6911247a531db5a8c692c2e72e47edf93c7ab18eb3c7fff55e2d081121f"
-    },
-    "python/lib/python3.14/site-packages/jsonschema/tests/test_exceptions.py": {
-      "mode": "100644",
-      "size": 24301,
-      "sha256": "aec12a763927533ddd13225bebf0e232874f1d7b094c45b30ebc54b1c83c1b9a"
-    },
-    "python/lib/python3.14/site-packages/jsonschema/tests/test_format.py": {
-      "mode": "100644",
-      "size": 3188,
-      "sha256": "7959b948c69617694e3cedbc6cf03036f92242f1c240acbe327b808047217c47"
-    },
-    "python/lib/python3.14/site-packages/jsonschema/tests/test_jsonschema_test_suite.py": {
-      "mode": "100644",
-      "size": 8461,
-      "sha256": "b407f192733ae4e47d2f20cf1eed699046a899b2e08d12e727a14f8963ddc638"
-    },
-    "python/lib/python3.14/site-packages/jsonschema/tests/test_types.py": {
-      "mode": "100644",
-      "size": 6977,
-      "sha256": "705e752930e676cc74e8cac87387d72add17f5f22c560c39ba14fc09a9956bc5"
-    },
-    "python/lib/python3.14/site-packages/jsonschema/tests/test_utils.py": {
-      "mode": "100644",
-      "size": 4163,
-      "sha256": "b1aa3be28d4fc9833105fab07a8910378f021524baca1264e459027cc2793ec2"
-    },
-    "python/lib/python3.14/site-packages/jsonschema/tests/test_validators.py": {
-      "mode": "100644",
-      "size": 87949,
-      "sha256": "bb397e6a0c8ba193d3b9fa2e2074b114f7cf62b7487633708c7703ff93725381"
-    },
-    "python/lib/python3.14/site-packages/jsonschema/tests/typing/__init__.py": {
-      "mode": "100644",
-      "size": 0,
-      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-    },
-    "python/lib/python3.14/site-packages/jsonschema/tests/typing/test_all_concrete_validators_match_protocol.py": {
-      "mode": "100644",
-      "size": 1238,
-      "sha256": "2395d4979658512668dc03e4175d25f0c9df934f685caaaf5d6b6d186777b039"
-    },
     "python/lib/python3.14/site-packages/jsonschema/validators.py": {
       "mode": "100644",
       "size": 47159,
@@ -6555,16 +6403,6 @@
       "mode": "100644",
       "size": 4819,
       "sha256": "3d5392088261606c559b603f385329c9f1ab45b5d667eb990687453b055d405e"
-    },
-    "python/lib/python3.14/site-packages/jsonschema_specifications/tests/__init__.py": {
-      "mode": "100644",
-      "size": 0,
-      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-    },
-    "python/lib/python3.14/site-packages/jsonschema_specifications/tests/test_jsonschema_specifications.py": {
-      "mode": "100644",
-      "size": 1106,
-      "sha256": "5a46d8456e80e85a19d2b8af4a17ea54b482b00887276c7c4f1a840894d73d36"
     },
     "python/lib/python3.14/site-packages/jsonschema_specifications-2025.9.1.dist-info/INSTALLER": {
       "mode": "100644",
@@ -8495,36 +8333,6 @@
       "mode": "100644",
       "size": 2729,
       "sha256": "727f4478075a6936e7303742e094488621295c38df95174708e2c5af0d5984b0"
-    },
-    "python/lib/python3.14/site-packages/referencing/tests/__init__.py": {
-      "mode": "100644",
-      "size": 0,
-      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-    },
-    "python/lib/python3.14/site-packages/referencing/tests/test_core.py": {
-      "mode": "100644",
-      "size": 37854,
-      "sha256": "79aa74080688db7be33086d5c848fddaa2dd769de21c7dc0c42e7908a50de0b5"
-    },
-    "python/lib/python3.14/site-packages/referencing/tests/test_exceptions.py": {
-      "mode": "100644",
-      "size": 934,
-      "sha256": "ede39d1f2a1b5ccb7bfa1e409e71fbbbc8b0dae1cf687ed4e01b3d2612e08d6a"
-    },
-    "python/lib/python3.14/site-packages/referencing/tests/test_jsonschema.py": {
-      "mode": "100644",
-      "size": 11687,
-      "sha256": "e109e35163803009f9c9e03c66d95d264848e78bf02962560742c3ccd771e717"
-    },
-    "python/lib/python3.14/site-packages/referencing/tests/test_referencing_suite.py": {
-      "mode": "100644",
-      "size": 2335,
-      "sha256": "c03eaf78c7cbb14bb4b3830b8e6ee94bc720e1c21f2fb14c044367824ef7cc22"
-    },
-    "python/lib/python3.14/site-packages/referencing/tests/test_retrieval.py": {
-      "mode": "100644",
-      "size": 3719,
-      "sha256": "bdc6e77c0e13a957aa5335b4ef7c0efa72dea9522fd2b41958d5afd33f649b8f"
     },
     "python/lib/python3.14/site-packages/referencing/typing.py": {
       "mode": "100644",
