@@ -31,7 +31,7 @@ GUI와 MCP는 공용 영상 처리 서비스와 작업 관리 코드를 사용�
 | `VideoToImage-macos-arm64.zip` | `VideoToImage.app` 더블클릭 | `VideoToImage.app/Contents/MacOS/video-tools-mcp` |
 | `VideoToImage-macos-x86_64.zip` | `VideoToImage.app` 더블클릭 | `VideoToImage.app/Contents/MacOS/video-tools-mcp` |
 
-검증된 배포본은 [최종 CI 실행의 Artifacts](https://github.com/youwonsock/tool-utility/actions/runs/38375537712)에서 받을 수 있습니다. `video-tools-windows-latest`, `video-tools-macos-15`(Apple Silicon), `video-tools-macos-15-intel` 중 해당 환경을 선택하세요. GitHub 로그인이 필요하며, 받은 아티팩트 ZIP을 풀고 `dist/` 안의 배포 ZIP을 다시 풀면 실행 파일이 나옵니다. 아티팩트에는 SHA-256과 GUI·MCP 검증 보고서도 포함됩니다.
+검증된 배포본은 [배포 브랜치의 CI 실행](https://github.com/youwonsock/tool-utility/actions/workflows/video-tools.yml?query=branch%3Acodex%2Fvideo-tools-portable-gui)에서 최신 성공한 실행의 **Artifacts**를 열어 받을 수 있습니다. `video-tools-windows-latest`, `video-tools-macos-15`(Apple Silicon), `video-tools-macos-15-intel` 중 해당 환경을 선택하세요. GitHub 로그인이 필요하며, 받은 아티팩트 ZIP을 풀고 `dist/` 안의 배포 ZIP을 다시 풀면 실행 파일이 나옵니다. 아티팩트에는 SHA-256과 GUI·MCP 검증 보고서도 포함됩니다.
 
 Mac은 내부용 ad-hoc 서명 배포입니다. 최초 실행 시 macOS의 보안 승인이 필요할 수 있으며, 시스템 설정 → 개인정보 보호 및 보안에서 해당 앱의 실행을 승인합니다. 보안 기능을 전체적으로 끄지 않습니다. 임의 경로로 실행되는 App Translocation 상태에서도 앱 내부 리소스를 사용하며, MCP 설정을 만들 때는 실제 배포 위치를 선택하세요.
 
@@ -331,7 +331,7 @@ python -m venv .venv
 
 기존 Windows `build.ps1`, `package.ps1`과 Mac `build_mac.sh`는 동일한 공용 빌드 코드를 호출합니다. 생성물은 `dist/`에 저장되며 ZIP SHA-256도 기록합니다. 배포본은 내장 FFmpeg만으로 정보를 조회하므로 외부 ffprobe가 없어도 동일하게 동작합니다.
 
-라이선스와 빌드 기록은 Windows `_internal/licenses`, Mac `Contents/Resources/licenses`에서 확인합니다. 실제 FFmpeg 버전·빌드 설정·바이너리 해시·원본 제공처·소스 릴리스 정보를 기록합니다. FFmpeg의 GPL 구성요소와 각 패키지 고지를 유지해야 합니다.
+라이선스와 빌드 기록은 Windows `_internal/licenses`, Mac `Contents/Resources/licenses`에서 확인합니다. 실제 FFmpeg 버전·빌드 설정·바이너리 해시·원본 제공처·소스 릴리스 정보와 Python·Tcl·Tk 버전을 기록합니다. 빌드는 Python·Tcl·Tk 고지 파일을 반드시 포함하며, 배포본 검사도 파일의 존재를 확인합니다. FFmpeg의 GPL 구성요소와 각 패키지 고지를 유지해야 합니다.
 
 `verify_portable.py`는 한글·공백이 있는 임시 경로에 배포본을 복사하고 외부 Python/FFmpeg/ffprobe 경로를 제거한 환경에서 GUI 자체 검사와 실제 MCP 연결·미디어·취소·종료를 검증합니다. 결과는 `test-output/portable-verification.json`과 `gui-portable.json`입니다. 개발용 `--self-test-report <경로>`는 사용자 설정 대신 임시 설정을 사용합니다.
 

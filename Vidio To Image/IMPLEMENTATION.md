@@ -30,7 +30,7 @@ Changes are isolated to the video tool, its documentation and `.github/workflows
 | Frozen MCP shutdown closed process stdio and printed a traceback | SDK transport owns duplicate UTF-8 handles | Native MCP initialization/clean-shutdown test |
 | Windows decoded UTF-8 reports/protocol as cp1252 | Explicit UTF-8 in reports and subprocess text decoding | Windows native CI passed after correction |
 | Tk 9 precise touchpad events were unhandled; controls could change while scrolling | First application bindtag, precise-scroll adapter, notebook keyboard traversal | Regression events and actual Mac scrolling across both tabs |
-| Runtime packaging lacked explicit Tcl/Tk notices | Copy toolkit license terms alongside package/Python/FFmpeg notices | Native package license inventory check |
+| Windows packaging omitted Python and Tcl notices despite passing media checks | Search Python's installed prefix, preserve the exact Tcl release notice offline, fail builds and acceptance on missing notices | Windows/framework-layout regression tests and mandatory native package notice inventory |
 
 ## Requirement comparison and evidence
 
@@ -49,18 +49,20 @@ Changes are isolated to the video tool, its documentation and `.github/workflows
 
 Completed cross-platform baseline: [run 38366703278](https://github.com/youwonsock/tool-utility/actions/runs/38366703278), code `ad3dcfbe66d51ed8221f924bdf7afb95356a2818`: Windows, macOS arm64, macOS Intel and Linux all succeeded. Each native target passed source regression, native build/signature where applicable and relocated GUI/media/MCP acceptance.
 
-Final verified code: `72c7c23d9eb62db576e97b8d7b0813af6dd4ba27`, [run 38375537712](https://github.com/youwonsock/tool-utility/actions/runs/38375537712). All four targets passed all 50 source tests, including GUI acceptance. Windows, macOS arm64 and macOS Intel also passed native packaging and the expanded relocated GUI/MCP acceptance gates.
+Media behavior baseline: `72c7c23d9eb62db576e97b8d7b0813af6dd4ba27`, [run 38375537712](https://github.com/youwonsock/tool-utility/actions/runs/38375537712). All four targets passed all 50 source tests, including GUI acceptance. Each native target also passed the expanded relocated GUI/MCP acceptance gates and 20 packaged media/MCP tests. Inspecting the downloaded artifacts during continuation then exposed the missing Windows Python/Tcl notices, so this baseline alone is insufficient for release completion.
 
-| Target | Source regression | Native package and relocated acceptance | Release artifact |
+Latest validation and release artifacts are available from [PR #6 checks](https://github.com/youwonsock/tool-utility/pull/6/checks) and the [release branch workflow](https://github.com/youwonsock/tool-utility/actions/workflows/video-tools.yml?query=branch%3Acodex%2Fvideo-tools-portable-gui). The final gates are:
+
+| Target | Required source regression | Required native package acceptance | Artifact name |
 |---|---|---|---|
-| Windows x64 | 50 passed | Passed | [Windows ZIP and evidence](https://github.com/youwonsock/tool-utility/actions/runs/38375537712/artifacts/11801386179) |
-| macOS arm64 | 50 passed | Passed | [Apple Silicon ZIP and evidence](https://github.com/youwonsock/tool-utility/actions/runs/38375537712/artifacts/11801291223) |
-| macOS x86_64 | 50 passed | Passed | [Intel ZIP and evidence](https://github.com/youwonsock/tool-utility/actions/runs/38375537712/artifacts/11801276856) |
-| Linux | 50 passed under Xvfb | Source development target | Source regression in the linked CI run |
+| Windows x64 | All 53 tests | Relocated GUI/MCP, 20 media/MCP tests, notice inventory | `video-tools-windows-latest` |
+| macOS arm64 | All 53 tests | Relocated GUI/MCP, 20 media/MCP tests, notice inventory, signature | `video-tools-macos-15` |
+| macOS x86_64 | All 53 tests | Relocated GUI/MCP, 20 media/MCP tests, notice inventory, signature | `video-tools-macos-15-intel` |
+| Linux | All 53 tests under Xvfb | Source development target | Source regression in the linked CI run |
 
-Each native artifact contains its release ZIP, SHA-256 sidecar, `portable-verification.json` and `gui-portable.json`. All three reports confirm identical GUI/MCP frame pixels and matching edit geometry, duration, FPS and audio, plus GUI configuration generation, cancellation and saved-setting restoration. Release manifests identify the exact verified commit with `source_dirty=false`.
+Each native artifact contains its release ZIP, SHA-256 sidecar, `portable-verification.json` and `gui-portable.json`. Acceptance requires identical GUI/MCP frame pixels and matching edit geometry, duration, FPS and audio, plus GUI configuration generation, cancellation and saved-setting restoration. It also requires nonempty Python, Tcl, Tk and FFmpeg notices; the runtime manifest records both Tcl and Tk versions. Release manifests identify the exact source commit with `source_dirty=false`.
 
-On continuation, all three CI artifacts were downloaded, their artifact digests and inner ZIP checksums were verified, and their source manifests and acceptance reports were inspected. The verified ZIPs are available in local `dist/`; the arm64 app was extracted with `ditto` and passed `codesign --verify --deep --strict`. Per-target CI reports are preserved locally under `test-output/ci-38375537712/`.
+On continuation, the baseline artifacts' digests and ZIP checksums, source manifests and acceptance reports were checked. The arm64 app was extracted with `ditto`, passed `codesign --verify --deep --strict` and passed GUI acceptance locally. Baseline evidence is preserved under `test-output/ci-38375537712/`; only artifacts that also pass the mandatory notice inventory should be distributed.
 
 ## Distribution boundary
 
