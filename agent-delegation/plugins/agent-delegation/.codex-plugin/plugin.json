@@ -1,0 +1,19 @@
+{
+  "name": "agent-delegation",
+  "version": "1.0.0+codex.20261014023349",
+  "description": "Plan and review in your current agent; delegate implementation to persistent local workers.",
+  "author": {
+    "name": "youwonsock"
+  },
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Agent Delegation",
+    "shortDescription": "Delegate implementation across local agent platforms.",
+    "longDescription": "Keep planning and review in your current conversation while Codex, OpenCode, Claude Code or Kilo implement changes in isolated Git worktrees, with observed verification and guarded integration.",
+    "developerName": "youwonsock",
+    "category": "Productivity",
+    "capabilities": [],
+    "defaultPrompt": "Use $delegate-agents to plan, delegate, review and integrate this change."
+  }
+}

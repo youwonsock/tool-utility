@@ -1,0 +1,33 @@
+{
+  "name": "agent-delegation",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Durable local implementation workers supervised through shared MCP workflows",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test --test-concurrency=1 --test-timeout=600000 test/*.test.mjs",
+    "validate:plugin": "node scripts/validate-plugin.mjs",
+    "check": "npm run typecheck && npm test && npm run validate:plugin",
+    "install:local": "npm run build && node scripts/install.mjs",
+    "check:connections": "node scripts/connection-check.mjs"
+  },
+  "dependencies": {
+    "@agent-delegation/claude-runtime": "file:runtime/claude-sdk",
+    "@kilocode/sdk": "7.4.23",
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "@opencode-ai/sdk": "1.18.30",
+    "cross-spawn": "7.0.6",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@types/cross-spawn": "6.0.6",
+    "@types/node": "22.19.15",
+    "esbuild": "0.28.2",
+    "typescript": "7.0.2"
+  }
+}
