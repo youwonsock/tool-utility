@@ -49,7 +49,18 @@ Changes are isolated to the video tool, its documentation and `.github/workflows
 
 Completed cross-platform baseline: [run 38366703278](https://github.com/youwonsock/tool-utility/actions/runs/38366703278), code `ad3dcfbe66d51ed8221f924bdf7afb95356a2818`: Windows, macOS arm64, macOS Intel and Linux all succeeded. Each native target passed source regression, native build/signature where applicable and relocated GUI/media/MCP acceptance.
 
-The final expanded parity/layout/configuration/GUI-cancellation gates additionally passed locally on macOS arm64. CI must also pass these final expanded gates before the thread goal is marked complete. Machine-readable acceptance is in `test-output/portable-verification.json` and `gui-portable.json`; the CI workflow preserves these with all three native release ZIPs.
+Final verified code: `72c7c23d9eb62db576e97b8d7b0813af6dd4ba27`, [run 38375537712](https://github.com/youwonsock/tool-utility/actions/runs/38375537712). All four targets passed all 50 source tests, including GUI acceptance. Windows, macOS arm64 and macOS Intel also passed native packaging and the expanded relocated GUI/MCP acceptance gates.
+
+| Target | Source regression | Native package and relocated acceptance | Release artifact |
+|---|---|---|---|
+| Windows x64 | 50 passed | Passed | [Windows ZIP and evidence](https://github.com/youwonsock/tool-utility/actions/runs/38375537712/artifacts/11801386179) |
+| macOS arm64 | 50 passed | Passed | [Apple Silicon ZIP and evidence](https://github.com/youwonsock/tool-utility/actions/runs/38375537712/artifacts/11801291223) |
+| macOS x86_64 | 50 passed | Passed | [Intel ZIP and evidence](https://github.com/youwonsock/tool-utility/actions/runs/38375537712/artifacts/11801276856) |
+| Linux | 50 passed under Xvfb | Source development target | Source regression in the linked CI run |
+
+Each native artifact contains its release ZIP, SHA-256 sidecar, `portable-verification.json` and `gui-portable.json`. All three reports confirm identical GUI/MCP frame pixels and matching edit geometry, duration, FPS and audio, plus GUI configuration generation, cancellation and saved-setting restoration. Release manifests identify the exact verified commit with `source_dirty=false`.
+
+On continuation, all three CI artifacts were downloaded, their artifact digests and inner ZIP checksums were verified, and their source manifests and acceptance reports were inspected. The verified ZIPs are available in local `dist/`; the arm64 app was extracted with `ditto` and passed `codesign --verify --deep --strict`. Per-target CI reports are preserved locally under `test-output/ci-38375537712/`.
 
 ## Distribution boundary
 
