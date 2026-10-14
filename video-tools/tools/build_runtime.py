@@ -29,7 +29,7 @@ def sha256(path):
 def input_hash():
     digest = hashlib.sha256()
     for name in ("build_runtime.py", "runtime-assets.json", "requirements-runtime.lock", "wheel-sources.json"):
-        digest.update(name.encode() + b"\0" + (TOOLS / name).read_bytes())
+        digest.update(name.encode() + b"\0" + (TOOLS / name).read_text(encoding="utf-8").encode("utf-8"))
     return digest.hexdigest()
 
 

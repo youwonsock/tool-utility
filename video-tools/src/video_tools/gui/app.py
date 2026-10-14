@@ -17,7 +17,8 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 from video_tools.core.domain import APP_TITLE, CELL_SIZE_PRESETS, CUSTOM_SIZE_LABEL, FINAL_SIZE_PRESETS, GRID_OUTPUT_MODE, GRID_SIZE_PRESETS, OUTPUT_MODES, PREVIEW_CANVAS_HEIGHT, SIZE_MODES, calculate_expected_output_count, format_time, parse_grid_layout, parse_positive_float, parse_positive_int, parse_time, resolve_preview_plan, resolve_size_plan, safe_prefix
-from video_tools.core.media import ExtractionRequest, MediaEvent, ProbeCancelled, ProbeCompleted, ProbeFailed, terminate_all_processes
+from video_tools.core.backend import ProbeCancelled, terminate_all_processes
+from video_tools.core.media import ExtractionRequest, MediaEvent, ProbeCompleted, ProbeFailed
 from video_tools.gui.preview import PreviewCanvasRenderer
 from video_tools.core.settings import AppSettings, load_settings, save_settings
 
