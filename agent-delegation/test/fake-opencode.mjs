@@ -3,8 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { exec as shell } from 'node:child_process';
 const argv = process.argv.slice(2);
-const kilo=argv.includes('--kilo'),version=kilo?'7.4.23':'1.18.30',username=kilo?'kilo':'opencode';
+const kilo=argv.includes('--kilo'),version=argv.find(arg=>arg.startsWith('--native-version='))?.split('=')[1]??(kilo?'7.4.23':'1.18.30'),username=kilo?'kilo':'opencode';
 const overlay = JSON.parse((kilo?process.env.KILO_CONFIG_CONTENT:process.env.OPENCODE_CONFIG_CONTENT) || '{}');
+if(argv.includes('--incompatible-policy')&&overlay.tools)overlay.tools.task=true;
 if (argv.includes('--version')) { console.log(version); process.exit(0); }
 if (argv.includes('debug')) {
   if (argv.includes('paths')) console.log(`state      ${process.cwd()}`);
@@ -32,7 +33,7 @@ const server = http.createServer(async (req,res) => {
   if (url.pathname === '/global/health') return send({ healthy: true, version });
   if (url.pathname === '/provider') return send({ all: [{ id: 'fake', models: { test: { id: 'test' } } }], connected: ['fake'], default: { fake: 'test' } });
   if (url.pathname === '/config') return send(overlay);
-  if (url.pathname === '/session' && req.method === 'POST') { audit({ event: 'session' }); return send(session); }
+  if (url.pathname === '/session' && req.method === 'POST') { audit({ event: 'session' }); return send(argv.includes('--invalid-session')?{sessionID:session.id}:session); }
   if (url.pathname === '/session/ses_test') return send(session);
   if (url.pathname === '/session/status') return send({ [session.id]: { type: busy ? 'busy' : 'idle' } });
   if (url.pathname === '/session/ses_test/message') return send(messages);

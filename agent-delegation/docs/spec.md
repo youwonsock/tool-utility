@@ -6,7 +6,7 @@ The current conversation owns planning, review, correction instructions and fina
 
 ## Contracts
 
-- Node 22+, Windows/macOS. Implementation baselines are OpenCode CLI/SDK 1.18.30, Codex CLI 0.146.0, Claude Agent SDK 0.3.296 with bundled CLI 2.1.296, and Kilo CLI/SDK 7.4.23. Codex app-server is an experimental pinned integration. The existing 12 STDIO MCP tools connect to an authenticated localhost service. Each implementation attempt owns a native session/process ledger and an isolated worktree.
+- Node 22+, Windows/macOS. SDKs remain pinned to OpenCode 1.18.30, Claude Agent SDK 0.3.296 with bundled CLI 2.1.296, and Kilo 7.4.23. Reference CLI checks use OpenCode 1.18.30, Codex 0.146.0 and Kilo 7.4.23; installed CLI versions may differ when the required APIs and policies remain compatible. Codex app-server is an experimental integration. The existing 12 STDIO MCP tools connect to an authenticated localhost service. Each implementation attempt owns a native session/process ledger and an isolated worktree.
 - Defaults: concurrency 2, timeout 60 minutes, at most 3 correction attempts after the initial attempt. No automatic model fallback or implementation retry.
 - Start only on a named branch with clean tracked and untracked source files. Explicit ignored context snapshots are immutable, preserve relative paths, cannot overwrite tracked files, and cannot enter result commits.
 - Tasks declare goals, dependencies, edit scope, acceptance criteria, verification argv, context files and resource keys. Dependencies require accepted and integrated predecessor commits. Resource locks span all runs owned by the service. Read-only probes must confirm instance identity and, when applicable, the actual attempt/validation project path.
@@ -28,6 +28,10 @@ corrections. Unsupported models, policies and MCP settings fail explicitly.
 
 HTTP workers use dedicated authenticated servers and their own pinned SDKs.
 Codex uses STDIO JSON-RPC; Claude uses an isolated SDK dependency graph.
+Native version strings identify the actual runtime and do not determine compatibility.
+Doctor checks initialization, effective policy, session creation and confirmed
+process termination without sending a model prompt. Its compatible flag reports
+those checks; full model execution and provider authentication need separate tests.
 Process launch, prompt and input-reply intents precede external effects.
 Unknown delivery is observed and reconciled without re-dispatch. Attempt-local
 permission grants never change global native settings. Cancellation and
@@ -46,7 +50,7 @@ Automated tests use four native fixtures, real Git repositories/processes and
 four supervisor exports to exercise 16 MCP contract combinations. They also
 cover mixed-worker dependencies/resources/corrections, losses, cancellation,
 stale review, evidence and a source-relocated standalone install.
-Node 22 macOS/Windows CI runs npm ci, npm run check and pinned model-free
+Node 22 macOS/Windows CI runs npm ci, npm run check and reference model-free
 native connection checks. Native model tasks, provider authentication and
 IDE/desktop GUI behavior remain unconfirmed until separately exercised.
 Paid-model testing is separate from the model-free checks. Installation activation is performed only when requested by the user.

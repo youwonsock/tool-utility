@@ -2,7 +2,8 @@ import readline from 'node:readline';
 import fs from 'node:fs';
 import path from 'node:path';
 const argv=process.argv.slice(2);
-if(argv.includes('--version')){console.log('2.1.296 (Claude Code)');process.exit(0);}
+const version=argv.find(arg=>arg.startsWith('--native-version='))?.split('=')[1]??'2.1.296';
+if(argv.includes('--version')){console.log(`${version} (Claude Code)`);process.exit(0);}
 const session=argv[argv.indexOf('--session-id')+1]??'mock-session';
 const send=frame=>process.stdout.write(`${JSON.stringify(frame)}\n`);
 const audit=event=>{if(process.env.FAKE_AUDIT)fs.appendFileSync(process.env.FAKE_AUDIT,`${JSON.stringify({...event,cwd:process.cwd(),platform:'claude-code',pid:process.pid})}\n`);};
@@ -16,7 +17,7 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
   const frame=JSON.parse(line);
   if(frame.type==='control_request'){
     const kind=frame.request.subtype;
-    const response=kind==='initialize'?{commands:[],agents:[],models:[{value:'fake-model',displayName:'Fake',description:'Mock'},{value:'sonnet',displayName:'Alias',description:'Mock supported alias with a mismatched resolved model'}],account:{},hooks_applied:true,claude_code_version:'2.1.296'}:kind==='mcp_status'?{mcpServers:[]}:kind==='get_context_usage'?{model:'fake-model',categories:[],totalTokens:0,maxTokens:200000,rawMaxTokens:200000,percentage:0,gridRows:[],memoryFiles:[],mcpTools:[],agents:[]}:{};
+    const response=kind==='initialize'?{commands:[],agents:[],models:[{value:'fake-model',displayName:'Fake',description:'Mock'},{value:'sonnet',displayName:'Alias',description:'Mock supported alias with a mismatched resolved model'}],account:{},hooks_applied:!argv.includes('--incompatible-policy'),claude_code_version:version}:kind==='mcp_status'?{mcpServers:[]}:kind==='get_context_usage'?{model:'fake-model',categories:[],totalTokens:0,maxTokens:200000,rawMaxTokens:200000,percentage:0,gridRows:[],memoryFiles:[],mcpTools:[],agents:[]}:{};
     send({type:'control_response',response:{subtype:'success',request_id:frame.request_id,response}});
     if(kind==='initialize')audit({event:'session'});if(kind==='interrupt')clearTimeout(timer);return;
   }

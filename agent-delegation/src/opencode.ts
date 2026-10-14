@@ -3,12 +3,13 @@ import path from 'node:path';
 import type { ChildProcess } from 'node:child_process';
 import spawn from 'cross-spawn';
 import { createOpencodeClient } from '@opencode-ai/sdk/v2/client';
-import { BASELINE, Fault, invariant, type Model, type Resource, type WorkerSpec, type WorkerState } from './types.js';
+import { Fault, invariant, type Model, type Resource, type WorkerSpec, type WorkerState } from './types.js';
 import { exec, readJson, samePath, sleep, digest } from './io.js';
 import { beginProcess, registerProcess } from './backends/process.js';
 import { workerEnvironment } from './profiles.js';
 import { connection } from './backends/policy.js';
 import { verificationShell } from './shell.js';
+import { executableVersion, reportedVersion } from './backends/version.js';
 
 export async function resolvedConfig(executable: string, args: string[], directory: string, env = process.env) {
   const r = await exec(executable, [...args, 'debug','config','--pure'], { cwd: directory, env, timeout: 60000 });
@@ -57,6 +58,7 @@ export function enforceHttpPolicy(effective:Record<string,any>,overlay:ReturnTyp
 }
 export async function selectModel(client: ReturnType<typeof createOpencodeClient>, config: Record<string, any>, spec: Pick<WorkerSpec, 'model'|'executable'|'executable_args'|'directory'>): Promise<Model> {
   const providers = (await client.provider.list({}, { throwOnError: true })).data!;
+  invariant(providers&&Array.isArray(providers.all)&&Array.isArray(providers.connected)&&providers.default&&typeof providers.default==='object','BACKEND_API','OpenCode provider API returned an incompatible response.');
   invariant(spec.model===undefined || typeof spec.model==='object','MODEL','OpenCode requires providerID/modelID.');
   let model = spec.model;
   const configured = config.model ?? config.agent?.build?.model;
@@ -77,8 +79,7 @@ export async function selectModel(client: ReturnType<typeof createOpencodeClient
   return model;
 }
 export async function launchOpenCode(spec: WorkerSpec, state: WorkerState, save: () => void) {
-  const version = await exec(spec.executable, [...spec.executable_args, '--version']);
-  invariant(version.code === 0 && version.stdout.trim() === BASELINE, 'OPENCODE_VERSION', `Expected OpenCode ${BASELINE}; found ${version.stdout.trim()}. Validate a newer version before changing the baseline.`);
+  const version = await executableVersion(spec);
   const initial = await resolvedConfig(spec.executable, spec.executable_args, spec.directory,spec.worker?workerEnvironment(spec.worker):process.env);
   state.verification_shell=verificationShell(spec.worker?.shell,initial.shell);save();
   const overlay = restrictions(initial, spec.resources, spec.directory);
@@ -110,7 +111,8 @@ export async function launchOpenCode(spec: WorkerSpec, state: WorkerState, save:
     fetch: ((input: any, init?: any) => fetch(input, { ...init, signal: init?.signal ?? AbortSignal.timeout(30000) })) as typeof fetch,
   });
   const health = (await client.global.health({ throwOnError: true })).data!;
-  invariant(health.healthy && health.version === BASELINE, 'OPENCODE_HEALTH', 'Unexpected OpenCode API version.');
+  invariant(health?.healthy===true&&reportedVersion(health.version,'OpenCode')===version,'OPENCODE_HEALTH','OpenCode health API did not identify the launched runtime.');
+  state.backend='opencode';state.backend_version=health.version;
   try {state.model = await selectModel(client, initial, spec);}
   catch(e){if(!spec.diagnostic||spec.model!==undefined||!(e instanceof Fault)||e.code!=='MODEL_UNAVAILABLE')throw e;}
   save();

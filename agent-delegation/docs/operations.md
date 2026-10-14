@@ -60,7 +60,9 @@
 
 `export-host <opencode|codex|claude-code|kilo> <새 출력 경로>`는 MCP 설정과 delegate-agents 스킬·도구 계약을 생성하며 전역 설정을 등록하지 않습니다. Kilo는 CLI/runtime용 kilo.json과 IDE용 ide-mcp.json을 구분합니다. 같은 데이터 폴더에 연결하면 같은 서비스가 작업과 자원을 관리합니다.
 
-자동화된 16개 조합은 네 지시자 설정과 모의 네이티브 워커를 사용하는 MCP 계약 검사입니다. 실제 CLI/SDK 연결 검사는 별도입니다. 실제 모델 작업과 IDE·데스크톱 GUI는 확인하지 않았다면 지원표에서 미확인으로 유지합니다. Codex app-server는 고정 버전의 실험 연동입니다.
+자동화된 16개 조합은 네 지시자 설정과 모의 네이티브 워커를 사용하는 MCP 계약 검사입니다. 실제 CLI/SDK 연결 검사는 별도입니다. 실제 모델 작업과 IDE·데스크톱 GUI는 확인하지 않았다면 지원표에서 미확인으로 유지합니다. Codex app-server는 실험 연동입니다. SDK는 고정하고 설치된 CLI는 버전과 관계없이 필수 API·권한 정책·세션 생성이 호환되는지 검사합니다. `doctor.compatible`은 초기화 검사와 종료 확인 결과이며 유료 모델 작업의 성공을 보장하지 않습니다. `baseline`은 검증 기준, `backend_version`은 실제 런타임 버전입니다.
+
+Codex 워커는 `on-request` 승인 정책과 `workspace-write` 샌드박스를 사용합니다. 필수 `PreToolUse` 훅이 재위임·백그라운드 실행·보호된 문맥 수정 등을 검사하며, 승인 요청은 지시자에게 전달합니다. 적용된 정책·훅·MCP 설정이 다르면 실행을 거절합니다.
 
 `cleanup`은 서비스가 만든 완료/취소 실행 worktree만 제거합니다. 적용된 사용자 브랜치와 원래 checkout은 제거하지 않습니다. 원본 로그에는 코드·모델 대화·도구 출력 등 프로젝트 정보가 있으므로 Git에 추가하거나 공유할 때 주의해야 합니다.
 

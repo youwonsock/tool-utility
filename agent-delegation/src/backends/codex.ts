@@ -1,11 +1,12 @@
 import path from 'node:path';
 import { invariant, type InputRequest } from '../types.js';
-import { exec, writeJson, digest } from '../io.js';
+import { writeJson, digest } from '../io.js';
 import { workerEnvironment } from '../profiles.js';
 import { connection, permissionKey, forbiddenCommand } from './policy.js';
 import { spawnRuntime, stopOwned } from './process.js';
 import { JsonRpcPeer, type RpcFrame } from './json-rpc.js';
 import type { Answer, BackendContext, Observation, WorkerBackend } from './contract.js';
+import { executableVersion } from './version.js';
 
 function toml(value:unknown):string {
   if(typeof value==='string')return JSON.stringify(value);
@@ -68,17 +69,18 @@ export class CodexBackend implements WorkerBackend {
       ...Object.entries(overrides).flatMap(([key,value])=>['-c',`${key}=${toml(value)}`]),'app-server','--listen','stdio://'];
     const runtime=await spawnRuntime(this.context,spec.executable,args,workerEnvironment(spec.worker!));
     this.peer=new JsonRpcPeer(runtime.child,frame=>this.receive(frame));
-    await this.peer.request('initialize',{clientInfo:{name:'delegate-worker',version:'1.0.0'},capabilities:{experimentalApi:true}});
+    const initialization=await this.peer.request('initialize',{clientInfo:{name:'delegate-worker',version:'1.0.0'},capabilities:{experimentalApi:true}});
+    invariant(typeof initialization?.userAgent==='string','BACKEND_API','Codex initialize API returned an incompatible response.');
     this.peer.write({method:'initialized'});
   }
   async start() {
     const {spec,state,save}=this.context;
-    const version=await exec(spec.executable,[...spec.executable_args,'--version']);
-    invariant(version.code===0&&version.stdout.trim()===`codex-cli ${spec.worker!.baseline}`,'BACKEND_VERSION','Codex CLI version differs from the pinned baseline.');
+    const version=await executableVersion(spec);
     const features={multi_agent:false,multi_agent_v2:false,apps:false,plugins:false,remote_plugin:false,goals:false,memories:false,browser_use:false,computer_use:false,image_generation:false,code_mode_host:false,hooks:false};
     // Probe configuration without starting a thread or model; stop it before the owned execution server.
     await this.launch({features});
     const initial=(await this.peer!.request('config/read',{cwd:spec.directory,includeLayers:false})).config;
+    invariant(initial&&typeof initial==='object','BACKEND_API','Codex config/read API returned an incompatible response.');
     invariant(await stopOwned(this.context),'STOP_UNCERTAIN','Codex configuration probe did not stop.');
     const mcp:Record<string,unknown>=Object.fromEntries(Object.keys(initial.mcp_servers??{}).map(name=>[name,{enabled:false}]));
     for(const resource of spec.resources) {
@@ -90,11 +92,12 @@ export class CodexBackend implements WorkerBackend {
     const hookCommand=[process.execPath,cli,'policy-hook',spec.job_dir].map(quote).join(' ');
     const hooks:Record<string,unknown>=Object.fromEntries(Object.keys(initial.hooks??{}).map(event=>[event,[]]));
     hooks.PreToolUse=[{matcher:'.*',hooks:[{type:'command',command:hookCommand,timeout:15}]}];
-    const overrides={features:{...features,hooks:true,default_mode_request_user_input:true},mcp_servers:mcp,hooks,web_search:'disabled',approval_policy:'untrusted',approvals_reviewer:'user'};
+    const overrides={features:{...features,hooks:true,default_mode_request_user_input:true},mcp_servers:mcp,hooks,web_search:'disabled',approval_policy:'on-request',approvals_reviewer:'user'};
     await this.launch(overrides);
     const effective=(await this.peer!.request('config/read',{cwd:spec.directory,includeLayers:false})).config;
+    invariant(effective&&typeof effective==='object','BACKEND_API','Codex config/read API returned an incompatible response.');
     invariant(Object.entries(overrides.features).every(([key,value])=>effective.features?.[key]===value)&&effective.web_search==='disabled','MCP_POLICY','Effective Codex feature policy differs.');
-    invariant(effective.approval_policy==='untrusted'&&effective.approvals_reviewer==='user','MCP_POLICY','Effective Codex approval policy differs.');
+    invariant(effective.approval_policy==='on-request'&&effective.approvals_reviewer==='user','MCP_POLICY','Effective Codex approval policy differs.');
     const actualHooks=effective.hooks?.PreToolUse;
     const hookCheck=Array.isArray(actualHooks)&&actualHooks.length===1&&actualHooks[0].matcher==='.*'&&actualHooks[0].hooks?.length===1
       &&actualHooks[0].hooks[0].type==='command'&&actualHooks[0].hooks[0].command===hookCommand&&actualHooks[0].hooks[0].async!==true;
@@ -107,14 +110,14 @@ export class CodexBackend implements WorkerBackend {
       for(const [key,value]of Object.entries(expected))if(value!==undefined)invariant(digest(observed?.[key])===digest(value),'MCP_POLICY','Effective Codex resource differs from its verified profile.');
     }
     this.model=typeof spec.model==='string'?spec.model:typeof initial.model==='string'&&initial.model.length?initial.model:undefined;
-    state.backend='codex';state.backend_version=spec.worker!.baseline;save();
+    state.backend='codex';state.backend_version=version;save();
   }
   async createSession() {
     const {spec,state,save}=this.context;
     writeJson(path.join(spec.job_dir,'session-intent.json'),{at:Date.now(),id:spec.id});
-    const response=await this.peer!.request('thread/start',{cwd:spec.directory,model:this.model??null,approvalPolicy:'untrusted',approvalsReviewer:'user',sandbox:'workspace-write',ephemeral:true,
+    const response=await this.peer!.request('thread/start',{cwd:spec.directory,model:this.model??null,approvalPolicy:'on-request',approvalsReviewer:'user',sandbox:'workspace-write',ephemeral:true,
       developerInstructions:'Implement only the assigned task. Do not delegate, commit, change branches, or modify protected context files.'});
-    invariant(response.thread?.id&&response.approvalPolicy==='untrusted'&&response.approvalsReviewer==='user','MCP_POLICY','Native thread did not retain worker approval policy.');
+    invariant(response.thread?.id&&response.approvalPolicy==='on-request'&&response.approvalsReviewer==='user','MCP_POLICY','Native thread did not retain worker approval policy.');
     invariant(typeof response.model==='string'&&response.model.length>0&&(this.model===undefined||response.model===this.model),'MODEL_UNAVAILABLE','Codex did not resolve the requested model. No substitute model will be dispatched.');
     state.session_id=response.thread.id;state.model=response.model;this.thread=response.thread;save();
   }

@@ -2,12 +2,15 @@ import readline from 'node:readline';
 import fs from 'node:fs';
 import path from 'node:path';
 const argv=process.argv.slice(2);
-if(argv.includes('--version')){console.log('codex-cli 0.146.0');process.exit(0);}
+const version=argv.find(arg=>arg.startsWith('--native-version='))?.split('=')[1]??'0.146.0';
+if(argv.includes('--version')){console.log(`codex-cli ${version}`);process.exit(0);}
 const send=frame=>process.stdout.write(`${JSON.stringify(frame)}\n`);
 const overrides={};
 function value(text){let quoted=false,escaped=false,result='';for(const char of text){if(char==='"'&&!escaped)quoted=!quoted;result+=char==='='&&!quoted?':':char;escaped=char==='\\'&&!escaped;}return JSON.parse(result);}
 for(let i=0;i<argv.length;i++)if(argv[i]==='-c'){const raw=argv[++i],split=raw.indexOf('=');overrides[raw.slice(0,split)]=value(raw.slice(split+1));}
 const config={model:argv.includes('--default-model-null')?null:'fake-model',mcp_servers:{inherited:{enabled:true}},...overrides};
+if(argv.includes('--untrusted-unsupported')&&config.approval_policy==='untrusted'){console.error('approval_policy = "untrusted" is no longer supported');process.exit(1);}
+if(argv.includes('--incompatible-policy')&&config.hooks)config.web_search='enabled';
 const thread={id:'thread_mock',turns:[]};let action={},timer,pending;
 const audit=event=>{if(process.env.FAKE_AUDIT)fs.appendFileSync(process.env.FAKE_AUDIT,`${JSON.stringify({...event,cwd:process.cwd(),platform:'codex',pid:process.pid})}\n`);};
 const finish=()=>{
@@ -21,7 +24,7 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
   if(frame.method==='initialize')return reply({userAgent:'mock-codex'});
   if(frame.method==='initialized')return;
   if(frame.method==='config/read')return reply({config,origins:{}});
-  if(frame.method==='thread/start'){audit({event:'session'});return reply({thread,model:p.model==='unavailable-model'?'fake-model':p.model??config.model??'fake-model',modelProvider:'fake',cwd:process.cwd(),approvalPolicy:'untrusted',approvalsReviewer:'user',sandbox:{type:'workspaceWrite'}});}
+  if(frame.method==='thread/start'){audit({event:'session'});return reply({thread,model:p.model==='unavailable-model'?'fake-model':p.model??config.model??'fake-model',modelProvider:'fake',cwd:process.cwd(),approvalPolicy:p.approvalPolicy,approvalsReviewer:'user',sandbox:{type:'workspaceWrite'}});}
   if(frame.method==='thread/read')return reply({thread});
   if(frame.method==='turn/start'){
     const text=p.input.map(i=>i.text??'').join('\n'),matches=[...text.matchAll(/FAKE_ACTION:(.+)/g)];action=JSON.parse(matches.at(-1)?.[1]??'{}');

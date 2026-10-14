@@ -1,6 +1,6 @@
 {
   "name": "agent-delegation",
-  "version": "1.0.0+codex.20261014023349",
+  "version": "1.0.0+codex.20261014031504",
   "description": "Plan and review in your current agent; delegate implementation to persistent local workers.",
   "author": {
     "name": "youwonsock"
