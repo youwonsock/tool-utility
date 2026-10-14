@@ -3,7 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import spawn from 'cross-spawn';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
-import type { Options, Query, PermissionResult } from '@agent-delegation/claude-runtime';
+import type { Options, Query, PermissionResult } from './claude-contract.js';
 import { invariant, type InputRequest } from '../types.js';
 import { writeJson, digest } from '../io.js';
 import { workerEnvironment } from '../profiles.js';
@@ -11,6 +11,7 @@ import { connection, toolPolicy, permissionKey } from './policy.js';
 import { beginProcess, registerProcess, stopOwned } from './process.js';
 import type { Answer, BackendContext, Observation, WorkerBackend } from './contract.js';
 import { reportedVersion } from './version.js';
+import { loadSdk, requireSdkMethods, runtimeFault, findExecutable, callSdkFactory } from '../runtime.js';
 
 class PromptQueue<T> implements AsyncIterable<T> {
   private waiting?: (value:IteratorResult<T>)=>void;
@@ -35,7 +36,7 @@ export class ClaudeBackend implements WorkerBackend {
   constructor(private context:BackendContext){}
   async start() {
     const {spec,state,save}=this.context;
-    const sdk=await import('@agent-delegation/claude-runtime');
+    const sdk=await loadSdk(spec.worker,state.runtime!);
     const sessionID=crypto.randomUUID();
     writeJson(path.join(spec.job_dir,'session-intent.json'),{session_id:sessionID,at:Date.now()});
     state.session_id=sessionID;state.native_request_id=crypto.randomUUID();save();
@@ -52,13 +53,13 @@ export class ClaudeBackend implements WorkerBackend {
       tools:['Read','Write','Edit','Glob','Grep','Bash','TodoWrite','AskUserQuestion','WebFetch','WebSearch'],
       disallowedTools:['Agent','Task','Skill','CronCreate','CronDelete','CronList','EnterWorktree','ExitWorktree','TeamCreate','SendMessage'],
       permissionMode:'default',maxTurns:100,
-      ...(spec.executable!=='bundled'?{pathToClaudeCodeExecutable:spec.executable}:{}),
-      hooks:{PreToolUse:[{hooks:[async input=>{
+      pathToClaudeCodeExecutable:spec.executable,
+      hooks:{PreToolUse:[{hooks:[async (input:any)=>{
         if(input.hook_event_name!=='PreToolUse')return {};
         const decision=policy(input.tool_name,input.tool_input as Record<string,unknown>);
         return {hookSpecificOutput:{hookEventName:'PreToolUse',permissionDecision:decision,permissionDecisionReason:'Delegation worker policy.'}};
       }]}]},
-      canUseTool:async (name,input,details)=>{
+      canUseTool:async (name:string,input:Record<string,unknown>,details:any)=>{
         const decision=policy(name,input);
         if(decision==='deny')return {behavior:'deny',message:'Operation is forbidden by the delegation worker policy.'};
         if(decision==='allow'&&name!=='AskUserQuestion')return {behavior:'allow',updatedInput:input};
@@ -72,16 +73,27 @@ export class ClaudeBackend implements WorkerBackend {
           details.signal.addEventListener('abort',()=>{this.pending.delete(id);resolve({behavior:'deny',message:'Execution was cancelled.',interrupt:true});},{once:true});
         });
       },
-      spawnClaudeCodeProcess:options=>{
-        const intent=beginProcess(this.context);
-        const child=spawn(options.command,[...spec.executable_args,...options.args],{cwd:options.cwd,env:options.env,detached:true,windowsHide:true,stdio:['pipe','pipe','pipe']});
+      spawnClaudeCodeProcess:(options:any)=>{
+        const intent=options.delegationIntent??beginProcess(this.context);
+        const same=(a:string|undefined,b:string)=>{try{return !!a&&fs.realpathSync.native(a)===fs.realpathSync.native(b);}catch{return false;}};
+        const command=findExecutable(options.command,options.env,options.cwd);
+        const direct=same(command,spec.executable),javascript=same(command,process.execPath)&&same(options.args[0],spec.executable);
+        if(!direct&&!javascript){writeJson(path.join(spec.job_dir,'process-records',`${intent}.json`),{failed:true,stopped:true});throw runtimeFault('CLI_INCOMPATIBLE',spec.worker,'Claude SDK tried to launch a different CLI.');}
+        const args=javascript?[options.args[0],...spec.executable_args,...options.args.slice(1)]:[...spec.executable_args,...options.args];
+        const child=spawn(options.command,args,{cwd:options.cwd,env:options.env,detached:process.platform!=='win32',windowsHide:true,stdio:['pipe','pipe','pipe']});
         const log=fs.createWriteStream(path.join(spec.job_dir,'server.log'),{flags:'a',mode:0o600});
         child.stderr!.on('data',data=>log.write(data));child.once('close',()=>log.end());
         this.registrations.push(registerProcess(this.context,child,intent).catch(error=>{this.error=(error as Error).message;}));
         return child as ChildProcessWithoutNullStreams;
       },
     };
-    this.query=sdk.query({prompt:this.queue,options});
+    const launchIntent=beginProcess(this.context);
+    let claimed=false;
+    const spawnConfigured=options.spawnClaudeCodeProcess as (options:any)=>ChildProcessWithoutNullStreams;
+    options.spawnClaudeCodeProcess=(options:any)=>{const first=!claimed;claimed=true;return spawnConfigured({...options,...(first?{delegationIntent:launchIntent}:{})});};
+    this.query=callSdkFactory(sdk,spec.worker,{prompt:this.queue,options});
+    requireSdkMethods(this.query,['initializationResult','getContextUsage','setModel','interrupt','close'],spec.worker);
+    if(typeof this.query?.[Symbol.asyncIterator]!=='function')throw runtimeFault('SDK_INCOMPATIBLE',spec.worker,'Claude SDK query does not provide an async message stream.');
     void (async()=>{
       try{
         for await(const message of this.query!){
@@ -101,6 +113,7 @@ export class ClaudeBackend implements WorkerBackend {
     })();
     this.initialization=await this.query.initializationResult();
     await Promise.all(this.registrations);
+    invariant(claimed&&state.processes?.length,'SDK_INCOMPATIBLE','Claude SDK did not use the required owned CLI spawn hook.');
     reportedVersion(this.initialization.claude_code_version,'Claude Code');
     invariant(this.initialization.hooks_applied===true,'MCP_POLICY','Claude did not confirm worker hook registration.');
     const usage=await this.query.getContextUsage({detail:'summary'});
@@ -136,6 +149,6 @@ export class ClaudeBackend implements WorkerBackend {
     this.pending.delete(input.id);return 'uncertain';
   }
   async reconcile(){return {session_present:!!this.context.state.session_id,prompt_present:this.accepted,complete:this.complete,inputs:this.pending.size};}
-  async cancel(){await this.query?.interrupt().catch(()=>undefined);for(const pending of this.pending.values())pending.resolve({behavior:'deny',message:'Execution cancelled.',interrupt:true});this.pending.clear();}
-  async confirmStopped(){await Promise.allSettled(this.registrations);const stopped=await stopOwned(this.context);this.queue.close();this.query?.close();return stopped;}
+  async cancel(){if(typeof this.query?.interrupt==='function')await this.query.interrupt().catch(()=>undefined);for(const pending of this.pending.values())pending.resolve({behavior:'deny',message:'Execution cancelled.',interrupt:true});this.pending.clear();}
+  async confirmStopped(){await Promise.allSettled(this.registrations);const stopped=await stopOwned(this.context);this.queue.close();if(typeof this.query?.close==='function')this.query.close();return stopped;}
 }

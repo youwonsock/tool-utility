@@ -8,6 +8,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { remoteCall, connect, Store, sleep, exec, terminate, processIdentity, uid } from '../dist/index.mjs';
 import { fixture, task, cli, fake, root, readState, temporaryRoot } from './helpers.mjs';
+import { mockSdks } from './mock-sdks.mjs';
 
 test('authenticated daemon survives MCP disconnect and restart without duplicate prompts',async t=>{
   const f=await fixture(t,{service:true}); const audit=path.join(f.dir,'audit.jsonl');
@@ -46,17 +47,19 @@ test('installed bundle works after its source is moved, without source node_modu
   const installed=await exec(process.execPath,[path.join(source,'scripts/install.mjs'),'--no-register'],{env,timeout:120000});assert.equal(installed.code,0,installed.stderr);
   const current=JSON.parse(fs.readFileSync(path.join(install,'current.json')));
   fs.renameSync(source,path.join(dir,'moved source'));
-  const nativeRoot=path.join(path.dirname(current.cli),'node_modules');
-  const runtimeManifest=JSON.parse(fs.readFileSync(path.join(path.dirname(current.cli),'runtime-manifest.json')));
-  const native=runtimeManifest.packages.find(p=>p.name===`@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}`);assert.ok(native);
-  const binaryFolder=path.join(nativeRoot,native.path),binary=fs.readdirSync(binaryFolder).find(name=>/^claude(?:\.exe)?$/.test(name));assert.ok(binary);
-  const version=await exec(path.join(binaryFolder,binary),['--version'],{timeout:30000});assert.equal(version.code,0,version.stderr);assert.match(version.stdout,/2\.1\.296/);
+  assert.equal(fs.existsSync(path.join(path.dirname(current.cli),'node_modules')),false);
+  assert.equal(fs.existsSync(path.join(path.dirname(current.cli),'runtime-manifest.json')),false);
+  const sdks=mockSdks(path.join(dir,'user SDKs'));
   const mockClaude=path.join(dir,'mock-claude.mjs');fs.copyFileSync(path.join(root,'test','fake-claude.mjs'),mockClaude);
-  fs.mkdirSync(data,{recursive:true});fs.writeFileSync(path.join(data,'profiles.json'),JSON.stringify({profiles:{'installed-claude':{platform:'claude-code',executable:process.execPath,args:[mockClaude]}}}));
+  env.AGENT_DELEGATION_OPENCODE_SDK_ROOT=path.join(dir,'missing-sdk');
+  env.AGENT_DELEGATION_CLAUDE_EXECUTABLE=process.execPath;env.AGENT_DELEGATION_CLAUDE_EXECUTABLE_ARGS=JSON.stringify([mockClaude]);env.AGENT_DELEGATION_CLAUDE_SDK_ROOT=path.join(dir,'missing-sdk');
+  fs.mkdirSync(data,{recursive:true});fs.writeFileSync(path.join(data,'profiles.json'),JSON.stringify({profiles:{'installed-claude':{platform:'claude-code',executable:process.execPath,args:[mockClaude],sdk_root:sdks['claude-code']}}}));
   const client=new Client({name:'installed-test',version:'1'});const transport=new StdioClientTransport({command:process.execPath,args:[current.cli,'mcp'],env,stderr:'pipe'});await client.connect(transport);
-  try{const result=await client.callTool({name:'doctor',arguments:{}});const doctor=JSON.parse(result.content[0].text);assert.equal(doctor.connection.healthy,true);assert.equal(doctor.backend_version,'1.18.30');
+  try{assert.equal((await client.listTools()).tools.length,12);
+    const result=await client.callTool({name:'doctor',arguments:{}});const doctor=JSON.parse(result.content[0].text);assert.equal(doctor.connection.healthy,false);assert.equal(doctor.connection.code,'SDK_NOT_FOUND');
     const external=JSON.parse((await client.callTool({name:'doctor',arguments:{worker:{platform:'claude-code',profile:'installed-claude',model:'fake-model'}}})).content[0].text);assert.equal(external.connection.healthy,true,JSON.stringify(external));assert.equal(external.compatible,true,JSON.stringify(external));
-    const bundled=JSON.parse((await client.callTool({name:'doctor',arguments:{worker:{platform:'claude-code'}}})).content[0].text);assert.equal(bundled.connection.healthy,true,JSON.stringify(bundled));assert.equal(bundled.backend_version,'2.1.296');
+    assert.equal(external.runtime.sdk.root,fs.realpathSync.native(sdks['claude-code']));
+    const missing=JSON.parse((await client.callTool({name:'doctor',arguments:{worker:{platform:'claude-code'}}})).content[0].text);assert.equal(missing.connection.healthy,false);assert.equal(missing.connection.code,'SDK_NOT_FOUND');
     for(const platform of ['opencode','codex','claude-code','kilo'])assert.ok(fs.existsSync(path.join(current.release,'hosts',platform,'binding.json')));
   }finally{await client.close();await exec(process.execPath,[current.cli,'stop'],{env});}
   assert.ok(!fs.readFileSync(path.join(current.release,'plugins/agent-delegation/.mcp.json'),'utf8').includes(source));
