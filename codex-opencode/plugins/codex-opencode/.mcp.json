@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "codex-opencode": {
-      "command": "node",
-      "args": ["${PLUGIN_ROOT}/runtime/cli.mjs", "mcp"]
-    }
-  }
-}
