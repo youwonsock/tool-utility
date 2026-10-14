@@ -43,7 +43,7 @@ export function resolveWorker(root:string, selection?:WorkerSelection):WorkerCon
     platform:choice.platform, profile, executable:checked.executable, executable_args:checked.args,
     baseline:backendVersions[choice.platform], config_hash:digest({...checked,...(sdk_root?{sdk_root}:{})}), model,
     ...(checked.native_profile?{native_profile:checked.native_profile}:{}),
-    ...(sdk_root?{sdk_root}:{}),
+    ...(sdk_root?{sdk_root,sdk_source:checked.sdk_root?'profile' as const:'environment' as const}:{}),
     ...(checked.env_refs?{env_refs:checked.env_refs}:{}), ...(checked.shell?{shell:checked.shell}:{}),
   };
 }

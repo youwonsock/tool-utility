@@ -161,6 +161,17 @@ test('doctor loads SDK code only in its isolated owned process',async t=>{
   assert.notEqual(Number(fs.readFileSync(marker,'utf8')),process.pid);
 });
 
+test('SDK constructor API failures are actionable and stop the owned native process',async t=>{
+  const f=await fixture(t);f.engine.stop();
+  fs.writeFileSync(path.join(f.sdks.opencode,'sdk.mjs'),'export function createOpencodeClient(){throw new TypeError("Changed SDK constructor API");}\n');
+  const diagnostic=await f.engine.doctor({repo:f.repo});
+  assert.equal(diagnostic.compatible,false);assert.equal(diagnostic.connection.code,'SDK_INCOMPATIBLE');
+  assert.match(diagnostic.connection.details.guidance,/sdk_root/);assert.match(diagnostic.connection.error,/constructor API/);
+  const folders=fs.readdirSync(path.join(f.data,'diagnostics'));
+  const state=JSON.parse(fs.readFileSync(path.join(f.data,'diagnostics',folders[0],'worker.json')));
+  assert.equal(state.stopped,true);assert.equal(state.prompt_intent,undefined);
+});
+
 test('Windows cmd wrappers preserve the selected executable',{skip:process.platform!=='win32'},async t=>{
   const f=await fixture(t);f.engine.stop();
   const command=path.join(f.dir,'wrapper.cmd');fs.writeFileSync(command,`@"${process.execPath}" "${path.resolve('test/fake-codex.mjs')}" %*\r\n`);

@@ -67,7 +67,7 @@ export type RuntimeIdentity = {
 export type WorkerConfig = {
   platform:Platform; profile:string; executable:string; executable_args:string[];
   baseline:string; config_hash:string; model?:WorkerModel; native_profile?:string;
-  env_refs?:Record<string,string>; shell?:ShellSpec; sdk_root?:string; runtime?:RuntimeIdentity;
+  env_refs?:Record<string,string>; shell?:ShellSpec; sdk_root?:string; sdk_source?:'profile'|'environment'; runtime?:RuntimeIdentity;
 };
 export type Command = z.infer<typeof commandSchema>;
 export type TaskSpec = z.infer<typeof taskSchema>;

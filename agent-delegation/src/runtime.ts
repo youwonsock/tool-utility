@@ -94,7 +94,7 @@ export async function resolveRuntime(worker:WorkerConfig,options:Discovery={}):P
   const required=sdkPackages[worker.platform];
   if(!required)return {cli};
   const explicit=worker.sdk_root??env[`AGENT_DELEGATION_${envNames[worker.platform]}_SDK_ROOT`];
-  let candidate=explicit,source: 'profile'|'environment'|'cli'|'global'=worker.sdk_root?'profile':'environment';
+  let candidate=explicit,source: 'profile'|'environment'|'cli'|'global'=worker.sdk_root?(worker.sdk_source??'profile'):'environment';
   if(!candidate) {
     const owned=cliPackageRoot(worker,real),near=owned&&path.join(owned,'node_modules',required.name);
     if(near&&fs.existsSync(near)){candidate=near;source='cli';}
@@ -128,7 +128,7 @@ export function publicRuntime(runtime?:RuntimeIdentity) {
 export async function assertRuntimeUnchanged(worker:WorkerConfig,expected:RuntimeIdentity) {
   try {
     const current=await resolveRuntime({...worker,...(expected.sdk?{sdk_root:expected.sdk.root}:{})});
-    if(identity(current)===identity(expected))return current;
+    if(identity(current)===identity(expected)){if(current.sdk&&expected.sdk)current.sdk.source=expected.sdk.source;return current;}
     throw new Error('Selected executable or SDK identity changed.');
   }catch(error){throw runtimeFault('RUNTIME_CHANGED',worker,'The recorded execution environment is unavailable or changed. No model request was replayed.',{reason:(error as Error).message,expected:publicRuntime(expected)});}
 }
@@ -141,6 +141,11 @@ export async function loadSdk(worker:WorkerConfig,runtime:RuntimeIdentity):Promi
     if(typeof sdk[required.factory]!=='function')throw new Error(`Required SDK function ${required.factory} is missing.`);
     return sdk;
   }catch(error){throw runtimeFault('SDK_INCOMPATIBLE',worker,`Cannot load ${required.name}: ${(error as Error).message}`,{path:runtime.sdk.root,required_api:required.factory});}
+}
+export function callSdkFactory(sdk:Record<string,any>,worker:WorkerConfig,options:unknown):any {
+  const required=sdkPackages[worker.platform]!;
+  try {return sdk[required.factory](options);}
+  catch(error){if(error instanceof Fault)throw error;throw runtimeFault('SDK_INCOMPATIBLE',worker,`SDK ${required.factory} initialization failed: ${(error as Error).message}`,{required_api:required.factory,path:worker.runtime?.sdk?.root});}
 }
 export function requireSdkMethods(value:any,methods:string[],worker:WorkerConfig) {
   for(const method of methods){let owner=value;const parts=method.split('.');for(const key of parts.slice(0,-1))owner=owner?.[key];if(typeof owner?.[parts.at(-1)!]!=='function')throw runtimeFault('SDK_INCOMPATIBLE',worker,`Required SDK API ${method} is missing.`,{required_api:method});}
