@@ -81,10 +81,7 @@ class VideoToImageApp(tk.Tk):
         self.video_path: Optional[Path] = None
         self.duration: Optional[float] = None
         self.ffmpeg_path: Optional[str] = None
-        self.worker: Optional[threading.Thread] = None
         self.probe_worker: Optional[threading.Thread] = None
-        self.extraction_service: Optional[FFmpegExtractionService] = None
-        self.cancel_event = threading.Event()
         self.probe_cancel_event = threading.Event()
         self.messages: queue.Queue[MediaEvent] = queue.Queue()
         self._closing = False
@@ -205,7 +202,7 @@ class VideoToImageApp(tk.Tk):
         ttk.Label(outer, text=APP_TITLE, style="Title.TLabel").pack(anchor="w")
         ttk.Label(
             outer,
-            text="영상에서 필요한 순간을 골라 개별 이미지 또는 2×2·3×3 격자 이미지로 저장합니다.",
+            text="필요한 순간을 이미지로 추출하거나, 영상의 구간·화면·속도·오디오를 편집합니다.",
             style="Subtitle.TLabel",
         ).pack(anchor="w", pady=(5, 12))
         tk.Frame(outer, height=3, bg="#2563eb", bd=0).pack(fill="x", pady=(0, 12))
@@ -641,7 +638,7 @@ class VideoToImageApp(tk.Tk):
 
     def _probe_worker(self, path: Path, cancel_event: threading.Event) -> None:
         try:
-            ffmpeg = find_ffmpeg()
+            ffmpeg = self.service.ffmpeg
             info = self.service.inspect(path, cancel_event)
             duration = info.duration
             if cancel_event.is_set():
@@ -723,9 +720,6 @@ class VideoToImageApp(tk.Tk):
         self.status_var.set(f'이미지 추출 시작 · 예상 {expected}장')
         self._set_controls('disabled')
         self.cancel_button.configure(state='normal')
-
-    def _extract_worker(self, service: FFmpegExtractionService) -> None:
-        service.run()
 
     def _drain_messages(self) -> None:
         if self._closing: return
