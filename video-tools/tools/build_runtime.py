@@ -163,6 +163,22 @@ def prune_build_files(product, site):
         path = library / name
         if path.exists():
             shutil.rmtree(path)
+    for name in ("test", "tests"):
+        for path in list(site.rglob(name)):
+            if path.is_dir():
+                shutil.rmtree(path)
+    for path in site.glob("annotated_types/test_cases.py"):
+        path.unlink()
+    # Wheel command wrappers embed the builder's absolute interpreter path.
+    # Product launchers call the relocatable interpreter directly.
+    scripts = product / "python" / ("Scripts" if sys.platform == "win32" else "bin")
+    for path in scripts.iterdir():
+        if sys.platform != "win32" and path.name in {"python", "python3", "python3.14"}:
+            continue
+        if path.is_dir():
+            shutil.rmtree(path)
+        else:
+            path.unlink()
     for path in (product / "python").rglob("demos"):
         if path.parent.name.startswith("tk") and path.is_dir():
             shutil.rmtree(path)
@@ -257,6 +273,8 @@ r.destroy(); print(json.dumps(data))
         raise RuntimeError("FFmpeg lacks a required encoder.")
     legal = product / "licenses"
     legal.mkdir()
+    ffmpeg_license = assets["ffmpeg_license"]
+    shutil.copy2(download(ffmpeg_license["url"], ffmpeg_license["sha256"]), legal / "FFmpeg-GPLv2.txt")
     (legal / "FFmpeg-license.txt").write_text(run([str(ffmpeg), "-L"], capture_output=True).stdout)
     (legal / "FFmpeg-provenance.txt").write_text(
         "Provider: imageio-ffmpeg 0.6.0 platform wheel\n"
