@@ -1,5 +1,6 @@
 """Small deterministic videos for actual-encoder regression tests."""
 import os
+import hashlib
 import subprocess
 from pathlib import Path
 from video_to_image_backend import find_ffmpeg
@@ -7,6 +8,13 @@ from video_to_image_backend import find_ffmpeg
 
 def test_ffmpeg():
     return os.environ.get("VIDEO_TOOLS_TEST_FFMPEG") or find_ffmpeg()
+
+def image_signature(path: Path):
+    """Compare decoded pixels and geometry independently of PNG metadata."""
+    from PIL import Image
+    with Image.open(path) as image:
+        rgb = image.convert('RGB')
+        return {'size': list(rgb.size), 'rgb_sha256': hashlib.sha256(rgb.tobytes()).hexdigest()}
 
 
 def make_video(path: Path, ffmpeg: str, seconds: int = 4, audio: bool = True):

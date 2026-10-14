@@ -11,7 +11,7 @@ def run_gui_test(report: Path):
     from video_to_image import VideoToImageApp
     from video_to_image_backend import probe_video
     from video_to_image_media import ProbeCompleted
-    from media_test_support import make_video
+    from media_test_support import image_signature, make_video
     app = None
     evidence = {}
     try:
@@ -79,11 +79,7 @@ def run_gui_test(report: Path):
                 result = finish()
                 assert result['saved_count'] == 4, result
                 evidence['extraction'] = result['saved_count']
-                from PIL import Image
-                evidence['frame_pixels'] = []
-                for path in result['files']:
-                    with Image.open(path) as image:
-                        evidence['frame_pixels'].append(list(image.convert('RGB').getpixel((32, 18))))
+                evidence['frame_signatures'] = [image_signature(Path(path)) for path in result['files']]
                 app.format_var.set('JPG')
                 app.output_mode_var.set('격자 합치기')
                 app.grid_size_var.set('2 × 2')

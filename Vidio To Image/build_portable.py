@@ -34,6 +34,12 @@ def copy_runtime_licenses(legal, python_stdlib, python_prefix, tk_libraries, tcl
 def run(args, **kwargs):
     return subprocess.run(args, check=True, cwd=ROOT, **kwargs)
 
+def source_metadata():
+    revision = run(['git', 'rev-parse', 'HEAD'], capture_output=True, text=True, encoding='utf-8').stdout.strip()
+    changes = run(['git', 'status', '--porcelain', '--untracked-files=all', '--', '.'],
+                  capture_output=True, text=True, encoding='utf-8').stdout
+    return {'source_commit': revision, 'source_dirty': bool(changes)}
+
 def prepare():
     if platform.system() not in {'Windows', 'Darwin'}:
         raise SystemExit('Portable release builds require Windows or macOS.')
@@ -82,8 +88,7 @@ def prepare():
                 'architecture': platform.machine(), 'dependencies': packages,
                 'ffmpeg_original_sha256': hashlib.sha256(vendor.read_bytes()).hexdigest(),
                 'ffmpeg_version': version, 'required_encoders': ['libx264', 'aac'],
-                'source_commit': run(['git', 'rev-parse', 'HEAD'], capture_output=True, text=True, encoding="utf-8").stdout.strip(),
-                'source_dirty': bool(run(['git', 'diff', '--name-only'], capture_output=True, text=True, encoding='utf-8').stdout)}
+                **source_metadata()}
     (legal / 'build-manifest.json').write_text(json.dumps(manifest, indent=2), encoding='utf-8')
 
 def main():

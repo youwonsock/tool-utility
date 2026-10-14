@@ -31,7 +31,7 @@ GUI와 MCP는 공용 영상 처리 서비스와 작업 관리 코드를 사용�
 | `VideoToImage-macos-arm64.zip` | `VideoToImage.app` 더블클릭 | `VideoToImage.app/Contents/MacOS/video-tools-mcp` |
 | `VideoToImage-macos-x86_64.zip` | `VideoToImage.app` 더블클릭 | `VideoToImage.app/Contents/MacOS/video-tools-mcp` |
 
-검증된 배포본은 [배포 브랜치의 CI 실행](https://github.com/youwonsock/tool-utility/actions/workflows/video-tools.yml?query=branch%3Acodex%2Fvideo-tools-portable-gui)에서 최신 성공한 실행의 **Artifacts**를 열어 받을 수 있습니다. `video-tools-windows-latest`, `video-tools-macos-15`(Apple Silicon), `video-tools-macos-15-intel` 중 해당 환경을 선택하세요. GitHub 로그인이 필요하며, 받은 아티팩트 ZIP을 풀고 `dist/` 안의 배포 ZIP을 다시 풀면 실행 파일이 나옵니다. 아티팩트에는 SHA-256과 GUI·MCP 검증 보고서도 포함됩니다.
+검증된 배포본은 [main 브랜치의 CI 실행](https://github.com/youwonsock/tool-utility/actions/workflows/video-tools.yml?query=branch%3Amain)에서 최신 성공한 실행의 **Artifacts**를 열어 받을 수 있습니다. `video-tools-windows-latest`, `video-tools-macos-15`(Apple Silicon), `video-tools-macos-15-intel` 중 해당 환경을 선택하세요. GitHub 로그인이 필요하며, 받은 아티팩트 ZIP을 풀고 `dist/` 안의 배포 ZIP을 다시 풀면 실행 파일이 나옵니다. 아티팩트에는 SHA-256과 GUI·MCP 검증 보고서도 포함됩니다.
 
 Mac은 내부용 ad-hoc 서명 배포입니다. 최초 실행 시 macOS의 보안 승인이 필요할 수 있으며, 시스템 설정 → 개인정보 보호 및 보안에서 해당 앱의 실행을 승인합니다. 보안 기능을 전체적으로 끄지 않습니다. 임의 경로로 실행되는 App Translocation 상태에서도 앱 내부 리소스를 사용하며, MCP 설정을 만들 때는 실제 배포 위치를 선택하세요.
 
