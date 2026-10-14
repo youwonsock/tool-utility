@@ -58,6 +58,7 @@ def main():
             shutil.copytree(ROOT / 'dist/VideoToImage.app', product, symlinks=True)
             binaries = product / 'Contents/MacOS'
             media = product / 'Contents/Frameworks/media/ffmpeg'
+            legal = product / 'Contents/Resources/licenses'
             isolated_path = '/usr/bin:/bin:/usr/sbin:/sbin'
             subprocess.run(['codesign', '--verify', '--deep', '--strict', str(product)], check=True)
         else:
@@ -65,10 +66,18 @@ def main():
             shutil.copytree(ROOT / 'dist/VideoToImage', product)
             binaries = product
             media = product / '_internal/media/ffmpeg.exe'
+            legal = product / '_internal/licenses'
             isolated_path = str(Path(os.environ['SystemRoot']) / 'System32')
         suffix = '.exe' if sys.platform == 'win32' else ''
         environment = {**os.environ, 'PATH': isolated_path, 'PYTHONPATH': '', 'PYTHONHOME': ''}
         try:
+            required_notices = ['Python-LICENSE.txt', 'tcl_library-license.terms',
+                                'tk_library-license.terms', 'FFmpeg-license.txt', 'FFmpeg-provenance.txt']
+            for name in required_notices:
+                path = legal / name
+                if not path.is_file() or not path.stat().st_size:
+                    raise RuntimeError(f'Packaged runtime notice is missing: {name}')
+            evidence['license_inventory'] = required_notices
             report = output / 'gui-portable.json'
             gui = subprocess.run([str(binaries / ('VideoToImage' + suffix)), '--self-test-report', str(report)],
                                  env=environment, cwd=relocated, capture_output=True, text=True, encoding="utf-8", timeout=120)
