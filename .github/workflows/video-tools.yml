@@ -1,55 +1,46 @@
-name: Video tools tests
+name: Video tools distribution
 on:
   push:
-    paths: ["Vidio To Image/**", ".github/workflows/video-tools.yml"]
+    paths: ["video-tools/**", ".github/workflows/video-tools.yml"]
   pull_request:
-    paths: ["Vidio To Image/**", ".github/workflows/video-tools.yml"]
+    paths: ["video-tools/**", ".github/workflows/video-tools.yml"]
   workflow_dispatch:
+    inputs:
+      refresh:
+        description: "Regenerate both runtime archives for tools/sync_runtime.py"
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
-  regression:
+  runtime:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-15, macos-15-intel]
+        os: [windows-latest, macos-15]
     runs-on: ${{ matrix.os }}
     defaults:
       run:
-        working-directory: Vidio To Image
+        working-directory: video-tools
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.14.6"
-      - name: Locked dependencies
-        run: python -m pip install -r requirements-release.txt
-      - name: Linux window server
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y xvfb libtk8.6
-      - name: Source regression and GUI acceptance
-        if: runner.os != 'Linux'
+          python-version: "3.14"
+      - name: Prepare native runtime distribution
         env:
-          VIDEO_TOOLS_GUI_TESTS: "1"
-        run: python -m unittest discover -v
-      - name: Linux regression and GUI acceptance
-        if: runner.os == 'Linux'
-        env:
-          VIDEO_TOOLS_GUI_TESTS: "1"
-        run: xvfb-run -a python -m unittest discover -v
-      - name: Native portable package
-        if: runner.os != 'Linux'
-        run: python build_portable.py --package
-      - name: Relocated portable GUI and MCP acceptance
-        if: runner.os != 'Linux'
-        run: python verify_portable.py
-      - name: Preserve release and verification evidence
-        if: always() && runner.os != 'Linux'
+          REFRESH: ${{ inputs.refresh || 'false' }}
+        run: |
+          python -c "import os,subprocess,sys; args=[sys.executable,'tools/build_runtime.py','--archive']; args+=['--refresh'] if os.environ['REFRESH']=='true' else []; subprocess.run(args,check=True)"
+      - name: Audit committed distribution files
+        if: ${{ !inputs.refresh }}
+        run: python tools/build_runtime.py --audit --git
+      - name: Preserve runtime artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: video-tools-${{ matrix.os }}
+          name: video-runtime-${{ matrix.os }}
           path: |
-            Vidio To Image/dist/*.zip
-            Vidio To Image/dist/*.sha256
-            Vidio To Image/test-output/portable-verification.json
-            Vidio To Image/test-output/gui-portable.json
+            video-tools/.build/artifacts/*.tar.gz
+            video-tools/.build/artifacts/*.sha256
+          if-no-files-found: error
