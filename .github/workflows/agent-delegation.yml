@@ -44,7 +44,7 @@ jobs:
           cache-dependency-path: agent-delegation/package-lock.json
       - run: npm ci
       - run: npm run build
-      - name: Install reference CLI versions for model-free compatibility checks
-        run: npm install --global opencode-ai@1.18.30 @openai/codex@0.146.0 @kilocode/cli@7.4.23
+      - name: Prepare separate test SDKs and CLIs without changing global installations
+        run: node scripts/prepare-connections.mjs "${{ runner.temp }}/agent-delegation-connections"
       - name: Native initialization and connection checks without model tasks
-        run: npm run check:connections
+        run: npm run check:connections -- "${{ runner.temp }}/agent-delegation-connections"

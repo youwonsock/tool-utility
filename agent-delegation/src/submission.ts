@@ -6,6 +6,7 @@ import { repository, captureContext, checkContext, worktree, clean, head, branch
 import { moveRun, moveValidation } from './lifecycle.js';
 import type { Store } from './store.js';
 import { resolveWorker } from './profiles.js';
+import { resolveRuntime } from './runtime.js';
 import { connection } from './backends/policy.js';
 
 type Manifest = {
@@ -126,6 +127,7 @@ export async function submitTasks(store: Store, args: SubmitArgs, validateGraph:
   const workers=new Map<string,WorkerConfig>();
   for(const spec of specs) {
     const worker=spec.worker?resolve(spec.worker):structuredClone(candidate.worker);
+    worker.runtime=await resolveRuntime(worker);
     workers.set(spec.id,worker);
     for(const key of spec.resources) {
       const normalized=connection(candidate.resources.find(r=>r.resource_key===key)!,candidate.integration_dir);

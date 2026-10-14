@@ -6,8 +6,8 @@ The current conversation owns planning, review, correction instructions and fina
 
 ## Contracts
 
-- Node 22+, Windows/macOS. SDKs remain pinned to OpenCode 1.18.30, Claude Agent SDK 0.3.296 with bundled CLI 2.1.296, and Kilo 7.4.23. Reference CLI checks use OpenCode 1.18.30, Codex 0.146.0 and Kilo 7.4.23; installed CLI versions may differ when the required APIs and policies remain compatible. Codex app-server is an experimental integration. The existing 12 STDIO MCP tools connect to an authenticated localhost service. Each implementation attempt owns a native session/process ledger and an isolated worktree.
-- Defaults: concurrency 2, timeout 60 minutes, at most 3 correction attempts after the initial attempt. No automatic model fallback or implementation retry.
+- Node 22+, Windows/macOS. Users install, update and authenticate their CLI, SDK and GUI applications. Platform SDKs/CLIs are never bundled, installed or substituted by the tool. Required APIs and policies determine compatibility; version strings identify the runtime. Codex app-server is experimental. The existing 12 STDIO MCP tools connect to an authenticated localhost service. Each implementation attempt owns its native session/process ledger and isolated worktree.
+- Defaults: concurrency 2, timeout 60 minutes, at most 3 corrections after the initial model dispatch. Configuration/initialization failures do not spend this budget; uncertain dispatch intents do. No automatic model fallback or implementation retry.
 - Start only on a named branch with clean tracked and untracked source files. Explicit ignored context snapshots are immutable, preserve relative paths, cannot overwrite tracked files, and cannot enter result commits.
 - Tasks declare goals, dependencies, edit scope, acceptance criteria, verification argv, context files and resource keys. Dependencies require accepted and integrated predecessor commits. Resource locks span all runs owned by the service. Read-only probes must confirm instance identity and, when applicable, the actual attempt/validation project path.
 - A failed resource probe exposes the allocated worktree and waits without dispatching a model request. Rebinding the resource and calling `reconcile_run` rechecks that same worktree under its existing lease; final validation remains frozen while waiting. It does not allocate a replacement worktree just to retry a connection check.
@@ -26,8 +26,16 @@ run selections as a whole; omitted selections default to OpenCode. Native model
 and shell defaults are resolved during initial preparation and retained for
 corrections. Unsupported models, policies and MCP settings fail explicitly.
 
-HTTP workers use dedicated authenticated servers and their own pinned SDKs.
-Codex uses STDIO JSON-RPC; Claude uses an isolated SDK dependency graph.
+OpenCode and Kilo require their user-installed CLI and public SDK v2/client.
+Codex requires only its CLI and uses STDIO JSON-RPC. Claude requires its CLI
+and user-installed Agent SDK query API, always passing the selected CLI.
+SDK resolution uses absolute profile sdk_root, platform SDK_ROOT environment,
+the selected CLI's own package, then the current Node/npm global root. Explicit
+bad paths and incompatible candidates stop without fallback. Project/worktree
+and unrelated tool dependencies are never automatically searched. SDK exports
+use ESM conditions and file URLs; original dependencies remain in place.
+Only owned worker/diagnostic processes import platform SDKs. Core MCP,
+installer, recovery observation, review, cancellation and verification do not.
 Native version strings identify the actual runtime and do not determine compatibility.
 Doctor checks initialization, effective policy, session creation and confirmed
 process termination without sending a model prompt. Its compatible flag reports
@@ -36,6 +44,17 @@ Process launch, prompt and input-reply intents precede external effects.
 Unknown delivery is observed and reconciled without re-dispatch. Attempt-local
 permission grants never change global native settings. Cancellation and
 uncertain process termination retain slots and resource leases.
+
+Submission checks only the actual task workers before preparing artifacts.
+Runtime identities retain real executable/SDK paths, argument-file identities,
+versions and hashes. Workers compare the submitted identity before startup
+and model dispatch. New correction attempts discover the current compatible
+installation under the frozen configuration/model; existing attempts do not
+reload a different runtime. Missing/changed identity records RUNTIME_CHANGED
+without model replay. Existing format-2 terminal records stay readable; an
+unfinished attempt without identity must finish/cancel with its old release.
+Missing/other record formats remain unsupported. A live old service or leased
+attempt blocks installation switching with UPDATE_PENDING.
 
 The common verifier records its actual shell argv, environment fingerprint,
 worktree directory, output and exit code. It follows OpenCode 1.18.30 shell
@@ -51,7 +70,11 @@ four supervisor exports to exercise 16 MCP contract combinations. They also
 cover mixed-worker dependencies/resources/corrections, losses, cancellation,
 stale review, evidence and a source-relocated standalone install.
 Node 22 macOS/Windows CI runs npm ci, npm run check and reference model-free
-native connection checks. Native model tasks, provider authentication and
+native connection checks. Real CLI/SDK fixtures are explicitly installed into
+a separate temporary prefix; ordinary install/build/update never prepares them.
+SDK-free installation, missing/API-incompatible diagnostics, mutable external
+runtime recovery and non-dispatch retry budgeting are regression requirements.
+Native model tasks, provider authentication and
 IDE/desktop GUI behavior remain unconfirmed until separately exercised.
 Paid-model testing is separate from the model-free checks. Installation activation is performed only when requested by the user.
 

@@ -1,16 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { createKiloClient } from '@kilocode/sdk/v2/client';
-import { createOpencodeClient } from '@opencode-ai/sdk/v2/client';
 import { invariant, type Model, type InputRequest, type WorkerSpec } from '../types.js';
 import { sleep, writeJson, digest } from '../io.js';
-import { launchOpenCode, resolvedConfig, restrictions, enforceHttpPolicy } from '../opencode.js';
+import { launchOpenCode, resolvedConfig, restrictions, enforceHttpPolicy, httpSdkMethods, inspectSession } from '../opencode.js';
 import { workerEnvironment } from '../profiles.js';
 import { spawnRuntime, stopOwned } from './process.js';
 import type { Answer, BackendContext, Observation, WorkerBackend } from './contract.js';
 import { permissionKey } from './policy.js';
 import { verificationShell } from '../shell.js';
 import { executableVersion, reportedVersion } from './version.js';
+import { loadSdk, requireSdkMethods, callSdkFactory } from '../runtime.js';
 
 // Each generated SDK remains owned by its corresponding native runtime.
 export class HttpBackend implements WorkerBackend {
@@ -24,6 +23,7 @@ export class HttpBackend implements WorkerBackend {
       save();return;
     }
     const worker=spec.worker;
+    const sdk=await loadSdk(worker,state.runtime!);
     const version=await executableVersion(spec);
     const initial=await resolvedConfig(spec.executable,spec.executable_args,spec.directory,workerEnvironment(worker));
     state.verification_shell=verificationShell(worker.shell,initial.shell);save();
@@ -43,8 +43,9 @@ export class HttpBackend implements WorkerBackend {
       invariant(runtime.child.exitCode===null&&!state.error,'BACKEND_START','Kilo exited before announcing its endpoint.');await sleep(100);
     }
     invariant(state.url,'BACKEND_START','Kilo did not announce its endpoint.');
-    this.client=createKiloClient({baseUrl:state.url,directory:spec.directory,headers:{authorization:`Basic ${Buffer.from(`kilo:${spec.password}`).toString('base64')}`},
+    this.client=callSdkFactory(sdk,worker,{baseUrl:state.url,directory:spec.directory,headers:{authorization:`Basic ${Buffer.from(`kilo:${spec.password}`).toString('base64')}`},
       fetch:((input:any,init:any)=>fetch(input,{...init,signal:init?.signal??AbortSignal.timeout(30000)})) as typeof fetch});
+    requireSdkMethods(this.client,httpSdkMethods,worker);
     const health=(await this.client.global.health({throwOnError:true})).data;
     invariant(health?.healthy===true&&reportedVersion(health.version,'Kilo')===version,'BACKEND_API','Kilo health API did not identify the launched runtime.');
     const providers=(await this.client.provider.list({}, {throwOnError:true})).data;
@@ -98,13 +99,6 @@ export class HttpBackend implements WorkerBackend {
   async confirmStopped(){const stopped=await stopOwned(this.context);this.log?.end();return stopped;}
 }
 export async function inspectHttpSession(spec:WorkerSpec,state:WorkerStateLike) {
-  invariant(state.url&&/^http:\/\/127\.0\.0\.1:\d+$/.test(state.url),'ENDPOINT','Expected owned localhost endpoint.');
-  const kilo=spec.worker?.platform==='kilo',factory=kilo?createKiloClient:createOpencodeClient;
-  const client:any=factory({baseUrl:state.url,directory:spec.directory,headers:{authorization:`Basic ${Buffer.from(`${kilo?'kilo':'opencode'}:${spec.password}`).toString('base64')}`}});
-  const options={throwOnError:true,signal:AbortSignal.timeout(3000)},health=(await client.global.health(options)).data;
-  if(!state.session_id)return {healthy:health.healthy,session_present:false,prompt_present:false};
-  const messages=(await client.session.messages({sessionID:state.session_id},options)).data;
-  const statuses=(await client.session.status({},options)).data;
-  return {healthy:health.healthy,session_present:true,status:statuses[state.session_id]?.type??'idle',prompt_present:messages.some((m:any)=>m.info.id===state.prompt_id),messages:messages.length};
+  return inspectSession(spec,state,spec.worker.platform==='kilo'?'kilo':'opencode');
 }
 type WorkerStateLike=BackendContext['state'];

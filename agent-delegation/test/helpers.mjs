@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Store, Engine, exec, uid, sleep, remoteCall } from '../dist/index.mjs';
+import { mockSdks } from './mock-sdks.mjs';
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const cli = path.join(root,'dist/cli.mjs');
 export const fake = path.join(root,'test/fake-opencode.mjs');
@@ -20,7 +21,8 @@ export async function fixture(t, { service = false } = {}) {
   fs.writeFileSync(path.join(repo,'.gitignore'),'AGENTS.md\n.specs/\nignored.txt\n'); fs.writeFileSync(path.join(repo,'base.txt'),'base\n');
   await git(repo,'add','.'); await git(repo,'commit','-m','initial');
   const store = new Store(data);
-  fs.writeFileSync(path.join(data,'profiles.json'),JSON.stringify({profiles:{'opencode-default':{platform:'opencode',executable:process.execPath,args:[fake]}}}));
+  const sdks=mockSdks(path.join(dir,'external-sdks'));
+  fs.writeFileSync(path.join(data,'profiles.json'),JSON.stringify({profiles:{'opencode-default':{platform:'opencode',executable:process.execPath,args:[fake],sdk_root:sdks.opencode}}}));
   const engine = new Engine(store,cli,{ concurrency:2 });
   const env = { ...process.env, AGENT_DELEGATION_WORKER:'0', AGENT_DELEGATION_HOME:data, AGENT_DELEGATION_OPENCODE_EXECUTABLE:process.execPath, AGENT_DELEGATION_OPENCODE_EXECUTABLE_ARGS:JSON.stringify([fake]) };
   if (!service) engine.start();
@@ -37,7 +39,7 @@ export async function fixture(t, { service = false } = {}) {
       }
     }
   });
-  return { dir,repo,data,store,engine,env, call:(name,args)=>engine.call(name,args) };
+  return { dir,repo,data,store,engine,env,sdks, call:(name,args)=>engine.call(name,args) };
 }
 export const task = (id, action={}, extra={}) => ({ id, goal:`FAKE_ACTION:${JSON.stringify(action)}`, scope:[`${id}.txt`], acceptance:['Requested content exists'], verification:[{ command:'node -e "process.exit(0)"' }], ...extra });
 export async function callOk(f,name,args) { const r = await f.call(name,args); if (r.error) throw new Error(JSON.stringify(r.error)); return r; }

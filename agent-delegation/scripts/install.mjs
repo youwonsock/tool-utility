@@ -4,14 +4,14 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 const source = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const { dataRoot, exec, PROTOCOL, STORE_FORMAT, exportHost, platforms } = await import(pathToFileURL(path.join(source, 'dist', 'index.mjs')).href);
+const { dataRoot, exec, PROTOCOL, STORE_FORMAT, exportHost, platforms, alive, holdsResources } = await import(pathToFileURL(path.join(source, 'dist', 'index.mjs')).href);
 const root = process.env.AGENT_DELEGATION_INSTALL_ROOT || path.join(dataRoot(), 'install');
 const bundle = fs.readFileSync(path.join(source, 'dist', 'cli.mjs'));
 const version = JSON.parse(fs.readFileSync(path.join(source,'package.json'))).version;
 const checksum = crypto.createHash('sha256').update(bundle);
 function fingerprint(directory) { for (const entry of fs.readdirSync(directory,{withFileTypes:true}).sort((a,b)=>a.name.localeCompare(b.name))) { const file=path.join(directory,entry.name); checksum.update(path.relative(source,file)); if(entry.isDirectory())fingerprint(file); else checksum.update(fs.readFileSync(file)); } }
 fingerprint(path.join(source,'plugins')); fingerprint(path.join(source,'.agents'));
-fingerprint(path.join(source,'dist','runtime_modules'));fingerprint(path.join(source,'dist','skills'));
+fingerprint(path.join(source,'dist','skills'));
 checksum.update(fs.readFileSync(path.join(source,'dist','workflow.md')));
 checksum.update(fs.readFileSync(path.join(source,'dist','contract.md')));
 const stamp = checksum.digest('hex').slice(0,12);
@@ -36,8 +36,6 @@ fs.mkdirSync(path.join(plugin, 'runtime'), { recursive: true });
 fs.writeFileSync(path.join(plugin, 'runtime', 'cli.mjs'), bundle);
 fs.copyFileSync(path.join(source,'dist','workflow.md'),path.join(plugin,'runtime','workflow.md'));
 fs.copyFileSync(path.join(source,'dist','contract.md'),path.join(plugin,'runtime','contract.md'));
-fs.copyFileSync(path.join(source,'dist','runtime-manifest.json'),path.join(plugin,'runtime','runtime-manifest.json'));
-fs.cpSync(path.join(source,'dist','runtime_modules'),path.join(plugin,'runtime','node_modules'),copyOptions);
 // Generated skills replace source-only wrappers. Removing that owned directory
 // avoids Node 22 cpSync's broken Windows overwrite path for Unicode filenames.
 fs.rmSync(path.join(plugin,'skills'),{recursive:true,force:true});
@@ -55,6 +53,14 @@ for(const file of ['service.json','state.json']) {
     console.log(JSON.stringify({staged:release,update_pending:true,reason:'Protocol/storage version differs. Finish existing work with the previous release; it was preserved.'},null,2));
     process.exit(0);
   }
+}
+const descriptorFile=path.join(dataRoot(),'service.json'),stateFile=path.join(dataRoot(),'state.json');
+const descriptor=fs.existsSync(descriptorFile)?JSON.parse(fs.readFileSync(descriptorFile)):undefined;
+const snapshot=fs.existsSync(stateFile)?JSON.parse(fs.readFileSync(stateFile)):undefined;
+const leased=snapshot?.runs?.flatMap(run=>[...run.tasks.flatMap(task=>task.attempts),...(run.validation?[run.validation.attempt]:[])])?.some(holdsResources);
+if(leased||descriptor?.owner&&await alive(descriptor.owner)) {
+  console.log(JSON.stringify({staged:release,update_pending:true,code:'UPDATE_PENDING',reason:'Finish/cancel owned attempts and stop the previous service with the previous release before switching. Runtime termination must be confirmed; records and registration were preserved.'},null,2));
+  process.exit(0);
 }
 if (!noRegister) {
   const codex = process.env.AGENT_DELEGATION_CODEX_EXECUTABLE || 'codex';
