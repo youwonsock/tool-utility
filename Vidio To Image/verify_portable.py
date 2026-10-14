@@ -11,11 +11,19 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 
+def compare_frame_signatures(actual, expected):
+    if len(actual) != len(expected):
+        raise RuntimeError('GUI/MCP frame count mismatch')
+    for index, (received, wanted) in enumerate(zip(actual, expected)):
+        if received['size'] != wanted['size']:
+            raise RuntimeError(f'GUI/MCP frame geometry mismatch at frame {index}')
+        if received['rgb_sha256'] != wanted['rgb_sha256']:
+            raise RuntimeError(f'GUI/MCP pixel mismatch at frame {index}')
+
 async def compare_gui_mcp(executable, ffmpeg, workspace, environment, gui):
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
-    from media_test_support import make_video
-    from PIL import Image
+    from media_test_support import image_signature, make_video
     workspace.mkdir()
     make_video(workspace / 'input.mp4', str(ffmpeg))
     async with stdio_client(StdioServerParameters(command=str(executable), args=['--workspace', str(workspace)], env=environment)) as (read, write):
@@ -33,11 +41,8 @@ async def compare_gui_mcp(executable, ffmpeg, workspace, environment, gui):
                     await asyncio.sleep(.05)
                 raise TimeoutError('MCP parity job did not finish')
             frames = await finish(await call('start_frame_extraction', {'video_path': 'input.mp4', 'output_directory': 'frames'}))
-            pixels = []
-            for path in frames['files']:
-                with Image.open(workspace / path) as image:
-                    pixels.append(list(image.convert('RGB').getpixel((32, 18))))
-            if pixels != gui['frame_pixels']: raise RuntimeError(f'GUI/MCP pixel mismatch: {pixels}')
+            signatures = [image_signature(workspace / path) for path in frames['files']]
+            compare_frame_signatures(signatures, gui['frame_signatures'])
             edited = await finish(await call('start_video_edit', {'video_path': 'input.mp4', 'output_path': 'edited.mp4',
                 'start': 1, 'end': 3, 'rotation': 90, 'speed': 2, 'mute': True, 'width': 128, 'height': 72}))
             info = await call('inspect_video', {'video_path': 'edited.mp4'})
@@ -45,7 +50,8 @@ async def compare_gui_mcp(executable, ffmpeg, workspace, environment, gui):
                 if edited[key] != gui['editing'][key]: raise RuntimeError(f'GUI/MCP {key} mismatch')
             if abs(edited['duration'] - gui['editing']['duration']) > .1 or abs(info['fps'] - gui['edit_fps']) > .01:
                 raise RuntimeError('GUI/MCP timing mismatch')
-            return {'identical_frame_pixels': True, 'matching_edit_geometry_timing_audio': True}
+            return {'identical_frame_pixels': True, 'matching_frame_count_geometry': True,
+                    'matching_edit_geometry_timing_audio': True}
 
 def main():
     evidence = {'platform': platform.system(), 'architecture': platform.machine(), 'status': 'running'}

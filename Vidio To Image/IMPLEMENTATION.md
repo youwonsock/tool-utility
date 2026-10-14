@@ -31,6 +31,8 @@ Changes are isolated to the video tool, its documentation and `.github/workflows
 | Windows decoded UTF-8 reports/protocol as cp1252 | Explicit UTF-8 in reports and subprocess text decoding | Windows native CI passed after correction |
 | Tk 9 precise touchpad events were unhandled; controls could change while scrolling | First application bindtag, precise-scroll adapter, notebook keyboard traversal | Regression events and actual Mac scrolling across both tabs |
 | Windows packaging omitted Python and Tcl notices despite passing media checks | Search Python's installed prefix, preserve the exact Tcl release notice offline, fail builds and acceptance on missing notices | Windows/framework-layout regression tests and mandatory native package notice inventory |
+| Image parity compared one pixel per frame and could miss geometry or other pixel differences | Compare ordered frame signatures containing dimensions and the full RGB pixel digest | Corner-pixel, frame-count, geometry and PNG-metadata regressions |
+| Source provenance missed staged changes and new source files | Inspect Git status for the video source directory, including staged and untracked files | Isolated Git fixtures cover staged changes, new source files, ignored build outputs and unrelated sibling work |
 
 ## Requirement comparison and evidence
 
@@ -41,7 +43,7 @@ Changes are isolated to the video tool, its documentation and `.github/workflows
 | One cross-platform GUI with full editing | Shared extraction/edit tabs; numeric crop, rotation/flips/resize/speed/mute/CRF | GUI acceptance executes extraction, JPEG grid, trim/rotate/resize/speed/mute and crop/flips/CRF |
 | Reliable GUI layout and input | Platform font/theme, precise scrolling, fixed progress/actions | 760×760 / 1100×900 bounds assertions plus native Mac visual audit |
 | Independent packaged MCP with the original nine tools | Console entrypoint shares the GUI bundle runtime | Real SDK stdio workflow covers tool list, inspection, image output, edits, cancellation, workspace denial and clean exit |
-| GUI and MCP yield equivalent results | Same requests call the same service | Relocated package compares exact frame pixels, edit dimensions, duration, FPS and audio |
+| GUI and MCP yield equivalent results | Same requests call the same service | Relocated package compares frame count, dimensions and full RGB digests, plus edit dimensions, duration, FPS and audio |
 | Windows settings compatibility and Mac migration | Existing keys preserved; edit settings added; OS-native storage | Round-trip and legacy Mac migration tests; packaged GUI saves and reopens editing settings |
 | Portable client configuration | GUI generates command/args for native server; temporary Mac path rejected | GUI configuration generation test and portable runtime configuration tests |
 | Version/provenance/license records | Python 3.14.6, PyInstaller 6.22.3, locked dependencies, manifest and notices | Build manifest, codec checks, SHA-256 sidecar, package license inventory |
@@ -51,16 +53,16 @@ Completed cross-platform baseline: [run 38366703278](https://github.com/youwonso
 
 Media behavior baseline: `72c7c23d9eb62db576e97b8d7b0813af6dd4ba27`, [run 38375537712](https://github.com/youwonsock/tool-utility/actions/runs/38375537712). All four targets passed all 50 source tests, including GUI acceptance. Each native target also passed the expanded relocated GUI/MCP acceptance gates and 20 packaged media/MCP tests. Inspecting the downloaded artifacts during continuation then exposed the missing Windows Python/Tcl notices, so this baseline alone is insufficient for release completion.
 
-Latest validation and release artifacts are available from [PR #6 checks](https://github.com/youwonsock/tool-utility/pull/6/checks) and the [release branch workflow](https://github.com/youwonsock/tool-utility/actions/workflows/video-tools.yml?query=branch%3Acodex%2Fvideo-tools-portable-gui). The final gates are:
+Latest validation and release artifacts are available from [PR #6 checks](https://github.com/youwonsock/tool-utility/pull/6/checks) and the [main branch workflow](https://github.com/youwonsock/tool-utility/actions/workflows/video-tools.yml?query=branch%3Amain). The final gates are:
 
 | Target | Required source regression | Required native package acceptance | Artifact name |
 |---|---|---|---|
-| Windows x64 | All 53 tests | Relocated GUI/MCP, 20 media/MCP tests, notice inventory | `video-tools-windows-latest` |
-| macOS arm64 | All 53 tests | Relocated GUI/MCP, 20 media/MCP tests, notice inventory, signature | `video-tools-macos-15` |
-| macOS x86_64 | All 53 tests | Relocated GUI/MCP, 20 media/MCP tests, notice inventory, signature | `video-tools-macos-15-intel` |
-| Linux | All 53 tests under Xvfb | Source development target | Source regression in the linked CI run |
+| Windows x64 | All 57 tests | Relocated GUI/MCP, 20 media/MCP tests, notice inventory | `video-tools-windows-latest` |
+| macOS arm64 | All 57 tests | Relocated GUI/MCP, 20 media/MCP tests, notice inventory, signature | `video-tools-macos-15` |
+| macOS x86_64 | All 57 tests | Relocated GUI/MCP, 20 media/MCP tests, notice inventory, signature | `video-tools-macos-15-intel` |
+| Linux | All 57 tests under Xvfb | Source development target | Source regression in the linked CI run |
 
-Each native artifact contains its release ZIP, SHA-256 sidecar, `portable-verification.json` and `gui-portable.json`. Acceptance requires identical GUI/MCP frame pixels and matching edit geometry, duration, FPS and audio, plus GUI configuration generation, cancellation and saved-setting restoration. It also requires nonempty Python, Tcl, Tk and FFmpeg notices; the runtime manifest records both Tcl and Tk versions. Release manifests identify the exact source commit with `source_dirty=false`.
+Each native artifact contains its release ZIP, SHA-256 sidecar, `portable-verification.json` and `gui-portable.json`. Acceptance requires identical ordered GUI/MCP frame counts, dimensions and full RGB pixel digests, and matching edit geometry, duration, FPS and audio, plus GUI configuration generation, cancellation and saved-setting restoration. It also requires nonempty Python, Tcl, Tk and FFmpeg notices; the runtime manifest records both Tcl and Tk versions. Release manifests identify the exact source commit with `source_dirty=false`; staged changes and untracked video source files mark a developer build dirty, while ignored build outputs and unrelated sibling projects do not.
 
 On continuation, the baseline artifacts' digests and ZIP checksums, source manifests and acceptance reports were checked. The arm64 app was extracted with `ditto`, passed `codesign --verify --deep --strict` and passed GUI acceptance locally. Baseline evidence is preserved under `test-output/ci-38375537712/`; only artifacts that also pass the mandatory notice inventory should be distributed.
 
