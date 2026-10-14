@@ -9,6 +9,7 @@ Unreal 플러그인과 Unity Editor 도구에서 분리된 기타 작업 편의 
 | 툴 | 요약 | 문서 |
 | --- | --- | --- |
 | Video Tools | Windows x64·Mac Apple Silicon 무설치 GUI 이미지 추출·영상 편집 및 공용 처리 코드를 사용하는 MCP 도구 9개 | [툴 README](./video-tools/README.md) · [MCP 설정 및 사용](./video-tools/README.md#mcp-연결) |
+| Agent Delegation | Codex·OpenCode·Claude Code·Kilo의 구현·테스트 작업을 관리하는 로컬 플러그인 및 MCP 서비스 | [툴 README](./agent-delegation/README.md) |
 
 ## 폴더 운영
 
