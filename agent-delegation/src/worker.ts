@@ -6,6 +6,7 @@ import { moveWorker, workerTerminal } from './lifecycle.js';
 import { createBackend, type WorkerBackend, type Answer } from './backends/index.js';
 import { stopOwned } from './backends/process.js';
 import { runVerification } from './verification.js';
+import { assertRuntimeUnchanged } from './runtime.js';
 
 export async function worker(jobDir:string) {
   const spec=readJson<WorkerSpec>(path.join(jobDir,'spec.json'))!;
@@ -33,10 +34,11 @@ export async function worker(jobDir:string) {
   const timer=setInterval(()=>{void control();},250);
   try {
     invariant(!cancelledNow(),'CANCELLED','Cancelled before start.');
-    if(!spec.validation) {
+    if(!spec.validation||spec.diagnostic) {
       backend=createBackend(context);await backend.start();
       invariant(!cancelledNow(),'CANCELLED','Cancelled during native startup.');
       moveWorker(state,'creating_session');save();await backend.createSession();
+      if(spec.diagnostic){state.diagnostic_stage='termination';moveWorker(state,'verifying');moveWorker(state,'completed');save();return;}
       moveWorker(state,'implementing');save();
       const prompt=[
         'You are an implementation worker supervised by the current planning and review agent. Implement only this assigned task.',
@@ -46,8 +48,10 @@ export async function worker(jobDir:string) {
         `Declared verification commands will be executed separately: ${spec.verification.map(c=>c.command).join('; ')}`,
         'Finish with changed files, limitations and checks you ran. Your report is not verification evidence.',
       ].join('\n\n');
-      durableWrite(path.join(jobDir,'prompt.txt'),prompt);state.prompt_intent=Date.now();save();
+      durableWrite(path.join(jobDir,'prompt.txt'),prompt);
+      await assertRuntimeUnchanged(spec.worker,state.runtime!);
       invariant(!cancelledNow(),'CANCELLED','Cancelled before model dispatch.');
+      state.prompt_intent=Date.now();save();
       try{await backend.dispatch(prompt,state.prompt_id);state.prompt_accepted=true;save();}
       catch{moveWorker(state,'reconciling_delivery');state.error='Prompt response lost; inspecting the same session without resending.';save();}
       while(true) {
@@ -90,7 +94,8 @@ export async function worker(jobDir:string) {
     }
     moveWorker(state,cancelledNow()?'cancelled':'completed');save();
   }catch(e) {
-    moveWorker(state,cancelledNow()?'cancelled':'failed');state.error=e instanceof Fault?`${e.code}: ${e.message}`:(e as Error).message;save();
+    moveWorker(state,cancelledNow()?'cancelled':'failed');state.error=e instanceof Fault?`${e.code}: ${e.message}`:(e as Error).message;
+    if(e instanceof Fault){state.error_code=e.code;state.error_details=e.details;}save();
   }finally {
     clearInterval(timer);while(controlBusy)await sleep(50);
     if(backend)await backend.cancel().catch(()=>undefined);

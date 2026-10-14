@@ -27,4 +27,6 @@ for(const platform of ['opencode','codex','claude-code','kilo']) {
   const binding=JSON.parse(fs.readFileSync(path.join(root,'dist','bindings',platform,'binding.json')));
   assert.equal(binding.platform,platform);assert.equal(binding.support.model_tasks,'not exercised');assert.equal(binding.support.ide_desktop_gui,'unconfirmed');
 }
-assert.ok(fs.existsSync(path.join(root,'dist','runtime_modules','@agent-delegation','claude-runtime','index.mjs')));
+for(const entry of ['runtime_modules','runtime-manifest.json'])assert.equal(fs.existsSync(path.join(root,'dist',entry)),false,`Platform runtime must not be bundled: ${entry}`);
+const dependencies=JSON.parse(fs.readFileSync(path.join(root,'package.json')));
+for(const name of ['@agent-delegation/claude-runtime','@opencode-ai/sdk','@kilocode/sdk','@anthropic-ai/claude-agent-sdk'])assert.ok(!dependencies.dependencies?.[name]&&!dependencies.devDependencies?.[name],name);

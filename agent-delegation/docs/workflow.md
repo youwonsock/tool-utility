@@ -11,6 +11,8 @@ worktrees. Keep this division when changing either platform.
 2. Call doctor with the selected worker. Resolve version, policy, installation
    or connection problems before submitting tasks. Doctor does not test model
    credentials or perform a paid model invocation.
+   Users install/configure their CLI and SDK themselves. Missing SDKs do not
+   prevent MCP connection, review, cancellation or final command verification.
 3. Call submit_tasks with a unique request_id, bounded goals, scope,
    dependencies, acceptance criteria, declared verification commands and
    explicit context/resources. Select worker.platform and optionally model or
@@ -28,9 +30,13 @@ worktrees. Keep this division when changing either platform.
 7. After a correction, its old result cannot be approved, including before
    dispatch and after restart. Keep the selected worker/profile/model for the
    correction. Integrated tasks are immutable. There are no autonomous retries.
+   Configuration/initialization checks do not spend the model correction limit;
+   a recorded dispatch intent does, including uncertain delivery.
 8. Use reconcile_run to compare durable state, actual processes, resource
    identity and Git evidence. Keep resource leases for uncertain launches or
    termination. A waiting resource is rebound to the same worktree and attempt.
+   RUNTIME_CHANGED requires inspection or cancellation of the same attempt;
+   never load a replacement SDK or replay its model request.
 9. Use cancel_run to request cancellation. "cancelling" remains until process
    termination is confirmed; preserve integrated work and evidence. Never
    start another worker to resolve uncertain delivery.

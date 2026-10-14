@@ -60,10 +60,14 @@ export type Model = z.infer<typeof modelSchema>;
 export type WorkerModel = Model | string;
 export type WorkerSelection = z.infer<typeof workerSchema>;
 export type ShellSpec = { executable:string; args:string[]; baseline?:boolean };
+export type RuntimeIdentity = {
+  cli:{path:string;real_path:string;args:string[];hash:string;argument_files:{path:string;hash:string}[];version?:string};
+  sdk?:{name:string;root:string;entry:string;version:string;source:'profile'|'environment'|'cli'|'global';hash:string};
+};
 export type WorkerConfig = {
   platform:Platform; profile:string; executable:string; executable_args:string[];
   baseline:string; config_hash:string; model?:WorkerModel; native_profile?:string;
-  env_refs?:Record<string,string>; shell?:ShellSpec;
+  env_refs?:Record<string,string>; shell?:ShellSpec; sdk_root?:string; runtime?:RuntimeIdentity;
 };
 export type Command = z.infer<typeof commandSchema>;
 export type TaskSpec = z.infer<typeof taskSchema>;
@@ -89,6 +93,7 @@ export type WorkerState = {
   protocol: number; id: string; phase: WorkerPhase; updated: number; host?: ProcessIdentity;
   server?: ProcessIdentity; url?: string; session_id?: string; model?: WorkerModel;
   backend?:Platform; backend_version?:string; processes?:ProcessIdentity[];
+  runtime?:RuntimeIdentity; error_code?:string; error_details?:unknown; diagnostic_stage?:string;
   prompt_id: string; prompt_intent?: number; prompt_accepted?: boolean;
   native_request_id?:string; turn_id?:string; permission_grants?:string[];
   verification_shell?:ShellSpec;
@@ -110,6 +115,7 @@ export type Attempt = {
   integrated_commit?: string; approval?: { commit: string; at: number };
   worker?: WorkerState; context: ContextFile[]; resources: string[];
   launch_boot?: string;
+  runtime_error?:{code:string;message:string};
   commit_intent?: boolean;
 };
 export type Task = { spec: TaskSpec; state: TaskState; attempts: Attempt[]; revision: number; worker:WorkerConfig };

@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { Store } from './store.js';
-import { PROTOCOL, STORE_FORMAT, WORKER_FORMAT, VERSION, backendVersions, platforms, Fault, invariant, schemas, type Attempt, type AttemptState, type Run, type Task, type TaskSpec, type ToolName, type WorkerSpec, type WorkerState, type Resource, type SubmitArgs, type WorkerSelection } from './types.js';
-import { uid, digest, readJson, writeJson, mkdir, alive, terminate, sleep, inside, processIdentity, bootId, treeAlive } from './io.js';
+import { PROTOCOL, STORE_FORMAT, WORKER_FORMAT, VERSION, backendVersions, platforms, Fault, invariant, schemas, type Attempt, type AttemptState, type Run, type Task, type TaskSpec, type ToolName, type WorkerSpec, type WorkerState, type Resource, type SubmitArgs, type WorkerSelection, type WorkerConfig } from './types.js';
+import { uid, digest, readJson, writeJson, mkdir, alive, terminate, sleep, inside, processIdentity, bootId, treeAlive, exec } from './io.js';
 import { branch, clean, git, head, repository, worktree, materialize, validateScope, resultCommit, integrate, targetReady, checkContext, contextHash } from './git.js';
 import { probeResources } from './opencode.js';
 
@@ -11,7 +11,7 @@ import { transition, moveRun, moveTask, moveAttempt, moveValidation, moveWorker,
 import { submitTasks, recoverSubmissions } from './submission.js';
 import { rejectedEvidence } from './evidence.js';
 import { resolveWorker, publicWorker } from './profiles.js';
-import { createBackend } from './backends/index.js';
+import { resolveRuntime, assertRuntimeUnchanged, publicRuntime } from './runtime.js';
 import { inspectHttpSession } from './backends/http.js';
 import { confirmedStopped, stopOwned, processEvidence } from './backends/process.js';
 export class Engine {
@@ -85,31 +85,45 @@ export class Engine {
   view(run: Run, cursor?: string) {
     return this.store.page(run.tasks.map(t => {
       const a = t.attempts.at(-1);
-      return { task_id: t.spec.id, state: t.state, dependencies: t.spec.dependencies, worker:publicWorker(t.worker), attempt: a && { id: a.id, number: a.number, state: a.state, directory: a.directory, commit: a.commit, model: a.model, backend:a.worker?.backend, backend_version:a.worker?.backend_version, verification: a.verification, artifacts: a.artifacts, inputs: a.inputs, error: a.error, integrated_commit: a.integrated_commit } };
+      return { task_id: t.spec.id, state: t.state, dependencies: t.spec.dependencies, worker:publicWorker(t.worker), attempt: a && { id: a.id, number: a.number, state: a.state, directory: a.directory, commit: a.commit, model: a.model, backend:a.worker?.backend, backend_version:a.worker?.backend_version, runtime:publicRuntime(a.worker?.runtime??a.execution?.runtime), runtime_error:a.runtime_error, verification: a.verification, artifacts: a.artifacts, inputs: a.inputs, error: a.error, integrated_commit: a.integrated_commit } };
     }), cursor, { run_id: run.id, state: run.state, revision: run.revision, base: run.base, integration_commit: run.integration_commit,worker:publicWorker(run.worker),
       validation: run.validation && { id: run.validation.id, state: run.validation.state, commit: run.validation.commit, revision: run.validation.revision, attempt_id: run.validation.attempt.id, directory: run.validation.attempt.directory, artifacts: run.validation.attempt.artifacts, verification: run.validation.attempt.verification, inputs: run.validation.attempt.inputs, error: run.validation.attempt.error }, error: run.error,
       event_cursor: this.store.state.events.filter(e => e.run_id === run.id).at(-1)?.seq ?? 0,
     });
   }
   async doctor(args: { repo?: string; worker?:WorkerSelection }) {
-    const selected=resolveWorker(this.store.root,args.worker);
-    const repo = args.repo ? await repository(args.repo) : undefined;
     const doctorID = uid('doctor'), jobDir = path.join(this.store.root, 'diagnostics', doctorID); mkdir(jobDir);
-    const state: WorkerState = { protocol: WORKER_FORMAT, id: doctorID, phase: 'doctor', updated: Date.now(), prompt_id: '', verification: [], inputs: [], replies: {} };
-    const spec:WorkerSpec={protocol:WORKER_FORMAT,host_executable:this.executableFile,diagnostic:true,worker:selected,id:doctorID,directory:args.repo||this.store.root,job_dir:jobDir,goal:'',acceptance:[],scope:[],verification:[],resources:[],context:[],timeout_ms:30000,validation:true,model:selected.model,executable:selected.executable,executable_args:selected.executable_args,password:uid('secret')};
-    writeJson(path.join(jobDir,'spec.json'),spec);
-    const backend=createBackend({spec,state,save:()=>writeJson(path.join(jobDir,'worker.json'),state)});
-    let connection: { healthy: boolean; model?: unknown; error?: string } = { healthy: false };
+    let selected:WorkerConfig|undefined,repo:Awaited<ReturnType<typeof repository>>|undefined,state:WorkerState|undefined;
+    let connection: { healthy: boolean; model?: unknown; error?: string;code?:string;details?:unknown;stage?:string } = { healthy: false,stage:'configuration' };
     try {
-      await backend.start();await backend.createSession();
-      connection = { healthy: true, model: state.model };
-    } catch (e) { connection.error = (e as Error).message; }
-    finally { const stopped=await backend.confirmStopped();state.stopped=stopped;writeJson(path.join(jobDir,'worker.json'),state);if(!stopped){connection.healthy=false;connection.error='Diagnostic runtime termination could not be confirmed.';} }
+      selected=resolveWorker(this.store.root,args.worker);
+      repo=args.repo?await repository(args.repo):undefined;
+      connection.stage='installation';selected.runtime=await resolveRuntime(selected);
+      const spec:WorkerSpec={protocol:WORKER_FORMAT,host_executable:this.executableFile,diagnostic:true,worker:selected,id:doctorID,directory:args.repo||this.store.root,job_dir:jobDir,goal:'',acceptance:[],scope:[],verification:[],resources:[],context:[],timeout_ms:30000,validation:false,model:selected.model,executable:selected.executable,executable_args:selected.executable_args,password:uid('secret')};
+      writeJson(path.join(jobDir,'spec.json'),spec);
+      connection.stage='initialization';
+      const result=await exec(process.execPath,[this.executableFile,'worker',jobDir],{env:{...process.env,AGENT_DELEGATION_WORKER:'1'},timeout:45000});
+      state=readJson<WorkerState>(path.join(jobDir,'worker.json'));
+      invariant(result.code===0&&state,'CLI_INCOMPATIBLE','Diagnostic worker could not initialize.',{stderr:result.stderr});
+      validateWorkerState(state);
+      connection={healthy:state.phase==='completed'&&state.stopped===true,model:state.model,error:state.error,code:state.error_code,details:state.error_details,stage:state.diagnostic_stage};
+    } catch (e) {connection.error=(e as Error).message;connection.code=e instanceof Fault?e.code:'WORKER_PROFILE';connection.details=e instanceof Fault?e.details:undefined;}
+    finally {
+      state??=readJson<WorkerState>(path.join(jobDir,'worker.json'));
+      const spec=readJson<WorkerSpec>(path.join(jobDir,'spec.json'));
+      if(state&&spec) {
+        const stopped=await stopOwned({spec,state,save:()=>writeJson(path.join(jobDir,'worker.json'),state)});
+        if(state.host)await terminate(state.host);
+        state.stopped=stopped;writeJson(path.join(jobDir,'worker.json'),state);
+        if(!stopped){connection.healthy=false;connection.code='STOP_UNCERTAIN';connection.error='Diagnostic runtime termination could not be confirmed.';}
+      }
+    }
+    writeJson(path.join(jobDir,'diagnostic.json'),connection);
     return { version: VERSION, protocol: PROTOCOL, node: process.versions.node, platform: process.platform,
-      storage_format:STORE_FORMAT,worker_format:WORKER_FORMAT,worker:publicWorker(selected),backend_version:state.backend_version,
-      baseline:selected.baseline, compatible:connection.healthy,
+      storage_format:STORE_FORMAT,worker_format:WORKER_FORMAT,worker:publicWorker(selected),backend_version:state?.backend_version,runtime:publicRuntime(state?.runtime??selected?.runtime),
+      baseline:selected?.baseline, compatible:connection.healthy,
       connection, provider_authentication: 'Not exercised by doctor; a real model request is required to verify provider credentials.',
-      backends:platforms.map(platform=>({platform,baseline:backendVersions[platform],connection:platform===selected.platform?connection:{healthy:null,checked:false},experimental:platform==='codex'})),repo,
+      backends:platforms.map(platform=>({platform,baseline:backendVersions[platform],connection:platform===(selected?.platform??args.worker?.platform??'opencode')?connection:{healthy:null,checked:false},experimental:platform==='codex'})),repo,
       resources: this.store.state.runs.flatMap(r => r.resources.map(p => ({ run_id: r.id, resource_key: p.resource_key, expected_instance: p.expected_instance, project_bound: p.project_bound }))),
       running: this.allAttempts().filter(a => holdsResources(a)).map(a => a.id),
       metrics: this.store.state.metrics,
@@ -155,6 +169,8 @@ export class Engine {
     const attempt: Attempt = { id, number: task.attempts.length + 1, base, directory: path.join(this.store.root, 'worktrees', run.id, id), job_dir: path.join(this.store.root, 'jobs', id), state: 'launching', artifacts: [], verification: [], context: metadata.context, resources: task.spec.resources, inputs: [], feedback: prior?.feedback,execution:structuredClone(task.worker) };
     moveTask(task,'running'); task.attempts.push(attempt); this.store.save();
     try {
+      const runtime=prior?await resolveRuntime(task.worker):task.worker.runtime?await assertRuntimeUnchanged(task.worker,task.worker.runtime):await resolveRuntime(task.worker);
+      attempt.execution!.runtime=runtime;this.store.save();
       checkContext(run.repo, attempt.context);
       await worktree(run.repo, attempt.directory, base);
       await materialize(this.store, attempt.directory, attempt.context);
@@ -189,7 +205,7 @@ export class Engine {
   }
   async launchFailure(run: Run, attempt: Attempt, e: unknown) {
     if (this.store.uncertain || e instanceof Fault && e.code === 'REQUEST_UNCERTAIN') throw e;
-    attempt.error = (e as Error).message;
+    attempt.error = e instanceof Fault?`${e.code}: ${e.message}`:(e as Error).message;
     attempt.artifacts.push(this.store.artifact(run.id, 'error.json', JSON.stringify({ message: (e as Error).message, details: e instanceof Fault ? e.details : undefined })));
     const next = e instanceof Fault && e.code.startsWith('RESOURCE_') ? 'resource_wait' : fs.existsSync(path.join(attempt.job_dir, 'spec.json')) ? 'orphaned' : 'failed';
     const task = run.tasks.find(t=>t.attempts.includes(attempt));
@@ -212,8 +228,8 @@ export class Engine {
       const prior = progress(attempt.worker);
       attempt.worker = state; attempt.model = state.model; attempt.inputs = state.inputs;
       const ownerTask=run.tasks.find(t=>t.attempts.includes(attempt));
-      if(ownerTask&&state.model&&attempt.number===1) {ownerTask.worker.model=state.model;if(attempt.execution)attempt.execution.model=state.model;}
-      if(ownerTask&&state.verification_shell&&attempt.number===1) {
+      if(ownerTask&&state.model&&ownerTask.worker.model===undefined) {ownerTask.worker.model=state.model;if(attempt.execution)attempt.execution.model=state.model;}
+      if(ownerTask&&state.verification_shell&&ownerTask.worker.shell===undefined) {
         ownerTask.worker.shell??=structuredClone(state.verification_shell);
         if(attempt.execution)attempt.execution.shell??=structuredClone(state.verification_shell);
         if(run.worker.config_hash===ownerTask.worker.config_hash)run.worker.shell??=structuredClone(state.verification_shell);
@@ -244,7 +260,7 @@ export class Engine {
       else if (state.phase !== 'completed') this.finishAttempt(run,attempt,'failed');
       else if (task) {
         try {
-          const title = `${attempt.worker?.protocol===1?'OpenCode':'Delegate'} ${task.spec.id} attempt ${attempt.number} (${attempt.id})`;
+          const title = `Delegate ${task.spec.id} attempt ${attempt.number} (${attempt.id})`;
           const current = await head(attempt.directory);
           if (attempt.commit_intent && current !== attempt.base) {
             invariant((await git(attempt.directory, ['show','-s','--format=%s',current])).stdout.trim() === title && (await git(attempt.directory, ['rev-parse',`${current}^`])).stdout.trim() === attempt.base, 'COMMIT_UNCERTAIN', 'Interrupted result commit does not match its durable intent.');
@@ -284,8 +300,9 @@ export class Engine {
     invariant(task.state !== 'integrated', 'IMMUTABLE', 'Integrated tasks are immutable; submit a new correction task.');
     invariant(canReview(task,attempt),'REVIEW','This task is not awaiting review. Its prior result cannot be reviewed after a correction request.');
     if (args.decision === 'request_changes') {
-      invariant(args.feedback?.trim(), 'FEEDBACK', 'Correction instructions from Codex are required.');
-      invariant(attempt.number <= run.settings.max_retries, 'RETRY_LIMIT', 'Correction limit reached. Submit a new task.');
+      invariant(args.feedback?.trim(), 'FEEDBACK', 'Correction instructions from the supervisor are required.');
+      const dispatched=task.attempts.filter(a=>!!(a.worker?.prompt_intent||this.workerState(a)?.prompt_intent)).length;
+      invariant(dispatched <= run.settings.max_retries, 'RETRY_LIMIT', 'Correction limit reached. Submit a new task.');
       transition({task:[task,'queued'],run:[run,'active']});
       attempt.feedback = args.feedback; attempt.approval = undefined; task.revision++; run.revision++; this.invalidate(run);
       this.store.event(run.id, 'correction_requested', { task_id: task.spec.id, previous_attempt: attempt.id });
@@ -334,7 +351,19 @@ export class Engine {
   }
   async reconcile(run: Run) {
     for (const attempt of this.allAttempts(run).filter(a => holdsResources(a))) {
+      const stateForRuntime=this.workerState(attempt),specForRuntime=readJson<WorkerSpec>(path.join(attempt.job_dir,'spec.json'));
+      const implementation=!!run.tasks.find(task=>task.attempts.includes(attempt));
+      if(implementation&&run.state!=='cancelling') {
+        try {
+          const expected=stateForRuntime?.runtime??attempt.execution?.runtime;
+          invariant(expected,'RUNTIME_CHANGED','This unfinished attempt has no execution identity. Use the previous release to finish or cancel it; no model request was replayed.');
+          await assertRuntimeUnchanged(specForRuntime?.worker??attempt.execution??run.worker,expected);
+        }catch(error) {
+          if(!attempt.runtime_error){attempt.runtime_error={code:'RUNTIME_CHANGED',message:(error as Error).message};attempt.artifacts.push(this.store.artifact(run.id,'runtime-change.json',JSON.stringify(attempt.runtime_error)));this.store.event(run.id,'runtime_changed',{attempt_id:attempt.id,...attempt.runtime_error});}
+        }
+      }
       if (attempt.state === 'resource_wait') {
+        if(attempt.runtime_error)continue;
         if (this.allAttempts().filter(occupiesSlot).length >= this.options.concurrency || this.allAttempts(run).filter(occupiesSlot).length >= run.settings.concurrency) continue;
         const task = run.tasks.find(t => t.attempts.includes(attempt));
         try {

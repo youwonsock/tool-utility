@@ -2,7 +2,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { ChildProcess } from 'node:child_process';
 import spawn from 'cross-spawn';
-import { createOpencodeClient } from '@opencode-ai/sdk/v2/client';
 import { Fault, invariant, type Model, type Resource, type WorkerSpec, type WorkerState } from './types.js';
 import { exec, readJson, samePath, sleep, digest } from './io.js';
 import { beginProcess, registerProcess } from './backends/process.js';
@@ -10,6 +9,7 @@ import { workerEnvironment } from './profiles.js';
 import { connection } from './backends/policy.js';
 import { verificationShell } from './shell.js';
 import { executableVersion, reportedVersion } from './backends/version.js';
+import { loadSdk, requireSdkMethods } from './runtime.js';
 
 export async function resolvedConfig(executable: string, args: string[], directory: string, env = process.env) {
   const r = await exec(executable, [...args, 'debug','config','--pure'], { cwd: directory, env, timeout: 60000 });
@@ -56,7 +56,7 @@ export function enforceHttpPolicy(effective:Record<string,any>,overlay:ReturnTyp
     invariant(digest(effective.permission?.[key])===digest(value)&&digest(effective.agent?.['delegate-worker']?.permission?.[key])===digest(value),'MCP_POLICY',`Managed configuration changes worker permission: ${key}`);
   }
 }
-export async function selectModel(client: ReturnType<typeof createOpencodeClient>, config: Record<string, any>, spec: Pick<WorkerSpec, 'model'|'executable'|'executable_args'|'directory'>): Promise<Model> {
+export async function selectModel(client: any, config: Record<string, any>, spec: Pick<WorkerSpec, 'model'|'executable'|'executable_args'|'directory'>): Promise<Model> {
   const providers = (await client.provider.list({}, { throwOnError: true })).data!;
   invariant(providers&&Array.isArray(providers.all)&&Array.isArray(providers.connected)&&providers.default&&typeof providers.default==='object','BACKEND_API','OpenCode provider API returned an incompatible response.');
   invariant(spec.model===undefined || typeof spec.model==='object','MODEL','OpenCode requires providerID/modelID.');
@@ -70,15 +70,16 @@ export async function selectModel(client: ReturnType<typeof createOpencodeClient
   }
   if (!model) {
     const configuredProviders = Object.keys(config.provider ?? {});
-    const provider = providers.all.find(p => providers.connected.includes(p.id) && (!configuredProviders.length || configuredProviders.includes(p.id)));
+    const provider = providers.all.find((p:any) => providers.connected.includes(p.id) && (!configuredProviders.length || configuredProviders.includes(p.id)));
     if (provider && providers.default[provider.id]) model = { providerID: provider.id, modelID: providers.default[provider.id]! };
   }
   invariant(model, 'MODEL_UNAVAILABLE', 'No existing OpenCode default model could be resolved. Specify a model.');
-  const provider = providers.all.find(p => p.id === model!.providerID);
+  const provider = providers.all.find((p:any) => p.id === model!.providerID);
   invariant(providers.connected.includes(model.providerID) && provider?.models[model.modelID], 'MODEL_UNAVAILABLE', `Configured model is unavailable: ${model.providerID}/${model.modelID}. No fallback was used.`);
   return model;
 }
 export async function launchOpenCode(spec: WorkerSpec, state: WorkerState, save: () => void) {
+  const {createOpencodeClient}=await loadSdk(spec.worker,state.runtime!);
   const version = await executableVersion(spec);
   const initial = await resolvedConfig(spec.executable, spec.executable_args, spec.directory,spec.worker?workerEnvironment(spec.worker):process.env);
   state.verification_shell=verificationShell(spec.worker?.shell,initial.shell);save();
@@ -110,6 +111,7 @@ export async function launchOpenCode(spec: WorkerSpec, state: WorkerState, save:
     headers: { authorization: `Basic ${Buffer.from(`opencode:${spec.password}`).toString('base64')}` },
     fetch: ((input: any, init?: any) => fetch(input, { ...init, signal: init?.signal ?? AbortSignal.timeout(30000) })) as typeof fetch,
   });
+  requireSdkMethods(client,httpSdkMethods,spec.worker);
   const health = (await client.global.health({ throwOnError: true })).data!;
   invariant(health?.healthy===true&&reportedVersion(health.version,'OpenCode')===version,'OPENCODE_HEALTH','OpenCode health API did not identify the launched runtime.');
   state.backend='opencode';state.backend_version=health.version;
@@ -119,14 +121,18 @@ export async function launchOpenCode(spec: WorkerSpec, state: WorkerState, save:
   return { client, child, log };
 }
 
-export async function inspectSession(spec: WorkerSpec, state: WorkerState) {
+export const httpSdkMethods=['global.health','provider.list','session.create','session.list','session.get','session.messages','session.status','session.promptAsync','session.abort','permission.list','permission.reply','question.list','question.reply','question.reject'];
+export async function inspectSession(spec: WorkerSpec, state: WorkerState, username='opencode') {
   invariant(state.url && /^http:\/\/127\.0\.0\.1:\d+$/.test(state.url), 'ENDPOINT', 'Expected an owned localhost endpoint.');
-  const client = createOpencodeClient({ baseUrl: state.url, directory: spec.directory, headers: { authorization: `Basic ${Buffer.from(`opencode:${spec.password}`).toString('base64')}` } });
-  const options = { throwOnError: true as const, signal: AbortSignal.timeout(3000) };
-  const health = (await client.global.health(options)).data!;
+  // Recovery reads only the already-owned endpoint and never imports a replacement SDK.
+  const read=async (pathname:string)=>{
+    const response=await fetch(new URL(pathname,state.url),{headers:{authorization:`Basic ${Buffer.from(`${username}:${spec.password}`).toString('base64')}`,'x-opencode-directory':encodeURIComponent(spec.directory)},signal:AbortSignal.timeout(3000)});
+    invariant(response.ok,'BACKEND_API','Owned session evidence could not be read.');return response.json() as Promise<any>;
+  };
+  const health=await read('/global/health');
   if (!state.session_id) return { healthy: health.healthy, session_present: false, prompt_present: false };
-  const session = (await client.session.get({ sessionID: state.session_id }, options)).data!;
-  const statuses = (await client.session.status({}, options)).data!;
-  const messages = (await client.session.messages({ sessionID: state.session_id }, options)).data!;
-  return { healthy: health.healthy, session_present: session.id === state.session_id, status: statuses[session.id]?.type ?? 'idle', prompt_present: messages.some(m => m.info.id === state.prompt_id), messages: messages.length };
+  const session=await read(`/session/${encodeURIComponent(state.session_id)}`);
+  const statuses=await read('/session/status'),messages=await read(`/session/${encodeURIComponent(state.session_id)}/message`);
+  invariant(Array.isArray(messages)&&statuses&&typeof statuses==='object','BACKEND_API','Owned session evidence has an incompatible shape.');
+  return { healthy: health.healthy, session_present: session.id === state.session_id, status: statuses[session.id]?.type ?? 'idle', prompt_present: messages.some((m:any) => m.info.id === state.prompt_id), messages: messages.length };
 }

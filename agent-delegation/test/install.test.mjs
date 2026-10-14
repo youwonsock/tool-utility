@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { exec } from '../dist/index.mjs';
+import { exec, processIdentity } from '../dist/index.mjs';
 import { root, temporaryRoot } from './helpers.mjs';
 
 test('installer updates its own marketplace, retains old releases, and rolls back failed registration',async()=>{
@@ -23,5 +23,12 @@ test('installer updates its own marketplace, retains old releases, and rolls bac
   const manifest=r=>JSON.parse(fs.readFileSync(path.join(r.release,'plugins/agent-delegation/.codex-plugin/plugin.json')));assert.notEqual(manifest(first).version,manifest(second).version);
   fs.appendFileSync(skill,'\n');const failing=JSON.parse(fs.readFileSync(stateFile));failing.fail_next_add=true;fs.writeFileSync(stateFile,JSON.stringify(failing));
   result=await run();assert.notEqual(result.code,0);assert.equal(JSON.parse(fs.readFileSync(path.join(install,'current.json'))).release,second.release);assert.equal(JSON.parse(fs.readFileSync(stateFile)).marketplaces[0].root,second.release);
+  fs.mkdirSync(data,{recursive:true});
+  fs.writeFileSync(path.join(data,'state.json'),JSON.stringify({protocol:2,runs:[{tasks:[{attempts:[{state:'stop_uncertain'}]}]}]}));
+  result=await run();assert.equal(JSON.parse(result.stdout).code,'UPDATE_PENDING');assert.equal(JSON.parse(fs.readFileSync(path.join(install,'current.json'))).release,second.release);
+  fs.rmSync(path.join(data,'state.json'));
+  fs.writeFileSync(path.join(data,'service.json'),JSON.stringify({protocol:1,owner:await processIdentity(process.pid)}));
+  result=await run();assert.equal(JSON.parse(result.stdout).code,'UPDATE_PENDING');assert.equal(JSON.parse(fs.readFileSync(path.join(install,'current.json'))).release,second.release);
+  fs.rmSync(path.join(data,'service.json'));
   fs.mkdirSync(data,{recursive:true});fs.writeFileSync(path.join(data,'state.json'),JSON.stringify({protocol:99}));result=await run();assert.equal(result.code,0);assert.equal(JSON.parse(result.stdout).update_pending,true);assert.equal(JSON.parse(fs.readFileSync(path.join(install,'current.json'))).release,second.release);
 });
