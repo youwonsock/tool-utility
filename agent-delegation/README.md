@@ -19,9 +19,18 @@ flowchart LR
 ## 요구 사항
 
 - Windows 또는 macOS, Node.js **22 이상**, Git. 지시자는 공식 MCP를 지원하는 로컬 CLI·IDE·데스크톱으로 연결합니다.
-- SDK 고정 버전: OpenCode **1.18.30**, Claude Agent SDK **0.3.296**와 번들 CLI **2.1.296**, Kilo **7.4.23**, MCP **1.30.0**, Zod **3.25.76**. Claude의 Zod 4 의존성은 별도 런타임 패키지로 격리합니다. CLI 검증 기준은 OpenCode **1.18.30**, Codex **0.146.0**, Kilo **7.4.23**이며 설치된 CLI는 버전이 달라도 API·세션·필수 권한 정책이 호환되면 사용합니다. `doctor.compatible`은 모델 호출 없이 확인한 초기화·정책·세션 생성과 프로세스 종료 결과를 나타내고 `backend_version`은 실제 런타임 버전입니다. 선택한 구현자의 네이티브 인증을 사용하며 Codex app-server 연동은 실험 기능입니다.
+- 사용자가 CLI·플랫폼 SDK·GUI를 직접 설치·업데이트·로그인합니다. 이 도구는 실행 환경을 설치하거나 복사하지 않습니다. 설치된 버전의 필수 API·세션·권한 정책을 확인하며 버전 일치로 제한하지 않습니다. 도구 자체의 MCP SDK·공통 라이브러리는 배포물에 포함합니다. Codex app-server 연동은 실험 기능입니다.
 - 작업 대상은 이름 있는 브랜치가 체크아웃된 Git 저장소 루트여야 합니다. 추적 파일 수정과 미추적 소스 파일이 없어야 합니다. ignored 규칙·스펙은 `context_files`로 지정합니다.
-- 기본 동시 실행 수 2, 시도 제한 시간 60분, 최초 시도 이후 수정 재시도 3회. 서비스 전체 제한은 `AGENT_DELEGATION_CONCURRENCY`, 실행별 제한은 `settings`로 지정합니다.
+- 기본 동시 실행 수 2, 시도 제한 시간 60분, 최초 모델 시도 이후 수정 재시도 3회. 설정·초기화 실패는 모델 횟수에 포함하지 않으며 전달 의도가 기록된 불확실한 요청은 포함합니다. 서비스 전체 제한은 `AGENT_DELEGATION_CONCURRENCY`, 실행별 제한은 `settings`로 지정합니다.
+
+| 구현자 | 사용자 설치본 | 연결 |
+| --- | --- | --- |
+| OpenCode | `opencode` CLI, `@opencode-ai/sdk` | 작업 전용 서버와 SDK |
+| Codex | `codex` CLI | app-server; 플랫폼 SDK 불필요 |
+| Claude Code | `claude` CLI, `@anthropic-ai/claude-agent-sdk` | SDK query와 지정한 CLI |
+| Kilo | `kilo` CLI, `@kilocode/sdk` | 작업 전용 서버와 SDK |
+
+GUI·IDE·CLI 지시자는 MCP로 연결합니다. GUI 구현자 자동 제어는 제공하지 않습니다.
 
 ## 설치
 
@@ -42,13 +51,13 @@ Windows PowerShell:
 ./install.ps1
 ```
 
-스크립트는 의존성을 설치하고 번들을 만든 다음 사용자 설치 폴더에 **독립 배포물**을 복사합니다. 그 설치본을 `codex plugin marketplace add`로 등록하고 `codex plugin add agent-delegation@personal`로 설치합니다. 이후 **새 Codex 대화**에서 다음과 같이 요청합니다.
+스크립트는 도구 자체의 의존성을 설치하고 사용자 설치 폴더에 **독립 배포물**을 만듭니다. 플랫폼 SDK·CLI는 내려받지 않으며 SDK 누락도 플러그인 설치를 막지 않습니다. 설치본을 Codex CLI로 등록하고 `codex plugin add agent-delegation@personal`로 설치합니다. 이후 **새 Codex 대화**에서 다음과 같이 요청합니다.
 
 > $delegate-agents를 사용해 이 변경을 계획하고, 선택한 구현자에게 위임한 뒤 증거를 검수해 반영해줘.
 
 다른 지시자용 MCP·스킬 설정은 설치 산출물의 `hosts/`에 있으며 `node "<cli>" export-host <platform> <새 출력 경로>`로 별도 생성할 수 있습니다. 내보내기는 전역 등록을 수행하지 않습니다. Kilo의 CLI/runtime과 IDE 설정은 별도 파일입니다.
 
-개발 저장소를 옮기거나 삭제해도 설치본은 원본 경로나 `node_modules`를 참조하지 않습니다. Node.js·Git과 선택한 외부 CLI는 계속 설치되어 있어야 합니다. Claude SDK와 현재 OS의 네이티브 런타임은 배포물에 포함됩니다. 소스 플러그인의 `runtime/`은 설치 때 채우므로 원본 폴더를 직접 등록하는 대신 설치 스크립트를 사용하세요.
+개발 저장소를 옮기거나 삭제해도 도구 설치본은 독립적으로 동작합니다. 선택한 사용자 CLI와 SDK는 외부 설치 경로에 유지해야 합니다. 플랫폼 SDK와 네이티브 CLI는 배포물에 포함하지 않습니다. 소스 플러그인의 `runtime/`은 설치 때 채우므로 설치 스크립트를 사용하세요.
 
 등록 없이 배포물만 생성하려면 `sh install.sh --no-register` 또는 `./install.ps1 -NoRegister`를 사용합니다. 설치 결과 JSON에 실제 배포 경로와 CLI 경로가 표시됩니다.
 
@@ -157,7 +166,7 @@ node "<installed-cli-path>" cleanup run_id
 
 `stop`은 실행 중 작업이 있으면 거부합니다. `stop --cancel`은 먼저 취소를 요청하며, `cancelled`를 확인한 뒤 `stop`을 다시 호출합니다. 서비스 프로세스만 종료되더라도 별도 워커는 유지됩니다. `cleanup`은 완료/취소가 확정된 실행의 worktree만 제거하고 증거와 기록은 보존합니다. 기록 전체의 영구 삭제는 v1 자동 정리 범위에 포함하지 않습니다.
 
-업데이트는 저장소를 갱신하고 설치 스크립트를 다시 실행합니다. 새 버전 폴더를 준비한 뒤 등록을 전환하며 이전 배포물은 삭제하지 않습니다. 프로토콜이나 저장 형식이 달라지면 `UPDATE_PENDING`으로 안내하고 실행 중 작업을 종료하지 않습니다. 자세한 복구 판단은 [운영 문서](docs/operations.md)에 있습니다.
+업데이트 전에 이전 설치본으로 작업을 완료/취소하고 서비스를 종료합니다. 새 배포물을 준비한 뒤 등록을 전환하며 실패하면 이전 등록을 복구합니다. 서비스가 살아 있거나 종료가 불확실한 시도가 있으면 `UPDATE_PENDING`으로 전환을 보류합니다. 기록과 사용자 설치본은 보존합니다. 자세한 복구 판단은 [운영 문서](docs/operations.md)에 있습니다.
 
 ## 개발과 검증
 
@@ -167,6 +176,8 @@ npm run check
 ```
 
 네 플랫폼의 모의 네이티브 프로토콜, 실제 임시 Git 저장소·프로세스, 16개 지시자 설정/구현자 조합으로 MCP 계약을 검증합니다. `npm run check:connections`는 실제 CLI·SDK 초기화와 연결을 모델 호출 없이 별도 검사합니다. 모델 작업과 IDE·데스크톱 GUI를 실제 확인하지 않았다면 미확인으로 표시합니다. 전용 GitHub Actions는 Windows·macOS의 Node 22에서 타입 검사, 자동 테스트, 플러그인 검사를 실행합니다. 로컬 형식 검사는 `plugin-creator`와 `skill-creator`의 공식 검증기로도 수행했습니다.
+
+CI의 실제 연결 검사만 별도 임시 경로에 테스트용 CLI·SDK를 설치합니다. 이 준비는 일반 설치·빌드·업데이트에서 실행하지 않습니다. 수동 테스트 환경은 `node scripts/prepare-connections.mjs <절대-임시-경로>`로 준비하고 `npm run check:connections -- <같은-경로>`로 검사합니다. 인수를 생략한 연결 검사는 사용자의 현재 설치본을 검사합니다.
 
 
 구현 근거: [확정 스펙](docs/spec.md), [OpenCode 서버 API](https://opencode.ai/docs/server/), [OpenCode 설정](https://opencode.ai/docs/config/), [OpenCode 1.18.30 SDK](https://www.npmjs.com/package/@opencode-ai/sdk/v/1.18.30), [Codex 플러그인 문서](https://developers.openai.com/plugins/build/plugins).
@@ -198,3 +209,25 @@ Codex·Claude 모델은 문자열입니다. 선택이 없으면 OpenCode를 사�
 저장 기록과 워커 기록은 형식 2만 지원합니다. 형식이 다르거나 누락되면 오류로 거절합니다. 서비스 RPC는 현행 버전 1을 유지합니다.
 
 실행 설정은 `AGENT_DELEGATION_{OPENCODE,CODEX,CLAUDE,KILO}_EXECUTABLE`과 `_EXECUTABLE_ARGS`로 지정합니다. 이전 도구의 환경변수·모델 입력·스킬 별칭은 지원하지 않습니다. 모델은 `worker.model`에 지정하세요.
+
+## 외부 SDK 설정과 초기화
+
+SDK 경로는 패키지 자체의 절대 디렉터리입니다. 예를 들어 npm으로 직접 설치한 SDK는 `npm root -g` 결과 아래의 해당 패키지 경로를 지정합니다. CLI 설치가 별도 SDK 설치까지 보장하지는 않습니다. 필요한 SDK는 사용자가 `npm install -g @opencode-ai/sdk` 등으로 직접 준비합니다.
+
+```json
+{
+  "profiles": {
+    "local-claude": {
+      "platform": "claude-code",
+      "executable": "/absolute/path/to/claude",
+      "sdk_root": "/absolute/global/node_modules/@anthropic-ai/claude-agent-sdk"
+    }
+  }
+}
+```
+
+Windows 경로는 JSON에서 역슬래시를 이스케이프하거나 `C:/Users/...` 형식으로 적습니다. 프로필 대신 `AGENT_DELEGATION_{OPENCODE,CLAUDE,KILO}_SDK_ROOT`도 사용할 수 있습니다. 탐색 순서는 프로필 → 환경변수 → 선택한 CLI 패키지의 SDK → 현재 Node/npm 전역 SDK입니다. 프로젝트·worktree·다른 도구의 내부 SDK를 자동 탐색하지 않습니다. 잘못된 명시 경로나 불일치 SDK를 다른 설치본으로 대체하지 않습니다.
+
+`doctor`는 `SDK_NOT_FOUND`, `SDK_INCOMPATIBLE`, `CLI_NOT_FOUND`, `CLI_INCOMPATIBLE`과 설정 안내를 반환합니다. `runtime`에는 실제 CLI·SDK 경로, 버전과 식별 정보가 포함됩니다. 성공은 모델 요청 없이 초기화·필수 정책·세션 연결·종료를 확인했다는 뜻이며 공급자 인증이나 모델 작업 성공을 보장하지 않습니다.
+
+제출 전에는 사용할 구현자의 설치 경로를 검사하고 모델 전달 전에는 필수 API를 검사합니다. 진행 중인 시도의 설치본이 삭제·교체되면 `RUNTIME_CHANGED` 증거를 남기고 기존 요청을 재전송하지 않습니다. 새로운 수정 시도에서는 현재 설치본을 다시 검사합니다. SDK가 없어도 MCP 연결, 기록 조회·검수, 소유 프로세스 취소와 최종 명령 검증은 가능합니다.

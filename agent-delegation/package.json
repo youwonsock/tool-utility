@@ -17,10 +17,7 @@
     "check:connections": "node scripts/connection-check.mjs"
   },
   "dependencies": {
-    "@agent-delegation/claude-runtime": "file:runtime/claude-sdk",
-    "@kilocode/sdk": "7.4.23",
     "@modelcontextprotocol/sdk": "1.30.0",
-    "@opencode-ai/sdk": "1.18.30",
     "cross-spawn": "7.0.6",
     "zod": "3.25.76"
   },

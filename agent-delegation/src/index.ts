@@ -8,6 +8,7 @@ export * from './opencode.js';
 export * from './lifecycle.js';
 export * from './evidence.js';
 export * from './profiles.js';
+export * from './runtime.js';
 export * from './backends/index.js';
 export * from './backends/policy.js';
 export * from './verification.js';
