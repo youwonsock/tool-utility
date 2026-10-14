@@ -128,8 +128,10 @@ test('SDK discovery honors explicit, environment, owned CLI and direct global pr
   const cliRoot=path.join(f.dir,'user-cli'),ownRoot=path.join(cliRoot,'node_modules','@opencode-ai/sdk');
   fs.mkdirSync(cliRoot);fs.writeFileSync(path.join(cliRoot,'package.json'),JSON.stringify({name:'opencode-ai'}));
   const script=path.join(cliRoot,'cli.mjs');fs.writeFileSync(script,'// CLI metadata fixture\n');
-  fs.cpSync(f.sdks.opencode,ownRoot,{recursive:true});
-  const global=path.join(f.dir,'global'),globalSdk=path.join(global,'@opencode-ai/sdk');fs.cpSync(f.sdks.opencode,globalSdk,{recursive:true});
+  // Use JS traversal on Node 22: native cpSync crashes on Unicode Windows paths.
+  const copy={recursive:true,mode:fs.constants.COPYFILE_FICLONE,filter:()=>true};
+  fs.cpSync(f.sdks.opencode,ownRoot,copy);
+  const global=path.join(f.dir,'global'),globalSdk=path.join(global,'@opencode-ai/sdk');fs.cpSync(f.sdks.opencode,globalSdk,copy);
   const worker={...api.resolveWorker(f.data),executable_args:[script]};delete worker.sdk_root;
   const env={...process.env,AGENT_DELEGATION_OPENCODE_SDK_ROOT:f.sdks.opencode};
   let runtime=await api.resolveRuntime(worker,{env,global_root:global});assert.equal(runtime.sdk.source,'environment');
