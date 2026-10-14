@@ -27,10 +27,25 @@ export function readJson<T>(file: string): T | undefined {
 export function durableWrite(file: string, data: string | Buffer) {
   mkdir(path.dirname(file));
   const temp = `${file}.${crypto.randomUUID()}.tmp`;
-  const fd = fs.openSync(temp, 'wx', 0o600);
-  try { fs.writeFileSync(fd, data); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
-  fs.renameSync(temp, file);
-  if (process.platform !== 'win32') { const dir = fs.openSync(path.dirname(file), 'r'); try { fs.fsyncSync(dir); } finally { fs.closeSync(dir); } }
+  let published=false,created=false;
+  try {
+    const fd = fs.openSync(temp, 'wx', 0o600);
+    created=true;
+    try { fs.writeFileSync(fd, data); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+    for(let attempt=0;;attempt++) {
+      try {fs.renameSync(temp,file);published=true;break;}
+      catch(error) {
+        // Windows readers/scanners can briefly deny replacement. Keep the old
+        // record intact; persistent failures still fence uncertain delivery.
+        const code=(error as NodeJS.ErrnoException).code;
+        if(process.platform!=='win32'||!['EPERM','EBUSY','EACCES'].includes(code??'')||attempt>=5)throw error;
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,Math.min(10*2**attempt,80));
+      }
+    }
+    if (process.platform !== 'win32') { const dir = fs.openSync(path.dirname(file), 'r'); try { fs.fsyncSync(dir); } finally { fs.closeSync(dir); } }
+  } finally {
+    if(created&&!published)try {fs.unlinkSync(temp);}catch { /* Preserve the original persistence error. */ }
+  }
 }
 export const writeJson = (file: string, data: unknown) => durableWrite(file, JSON.stringify(data));
 export function exclusiveJson(file: string, data: unknown) {

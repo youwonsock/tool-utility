@@ -56,6 +56,8 @@
 
 서비스 RPC는 버전 1이며 저장 기록과 워커 기록은 형식 2만 지원합니다. 알 수 없는 형식이나 필수 워커 설정이 없는 기록은 오류로 거절합니다. 새 설치는 Agent Delegation 데이터 경로에서 시작합니다.
 
+상태·워커 기록은 임시 파일에 쓰고 동기화한 뒤 원자적으로 교체합니다. Windows의 일시적인 파일 잠금은 최대 230 ms의 제한된 재시도로 처리합니다. 잠금이 지속되거나 다른 저장 오류가 나면 기존 기록을 보존하고 오류를 반환하며, 저널·snapshot 등록이 불확실하면 `REQUEST_UNCERTAIN` 처리를 유지합니다.
+
 ## 지시자 연결과 지원 수준
 
 `export-host <opencode|codex|claude-code|kilo> <새 출력 경로>`는 MCP 설정과 delegate-agents 스킬·도구 계약을 생성하며 전역 설정을 등록하지 않습니다. Kilo는 CLI/runtime용 kilo.json과 IDE용 ide-mcp.json을 구분합니다. 같은 데이터 폴더에 연결하면 같은 서비스가 작업과 자원을 관리합니다.

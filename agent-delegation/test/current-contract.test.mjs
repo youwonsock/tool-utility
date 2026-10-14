@@ -52,9 +52,9 @@ test('workers cannot enter the service or override the recursion guard', async (
   await environment({ AGENT_DELEGATION_WORKER: '1' }, () => assert.rejects(connect(directory, cli, false), error => error.code === 'RECURSION'));
 });
 
-test('retired CLI commands fail without starting a service', async () => {
+test('unknown CLI commands fail without starting a service', async () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'command-'));
-  const result = await exec(process.execPath, [cli, 'migrate'], { env: { ...process.env, AGENT_DELEGATION_HOME: directory } });
+  const result = await exec(process.execPath, [cli, 'unknown-command'], { env: { ...process.env, AGENT_DELEGATION_HOME: directory } });
   assert.notEqual(result.code, 0);
   assert.match(result.stderr, /Unknown command/);
   assert.equal(fs.existsSync(path.join(directory, 'service.json')), false);
