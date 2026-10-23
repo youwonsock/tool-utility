@@ -20,7 +20,7 @@ function syncDirectory(directory: string) {
   const fd = fs.openSync(directory,'r'); try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
 }
 function validateManifest(store: Store, m: Manifest, requestID: string) {
-  invariant([2,STORE_FORMAT].includes(m.protocol) && m.request_id === requestID && idSchema.safeParse(m.run_id).success, 'STATE_CORRUPT','Invalid submission preparation record.');
+  invariant([2,3,STORE_FORMAT].includes(m.protocol) && m.request_id === requestID && idSchema.safeParse(m.run_id).success, 'STATE_CORRUPT','Invalid submission preparation record.');
   invariant(m.result?.run_id===m.run_id && Array.isArray(m.result.tasks) && m.result.tasks.every(id=>idSchema.safeParse(id).success) && Array.isArray(m.files) && typeof m.new_run==='boolean' && typeof m.repo==='string' && typeof m.base==='string','STATE_CORRUPT','Invalid prepared submission fields.');
   invariant(store.request(requestID)?.hash === m.request_hash, 'STATE_CORRUPT','Submission request does not match its durable intent.');
   invariant(m.integration_dir === path.join(store.root,'worktrees',m.run_id,'integration') && m.integration_branch === `codex/agent-delegation-${m.run_id}`, 'STATE_CORRUPT','Invalid prepared worktree identity.');
@@ -33,7 +33,7 @@ function validateManifest(store: Store, m: Manifest, requestID: string) {
 function published(store: Store, m: Manifest) {
   return !!store.run(m.run_id) && store.events(m.run_id).some(e=>e.type==='tasks_submitted' && (e.data as {request_id?:string})?.request_id===m.request_id);
 }
-async function rollback(store: Store, m: Manifest, directory: string) {
+async function rollback(store: Store, m: Manifest, directory: string, beforeCleanup?:()=>Promise<void>) {
   // Only unpublished, unchanged resources owned by this exact preparation may be removed.
   invariant(!published(store,m),'REQUEST_UNCERTAIN','Submission was published; its resources cannot be rolled back.');
   if (m.new_run) {
@@ -60,10 +60,12 @@ async function rollback(store: Store, m: Manifest, directory: string) {
     let parent=path.dirname(absolute);
     while (parent!==store.root && fs.existsSync(parent) && fs.readdirSync(parent).length===0) { fs.rmdirSync(parent); parent=path.dirname(parent); }
   }
-  fs.rmSync(directory,{recursive:true});
+  // Keep the ownership manifest until the durable reservation retirement succeeds.
+  // A failed retirement can therefore be retried after restart without guessing.
+  await beforeCleanup?.();fs.rmSync(directory,{recursive:true});
 }
 
-export async function recoverSubmissions(store: Store) {
+export async function recoverSubmissions(store: Store, onRollback?:(requestID:string)=>Promise<void>) {
   // A crash after publication but before caching the response may outlive the manifest.
   for (const event of store.state.events.filter(e=>e.type==='tasks_submitted')) {
     const data=event.data as {request_id?:string;revision:number;tasks:string[]};
@@ -90,14 +92,16 @@ export async function recoverSubmissions(store: Store) {
       if (request.status==='intent') { store.state.requests[entry]={...request,status:'done',completed_at:store.clock(),result:m.result}; store.save(); }
       fs.rmSync(directory,{recursive:true});
     } else {
-      try { await rollback(store,m,directory); }
+      try { await rollback(store,m,directory,async()=>{await onRollback?.(entry);}); }
       catch (e) { process.stderr.write(`Submission ${entry} cleanup requires reconciliation: ${(e as Error).message}\n`); }
     }
   }
 }
 
 export async function submitTasks(store: Store, args: SubmitArgs, validateGraph: (specs:TaskSpec[])=>void,
-  resolve:(selection?:WorkerSelection)=>WorkerConfig=selection=>resolveWorker(store.root,selection)) {
+  resolve:(selection?:WorkerSelection)=>WorkerConfig=selection=>resolveWorker(store.root,selection),
+  publish:(result?:unknown)=>Promise<void>=async()=>undefined,
+  bindRepository:(commonDir:string)=>Promise<void>=async()=>undefined) {
   const specs=structuredClone(args.tasks);
   let existing: Run | undefined, candidate: Run;
   if (args.run_id) {
@@ -123,12 +127,13 @@ export async function submitTasks(store: Store, args: SubmitArgs, validateGraph:
       }
     }
   }
+  await bindRepository(candidate.common_dir);
   validateGraph([...candidate.tasks.map(t=>t.spec),...specs]);
   for (const spec of specs) invariant(spec.resources.every(key=>candidate.resources.some(r=>r.resource_key===key)),'RESOURCE',`Task ${spec.id} references an unregistered resource.`);
   for(const resource of candidate.resources)connection(resource,candidate.integration_dir);
   const workers=new Map<string,WorkerConfig>();
   for(const spec of specs) {
-    const worker=spec.worker?resolve(spec.worker):structuredClone(candidate.worker);
+    const worker=spec.worker?resolve(spec.worker):JSON.parse(JSON.stringify(candidate.worker));
     worker.runtime=await resolveRuntime(worker);
     workers.set(spec.id,worker);
     for(const key of spec.resources) {
@@ -190,9 +195,15 @@ export async function submitTasks(store: Store, args: SubmitArgs, validateGraph:
     }
     if (!existing) await worktree(candidate.repo,candidate.integration_dir,candidate.base,candidate.integration_branch);
     publishing=true;
-    if (existing) Object.assign(existing,candidate); else store.state.runs.push(candidate);
+    if(existing){
+      const appended=candidate.tasks.slice(existing.tasks.length);existing.tasks.push(...appended);existing.revision=candidate.revision;
+      if(existing.validation&&!candidate.validation){moveValidation(existing.validation,'invalidated');(existing.validation_history??=[]).push(existing.validation);existing.validation=undefined;}
+      if(args.final_verification)existing.final_verification=candidate.final_verification;moveRun(existing,'active');
+    }else store.state.runs.push(candidate);
     store.event(candidate.id,'tasks_submitted',{...result,request_id:args.request_id});
+    await publish(result);
   } catch (e) {
+    if(e instanceof Fault&&e.code==='CANCELLED'&&!store.uncertain)publishing=false;
     if (publishing || store.uncertain) { store.uncertain=true; throw new Fault('REQUEST_UNCERTAIN','Submission publication is uncertain. Restart and reconcile; no submission was replayed.',{request_id:args.request_id,run_id:candidate.id}); }
     try { await rollback(store,m,directory); }
     catch (cleanup) { throw new Fault('REQUEST_UNCERTAIN','Preparation failed and owned resources could not be safely cleaned.',{request_id:args.request_id,reason:(e as Error).message,cleanup:(cleanup as Error).message}); }

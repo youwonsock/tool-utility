@@ -2,15 +2,17 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Store, Engine, exec, uid, sleep, remoteCall } from '../dist/index.mjs';
+import { Store, Engine, exec, uid, sleep, remoteCall, loadState } from '../dist/index.mjs';
 import { mockSdks } from './mock-sdks.mjs';
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const cli = path.join(root,'dist/cli.mjs');
 export const fake = path.join(root,'test/fake-opencode.mjs');
 // Windows CI exposes an 8.3 TEMP alias; use its native long path for child Node
 // entry points while preserving Korean names and spaces in every fixture.
-export const temporaryRoot = fs.realpathSync.native(os.tmpdir());
-export const readState = data => JSON.parse(fs.readFileSync(path.join(data,'state.json'),'utf8'));
+const fixtureRoot=process.env.AGENT_DELEGATION_TEST_ROOT||os.tmpdir();
+if(process.env.AGENT_DELEGATION_TEST_ROOT){if(!path.isAbsolute(fixtureRoot))throw new Error('AGENT_DELEGATION_TEST_ROOT must be an absolute owned test directory.');fs.mkdirSync(fixtureRoot,{recursive:true});}
+export const temporaryRoot = fs.realpathSync.native(fixtureRoot);
+export const readState = data => loadState(data).state;
 export const git = async (repo,...args) => {
   const r = await exec('git',args,{ cwd:repo }); if (r.code !== 0) throw new Error(r.stderr); return r.stdout.trim();
 };
@@ -28,8 +30,10 @@ export async function fixture(t, { service = false } = {}) {
   if (!service) engine.start();
   t.after(async () => {
     engine.stop();
-    for (const run of store.state.runs) if (!['completed','cancelled'].includes(run.state)) { await engine.cancel(run).catch(()=>{}); }
-    for (let i=0;i<100;i++) { await engine.serial(()=>engine.tick()).catch(()=>{}); if (!engine.allAttempts().some(a=>['running','cancelling','launching','needs_input','delivery_uncertain'].includes(a.state))) break; await sleep(100); }
+    const durable=loadState(data).state;
+    const cleanupEngine=store.state.runs.length&&(store.uncertain||engine.stopping||durable?.revision>store.state.revision)?new Engine(new Store(data),cli,{concurrency:2}):engine;
+    for (const run of cleanupEngine.store.state.runs) if (!['completed','cancelled'].includes(run.state)) { await cleanupEngine.cancel(run).catch(()=>{}); }
+    for (let i=0;i<100;i++) { await cleanupEngine.tick().catch(()=>{}); if (!cleanupEngine.allAttempts().some(a=>['running','cancelling','launching','needs_input','delivery_uncertain'].includes(a.state))) break; await sleep(100); }
     // Temporary evidence is deliberately retained on test failure for diagnosis.
     if(fs.existsSync(path.join(data,'state.json'))) {
       const disk=readState(data);
@@ -42,7 +46,7 @@ export async function fixture(t, { service = false } = {}) {
   return { dir,repo,data,store,engine,env,sdks, call:(name,args)=>engine.call(name,args) };
 }
 export const task = (id, action={}, extra={}) => ({ id, goal:`FAKE_ACTION:${JSON.stringify(action)}`, scope:[`${id}.txt`], acceptance:['Requested content exists'], verification:[{ command:'node -e "process.exit(0)"' }], ...extra });
-export async function callOk(f,name,args) { const r = await f.call(name,args); if (r.error) throw new Error(JSON.stringify(r.error)); return r; }
+export async function callOk(f,name,args) { let r = await f.call(name,args); while(r?.in_progress&&args?.request_id){await sleep(25);r=await f.call(name,args);} if (r.error) throw new Error(JSON.stringify(r.error)); return r; }
 export async function submit(f,tasks,extra={}) { return callOk(f,'submit_tasks',{ request_id:uid('request'),repo:f.repo,tasks,final_verification:[{ command:'node -e "process.exit(0)"' }],...extra }); }
 export async function until(f,id,predicate,timeout=30000) {
   const end = Date.now()+timeout;

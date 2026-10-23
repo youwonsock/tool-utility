@@ -38,7 +38,13 @@ export async function spawnRuntime(context:BackendContext,executable:string,args
   child.once('close',()=>log.end());
   return {child,log};
 }
-export async function stopOwned(context:BackendContext):Promise<boolean> {
+const stopping=new Map<string,Promise<boolean>>();
+export function stopOwned(context:BackendContext):Promise<boolean> {
+  const key=path.resolve(context.spec.job_dir),active=stopping.get(key);if(active)return active;
+  const operation=stopOwnedProcesses(context).finally(()=>{if(stopping.get(key)===operation)stopping.delete(key);});
+  stopping.set(key,operation);return operation;
+}
+async function stopOwnedProcesses(context:BackendContext):Promise<boolean> {
   const intents=path.join(context.spec.job_dir,'process-intents');
   if(fs.existsSync(intents)) {
     let stopped=true;

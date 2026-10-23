@@ -18,6 +18,9 @@ export class JsonRpcPeer {
       } catch(e){this.fail(e as Error);}
     });
     child.once('close',()=>this.fail(new Fault('BACKEND_DISCONNECTED','Native transport closed. No request was replayed.')));
+    // Descendants may retain inherited pipes after the owned root exits. Stop
+    // awaiting its RPCs immediately; process-tree proof still owns lease release.
+    child.once('exit',()=>this.fail(new Fault('BACKEND_DISCONNECTED','Native process exited. No request was replayed.')));
     child.once('error',e=>this.fail(e));
   }
   private fail(error:Error){this.closed=true;for(const wait of this.pending.values()){clearTimeout(wait.timer);wait.reject(error);}this.pending.clear();}

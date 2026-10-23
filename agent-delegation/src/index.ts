@@ -14,3 +14,5 @@ export * from './backends/index.js';
 export * from './backends/policy.js';
 export * from './verification.js';
 export * from './hosts.js';
+export { checkedMutationPath, workerPolicyHash } from './scope.js';
+export * from './scope-guard.js';

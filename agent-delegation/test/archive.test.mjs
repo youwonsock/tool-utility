@@ -52,12 +52,13 @@ test('prepared submissions and unconfirmed or live processes prevent archiving',
   store.save();assert.equal(await store.archiveNext(),false);delete r.tasks[0].attempts[0].worker;writeJson(path.join(job,'server-intent.json'),{});assert.equal(await store.archiveNext(),false);
 });
 
-test('archive publication failure retains records; snapshot failure recovers the committed archive',async t=>{
-  const root=setup(t),store=new Store(root,()=>epoch);store.state.runs=[run(root)];store.save();const rename=fs.renameSync;
-  const blocked=t.mock.method(fs,'renameSync',(a,b)=>{if(b.includes(`${path.sep}archives${path.sep}`))throw new Error('archive failure');return rename(a,b);});
-  await assert.rejects(store.archiveNext(),/archive failure/);assert.equal(store.state.runs.length,1);assert.equal(store.uncertain,false);blocked.mock.restore();
-  const snapshot=t.mock.method(fs,'renameSync',(a,b)=>{if(b===path.join(root,'state.json'))throw new Error('snapshot failure');return rename(a,b);});
-  await assert.rejects(store.archiveNext(),e=>e.code==='REQUEST_UNCERTAIN');assert.equal(store.uncertain,true);snapshot.mock.restore();
+test('archive file failure retains records; checkpoint failure recovers the committed archive',async t=>{
+  const root=setup(t),store=new Store(root,()=>epoch);store.state.runs=[run(root)];store.save();
+  fs.writeFileSync(path.join(root,'archives'),'blocked');
+  await assert.rejects(store.archiveNext());assert.equal(store.state.runs.length,1);assert.equal(store.uncertain,false);fs.unlinkSync(path.join(root,'archives'));
+  assert.equal(await store.archiveNext(),true);
+  const rename=fs.renameSync;const snapshot=t.mock.method(fs,'renameSync',(a,b)=>{if(b===path.join(root,'checkpoint.json'))throw new Error('checkpoint failure');return rename(a,b);});
+  await assert.rejects(store.flushCheckpoint(true),e=>e.code==='REQUEST_UNCERTAIN');assert.equal(store.uncertain,true);snapshot.mock.restore();
   const recovered=new Store(root);assert.equal(recovered.state.runs.length,0);assert.equal(recovered.run('run_old').id,'run_old');
 });
 
@@ -77,12 +78,12 @@ test('large history reads only summaries at startup/list time; unresolved intent
   assert.equal(seen.length,100);assert.equal(new Set(seen.map(r=>r.run_id)).size,100);
 });
 
-test('journal compaction survives replacement failure and replays a torn tail sequentially',t=>{
+test('checkpoint rotation failure preserves commits and repairs a torn active tail sequentially',async t=>{
   const root=setup(t),store=new Store(root);for(let i=0;i<255;i++)store.event('one','event',{i});const rename=fs.renameSync;
-  const blocked=t.mock.method(fs,'renameSync',(a,b)=>{if(b===path.join(root,'journal.jsonl'))throw new Error('compaction failure');return rename(a,b);});
+  const blocked=t.mock.method(fs,'renameSync',(a,b)=>{if(b===path.join(root,'checkpoint.json'))throw new Error('rotation failure');return rename(a,b);});
   assert.throws(()=>store.event('one','event',{i:255}),e=>e.code==='REQUEST_UNCERTAIN');blocked.mock.restore();let reopened=new Store(root);assert.equal(reopened.state.events.length,256);
-  reopened.save();assert.equal(loadState(root).records,1);fs.appendFileSync(path.join(root,'journal.jsonl'),'{"torn":');
-  const read=fs.readFileSync;t.mock.method(fs,'readFileSync',(file,...args)=>{if(String(file)===path.join(root,'journal.jsonl'))assert.fail('whole journal read');return read(file,...args);});
+  await reopened.flushCheckpoint(true);assert.equal(loadState(root).records,0);const active=loadState(root).manifest.journals.at(-1);fs.appendFileSync(path.join(root,active),'{"torn":');
+  const read=fs.readFileSync;t.mock.method(fs,'readFileSync',(file,...args)=>{if(String(file).endsWith('.jsonl'))assert.fail('whole journal read');return read(file,...args);});
   reopened=new Store(root);assert.equal(reopened.state.events.length,256);assert.equal(loadState(root).bytes,loadState(root).completeBytes);
 });
 
@@ -91,7 +92,7 @@ for(const publication of ['journal.jsonl','state.json','migration.json'])test(`f
   const block=(a,b)=>{if(!fired&&b===path.join(root,publication)){fired=true;throw new Error('migration interruption');}return rename(a,b);};
   const mock=publication==='migration.json'?t.mock.method(fs,'unlinkSync',file=>{if(file===path.join(root,'migration.json')&&!fired){fired=true;throw new Error('migration interruption');}return unlink(file);}):t.mock.method(fs,'renameSync',block);
   await assert.rejects(prepareStorage(root,epoch),/migration interruption/);mock.mock.restore();await prepareStorage(root,epoch+1);
-  const store=new Store(root);assert.equal(store.state.protocol,3);assert.equal(store.state.runs[0].ended_at,epoch);assert.equal(store.state.requests.one.completed_at,epoch);
+  const store=new Store(root);assert.equal(store.state.protocol,4);assert.equal(store.state.runs[0].ended_at,epoch);assert.equal(store.state.requests.one.completed_at,epoch);
   assert.deepEqual(await store.mutation('one',{a:1},async()=>assert.fail('replayed')),{value:42});
   const backup=path.join(root,'backups',fs.readdirSync(path.join(root,'backups'))[0]);assert.deepEqual(fs.readFileSync(path.join(backup,'journal.jsonl')),before);assert.equal(fs.existsSync(path.join(root,'migration.json')),false);
 });
@@ -124,9 +125,10 @@ test('journal append failure never publishes an archive index; restart keeps the
   const recovered=new Store(root);assert.equal(recovered.isArchived('run_old'),false);assert.equal(recovered.run('run_old').id,'run_old');
 });
 
-test('byte threshold compacts before the record-count threshold',t=>{
-  const root=setup(t),store=new Store(root);store.state.requests.large={hash:'hash',status:'done',completed_at:epoch,result:'x'.repeat(9*1024*1024)};
-  for(let i=0;i<4;i++)store.save();assert.equal(loadState(root).records,1);
+test('byte threshold starts a helper checkpoint before the record-count threshold',async t=>{
+  const root=setup(t),store=new Store(root);
+  for(let i=0;i<4;i++){store.state.requests[`large_${i}`]={hash:'hash',status:'done',completed_at:epoch,result:'x'.repeat(9*1024*1024)};store.save();}
+  await store.flushCheckpoint();assert.equal(store.io.checkpoints,1);assert.equal(loadState(root).records,0);assert.equal(Object.keys(new Store(root).state.requests).length,4);
 });
 
 test('resource fingerprints and prototype-like request IDs survive archive/restart',async t=>{

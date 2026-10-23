@@ -17,14 +17,14 @@ test('installer updates its own marketplace, retains old releases, and rolls bac
   fs.writeFileSync(fakeExe,process.platform==='win32'?`@"${process.execPath}" "%~dp0fake-codex.mjs" %*\r\n`:`#!/bin/sh\nexec "${process.execPath}" "${fakeScript}" "$@"\n`,{mode:0o755});
   const env={...process.env,AGENT_DELEGATION_CODEX_EXECUTABLE:fakeExe,FAKE_CODEX_STATE:stateFile,AGENT_DELEGATION_INSTALL_ROOT:install,AGENT_DELEGATION_HOME:data};
   const run=()=>exec(process.execPath,[path.join(source,'scripts/install.mjs')],{env,timeout:120000});
-  let result=await run();assert.equal(result.code,0,result.stderr);const first=JSON.parse(fs.readFileSync(path.join(install,'current.json')));
+  let result=await run();assert.equal(result.code,0,result.stderr);const first=JSON.parse(fs.readFileSync(path.join(install,'current.json')));assert.equal(fs.existsSync(path.join(path.dirname(first.cli),'storage-worker.mjs')),true);
   const skill=path.join(source,'plugins/agent-delegation/skills/delegate-agents/SKILL.md');fs.appendFileSync(skill,'\n');
   result=await run();assert.equal(result.code,0,result.stderr);const second=JSON.parse(fs.readFileSync(path.join(install,'current.json')));assert.notEqual(first.release,second.release);assert.ok(fs.existsSync(first.cli));
   const manifest=r=>JSON.parse(fs.readFileSync(path.join(r.release,'plugins/agent-delegation/.codex-plugin/plugin.json')));assert.notEqual(manifest(first).version,manifest(second).version);
   fs.appendFileSync(skill,'\n');const failing=JSON.parse(fs.readFileSync(stateFile));failing.fail_next_add=true;fs.writeFileSync(stateFile,JSON.stringify(failing));
   result=await run();assert.notEqual(result.code,0);assert.equal(JSON.parse(fs.readFileSync(path.join(install,'current.json'))).release,second.release);assert.equal(JSON.parse(fs.readFileSync(stateFile)).marketplaces[0].root,second.release);
   fs.mkdirSync(data,{recursive:true});
-  fs.writeFileSync(path.join(data,'state.json'),JSON.stringify({protocol:2,runs:[{tasks:[{attempts:[{state:'stop_uncertain'}]}]}]}));
+  fs.writeFileSync(path.join(data,'state.json'),JSON.stringify({protocol:2,revision:0,events:[],requests:{},runs:[{tasks:[{attempts:[{state:'stop_uncertain'}]}]}]}));
   result=await run();assert.equal(JSON.parse(result.stdout).code,'UPDATE_PENDING');assert.equal(JSON.parse(fs.readFileSync(path.join(install,'current.json'))).release,second.release);
   fs.rmSync(path.join(data,'state.json'));
   fs.writeFileSync(path.join(data,'service.json'),JSON.stringify({protocol:1,owner:await processIdentity(process.pid)}));

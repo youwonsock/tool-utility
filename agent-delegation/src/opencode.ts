@@ -29,12 +29,12 @@ export async function probeResources(resources: Resource[], directory: string) {
     }
   }
 }
-export function restrictions(config: Record<string, any>, resources: Resource[], directory: string) {
+export function restrictions(config: Record<string, any>, resources: Resource[], directory: string,contextPaths:string[]=[]) {
   const mcp: Record<string, any> = Object.fromEntries(Object.keys(config.mcp ?? {}).map(name => [name, { enabled: false }]));
   const permission: Record<string, any> = {
-    '*': 'deny', read: 'allow', edit: 'allow', glob: 'allow', grep: 'allow', list: 'allow',
-    bash: { '*': 'allow', '*agent-delegation*': 'deny', '*codex *': 'deny', '*opencode *': 'deny', '*claude *':'deny', '*kilo *':'deny', 'git push*': 'deny', 'git reset*': 'deny', 'git checkout*': 'deny', 'git switch*': 'deny', 'git commit*': 'deny' },
-    question: 'allow', webfetch: 'ask', external_directory: 'ask', task: 'deny', skill: 'deny',
+    '*': 'deny', read: 'allow', edit: {'*':'ask','.git':'deny','.git/**':'deny',...Object.fromEntries(contextPaths.flatMap(p=>[[p,'deny'],[path.resolve(directory,p),'deny']]))}, glob: 'allow', grep: 'allow', list: 'allow',
+    bash: { '*': 'ask', '*agent-delegation*': 'deny', '*codex *': 'deny', '*opencode *': 'deny', '*claude *':'deny', '*kilo *':'deny', 'git push*': 'deny', 'git reset*': 'deny', 'git checkout*': 'deny', 'git switch*': 'deny', 'git commit*': 'deny' },
+    question: 'allow', webfetch: 'ask', external_directory: 'deny', task: 'deny', skill: 'deny',
   };
   for (const r of resources) {
     invariant(!/codex|delegat|opencode/i.test(r.connection.name + JSON.stringify(r.connection.config)), 'RECURSION', 'Delegation MCP connections cannot be exposed to workers.');
@@ -55,6 +55,7 @@ export function enforceHttpPolicy(effective:Record<string,any>,overlay:ReturnTyp
   for(const [key,value]of Object.entries(overlay.permission)) {
     invariant(digest(effective.permission?.[key])===digest(value)&&digest(effective.agent?.['delegate-worker']?.permission?.[key])===digest(value),'MCP_POLICY',`Managed configuration changes worker permission: ${key}`);
   }
+  for(const permissions of [effective.permission,effective.agent?.['delegate-worker']?.permission])invariant(Object.entries(permissions??{}).every(([key,value])=>key in overlay.permission||value==='deny'),'MCP_POLICY','Inherited worker permissions bypass the confirmed policy.');
 }
 export async function selectModel(client: any, config: Record<string, any>, spec: Pick<WorkerSpec, 'model'|'executable'|'executable_args'|'directory'>): Promise<Model> {
   const providers = (await client.provider.list({}, { throwOnError: true })).data!;
@@ -83,7 +84,7 @@ export async function launchOpenCode(spec: WorkerSpec, state: WorkerState, save:
   const version = await executableVersion(spec);
   const initial = await resolvedConfig(spec.executable, spec.executable_args, spec.directory,spec.worker?workerEnvironment(spec.worker):process.env);
   state.verification_shell=verificationShell(spec.worker?.shell,initial.shell);save();
-  const overlay = restrictions(initial, spec.resources, spec.directory);
+  const overlay = restrictions(initial, spec.resources, spec.directory,spec.context.map(c=>c.path));
   const env = { ...(spec.worker?workerEnvironment(spec.worker):process.env), OPENCODE_SERVER_PASSWORD: spec.password, OPENCODE_SERVER_USERNAME: 'opencode', OPENCODE_CONFIG_CONTENT: JSON.stringify(overlay), AGENT_DELEGATION_WORKER: '1' };
   // Resolve twice before starting the server, so managed config cannot silently re-enable a connection.
   const effective = await resolvedConfig(spec.executable, spec.executable_args, spec.directory, env);

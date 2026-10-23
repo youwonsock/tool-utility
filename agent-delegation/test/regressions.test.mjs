@@ -13,7 +13,7 @@ async function controlled(t) {
 async function tickUntil(f, id, predicate, timeout = 60000) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
-    await f.engine.serial(() => f.engine.tick());
+    await f.engine.tick();
     const run = f.engine.getRun(id);
     if (predicate(run)) return run;
     await sleep(100);
@@ -69,7 +69,8 @@ test('cancel wins over an already completed final verification snapshot', async 
   };
   await callOk(f,'validate_run',{request_id:uid('validation'),run_id:run.id});
   const result=await callOk(f,'cancel_run',{request_id:uid('cancel'),run_id:run.id});
-  assert.equal(result.state,'cancelled');
+  assert.equal(result.state,'cancelling');
+  await tickUntil(f,run.id,value=>value.state==='cancelled');
   assert.equal(run.validation.state,'cancelled');
   assert.equal(run.tasks[0].state,'integrated');
   assert.equal(new Store(f.data).state.runs[0].state,'cancelled');
@@ -86,7 +87,8 @@ test('cancel after a lost validation process does not reactivate the run', {skip
   };
   await callOk(f,'validate_run',{request_id:uid('validation'),run_id:run.id});
   const result=await callOk(f,'cancel_run',{request_id:uid('cancel'),run_id:run.id});
-  assert.equal(result.state,'cancelled');
+  assert.equal(result.state,'cancelling');
+  await tickUntil(f,run.id,value=>value.state==='cancelled');
   assert.equal(run.validation.state,'cancelled');
 });
 
@@ -120,9 +122,10 @@ test('metadata publication failure rolls back the whole submission and preserves
 });
 
 test('a crash after checkout creation is fenced and its unpublished checkout is safely recovered', async t=>{
-  const f=await controlled(t),event=f.store.event.bind(f.store);
-  f.store.event=(id,type,data)=>{ if(type==='tasks_submitted') throw new Error('publication interruption'); return event(id,type,data); };
-  await assert.rejects(submit(f,[task('a')]),e=>e.code==='REQUEST_UNCERTAIN');
+  const f=await controlled(t),save=f.store.save.bind(f.store);
+  f.store.save=()=>{if(f.store.state.events.some(event=>event.type==='tasks_submitted')){f.store.uncertain=true;throw new Fault('REQUEST_UNCERTAIN','publication interruption');}return save();};
+  const interrupted=await f.call('submit_tasks',{request_id:uid('submit'),repo:f.repo,tasks:[task('a')],final_verification:[{command:'node -e "process.exit(0)"'}]});
+  assert.equal(interrupted.error.code,'REQUEST_UNCERTAIN');
   const prepared=f.store.state.runs[0];
   assert.equal(fs.existsSync(prepared.integration_dir),true);
   await f.engine.tick();
@@ -134,15 +137,15 @@ test('a crash after checkout creation is fenced and its unpublished checkout is 
   assert.equal((await git(f.repo,'branch','--list',prepared.integration_branch)).trim(),'');
 });
 
-test('journal publication survives snapshot failure and retransmission without replaying submission', async t=>{
+test('journal publication survives fsync uncertainty and retransmission without replaying submission', async t=>{
   const f=await controlled(t),request_id=uid('submit');
   const args={request_id,repo:f.repo,tasks:[task('a')],final_verification:[{command:'node -e "process.exit(0)"'}]};
-  const rename=fs.renameSync;
-  const mock=t.mock.method(fs,'renameSync',(source,destination)=>{
-    if (destination===path.join(f.data,'state.json') && f.store.state.events.some(e=>e.type==='tasks_submitted')) throw new Error('snapshot interruption');
-    return rename(source,destination);
+  const sync=fs.fsyncSync;
+  const mock=t.mock.method(fs,'fsyncSync',descriptor=>{
+    if (f.store.state.events.some(e=>e.type==='tasks_submitted')) throw new Error('journal fsync interruption');
+    return sync(descriptor);
   });
-  await assert.rejects(f.call('submit_tasks',args),e=>e.code==='REQUEST_UNCERTAIN');
+  const interrupted=await f.call('submit_tasks',args);assert.equal(interrupted.error.code,'REQUEST_UNCERTAIN');
   mock.mock.restore();
   assert.equal(f.store.uncertain,true);
   await f.engine.tick();
@@ -197,7 +200,8 @@ test('uncertain termination retains a lease and blocks successors until terminat
   const worker=readJson(path.join(a.job_dir,'worker.json'));
   writeJson(path.join(a.job_dir,'worker.json'),{...worker,phase:'cancelled',stopped:true,server:{pid:99999999,birth:'confirmed stopped'}});
   await f.engine.tick();
-  assert.equal(run.state,'cancelled');
+  await tickUntil(f,run.id,value=>value.state==='cancelled');
+  await tickUntil(f,second.run_id,value=>value.tasks[0].attempts.length===1);
   assert.equal(dispatches,2);
   const next=f.engine.getRun(second.run_id).tasks[0].attempts[0];
   writeJson(path.join(next.job_dir,'worker.json'),{...readJson(path.join(next.job_dir,'worker.json')),phase:'cancelled',stopped:true,server:{pid:99999999,birth:'confirmed stopped'}});
@@ -251,24 +255,24 @@ test('answered implementation input and service recovery cannot restart implemen
   await tickUntil(f,run.id,r=>r.validation.attempt.worker?.phase==='verifying' && r.validation.attempt.worker.verification.length===1 && r.validation.attempt.worker.shell_intent?.index===1);
   const a=run.validation.attempt;
   assert.equal(a.worker.session_id,undefined);assert.equal(a.inputs.length,0);
+  f.engine.beginShutdown();await f.engine.drain();
   const recovered={...f,store:new Store(f.data)};recovered.engine=new Engine(recovered.store,cli,f.engine.options);
   await recovered.engine.reconcile(recovered.store.state.runs[0]);
   assert.equal(recovered.store.state.runs[0].validation.attempt.id,a.id);
   assert.equal(recovered.store.state.runs[0].tasks[0].attempts.length,1);
+  f.store=recovered.store;f.engine=recovered.engine;run=recovered.store.state.runs[0];
   fs.writeFileSync(path.join(a.directory,'ignored.txt'),'release');
   await tickUntil(f,run.id,r=>r.state==='waiting_final_review');
   assert.equal(run.validation.state,'passed');
 });
 
-test('a committed submission can recover its response after its manifest was removed', async t=>{
-  const f=await controlled(t),request_id=uid('submit'),save=f.store.save.bind(f.store);
-  const args={request_id,repo:f.repo,tasks:[task('a')]};
-  f.store.save=()=>{
-    if(f.store.state.requests[request_id]?.status==='done') {f.store.uncertain=true;throw new Fault('REQUEST_UNCERTAIN','response persistence interrupted');}
-    return save();
-  };
-  await assert.rejects(f.call('submit_tasks',args),e=>e.code==='REQUEST_UNCERTAIN');
+test('a legacy committed submission can recover its response after its manifest was removed', async t=>{
+  const f=await controlled(t),request_id=uid('submit'),args={request_id,repo:f.repo,tasks:[task('a')]};
+  const committed=await f.call('submit_tasks',args);assert.equal(committed.run_id,f.store.state.runs[0].id);
   assert.equal(fs.existsSync(path.join(f.data,'submissions',request_id)),false);
+  // Older releases could persist publication before the response. New publication is
+  // atomic; explicitly retain this legacy recovery contract without weakening it.
+  f.store.state.requests[request_id]={hash:f.store.state.requests[request_id].hash,status:'intent'};f.store.save();
   const store=new Store(f.data),engine=new Engine(store,cli,{concurrency:2});
   const result=await engine.call('submit_tasks',args);
   assert.equal(result.run_id,store.state.runs[0].id);assert.equal(store.state.runs.length,1);
@@ -277,9 +281,9 @@ test('a committed submission can recover its response after its manifest was rem
 });
 
 test('recovery preserves user changes in an unpublished prepared checkout', async t=>{
-  const f=await controlled(t),request_id=uid('submit'),args={request_id,repo:f.repo,tasks:[task('a')]};
-  f.store.event=()=>{throw new Error('publication interruption');};
-  await assert.rejects(f.call('submit_tasks',args),e=>e.code==='REQUEST_UNCERTAIN');
+  const f=await controlled(t),request_id=uid('submit'),args={request_id,repo:f.repo,tasks:[task('a')]},save=f.store.save.bind(f.store);
+  f.store.save=()=>{if(f.store.state.events.some(event=>event.type==='tasks_submitted')){f.store.uncertain=true;throw new Fault('REQUEST_UNCERTAIN','publication interruption');}return save();};
+  const interrupted=await f.call('submit_tasks',args);assert.equal(interrupted.error.code,'REQUEST_UNCERTAIN');
   const run=f.store.state.runs[0],original=fs.readFileSync(path.join(run.integration_dir,'base.txt'));
   fs.writeFileSync(path.join(run.integration_dir,'base.txt'),'user change');
   const store=new Store(f.data),engine=new Engine(store,cli,{concurrency:2});

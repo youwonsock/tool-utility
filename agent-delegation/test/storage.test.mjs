@@ -46,9 +46,9 @@ test('persistent replacement failure remains explicit without damaging the prior
 test('journal replay survives a torn tail; completed request deduplication survives restart',async()=>{
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'journal-')); let store=new Store(root);
   const first=await store.mutation('one',{a:1},async()=>({value:42}));
-  fs.rmSync(path.join(root,'state.json')); fs.appendFileSync(path.join(root,'journal.jsonl'),'{"torn":');
+  fs.appendFileSync(path.join(root,'journal.jsonl'),'{"torn":');
   store=new Store(root); assert.deepEqual(await store.mutation('one',{a:1},async()=>{throw new Error('must not execute')}),first);
-  store.save(); fs.rmSync(path.join(root,'state.json')); assert.equal(new Store(root).state.requests.one.status,'done');
+  store.save(); assert.equal(new Store(root).state.requests.one.status,'done');
   await assert.rejects(store.mutation('one',{a:2},async()=>{}),/different content/);
 });
 test('response and artifact budgets account for UTF-8, escaping and MCP envelopes',()=>{

@@ -21,13 +21,13 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
     send({type:'control_response',response:{subtype:'success',request_id:frame.request_id,response}});
     if(kind==='initialize')audit({event:'session'});if(kind==='interrupt')clearTimeout(timer);return;
   }
-  if(frame.type==='control_response'&&pending&&frame.response.request_id===pending){pending=undefined;timer=setTimeout(finish,10);return;}
+  if(frame.type==='control_response'&&pending&&frame.response.request_id===pending){if(frame.response.response?.behavior==='deny')action.files={};pending=undefined;timer=setTimeout(finish,10);return;}
   if(frame.type==='user'){
     const text=typeof frame.message.content==='string'?frame.message.content:frame.message.content.map(p=>p.text??'').join('\n');
     const matches=[...text.matchAll(/FAKE_ACTION:(.+)/g)];action=JSON.parse(matches.at(-1)?.[1]??'{}');audit({event:'prompt',id:frame.uuid});
     send({type:'system',subtype:'init',session_id:session,cwd:process.cwd(),tools:['Read','Write','Edit','Bash','AskUserQuestion'],mcp_servers:[],model:'fake-model',permissionMode:'default'});
     send(frame);
-    if(action.input){pending='permission_mock';send({type:'control_request',request_id:pending,request:{subtype:'can_use_tool',tool_name:action.input==='question'?'AskUserQuestion':'WebFetch',tool_use_id:'tool_mock',input:action.input==='question'?{questions:[{question:'Proceed?',header:'Test',options:[]}]}:{url:'https://example.invalid'}}});}
+    if(action.input||action.permission){pending='permission_mock';send({type:'control_request',request_id:pending,request:{subtype:'can_use_tool',tool_name:action.permission?.tool??(action.input==='question'?'AskUserQuestion':'WebFetch'),tool_use_id:'tool_mock',input:action.permission?.input??(action.input==='question'?{questions:[{question:'Proceed?',header:'Test',options:[]}]}:{url:'https://example.invalid'})}});}
     else timer=setTimeout(finish,action.delay??10);
   }
 });

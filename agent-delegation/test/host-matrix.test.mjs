@@ -17,7 +17,7 @@ for(const supervisor of platforms)test(`${supervisor} supervisor export runs the
   assert.ok(fs.existsSync(path.join(exported.output,binding.skills,'delegate-agents','SKILL.md')));
   const client=new Client({name:`contract-${supervisor}`,version:'1'},{capabilities:{}});
   await client.connect(new StdioClientTransport({...binding.stdio,env:{...f.env,...binding.stdio.env,AGENT_DELEGATION_WORKER:'0'},stderr:'pipe'}));
-  const invoke=async(name,args)=>{const response=await client.callTool({name,arguments:args});const value=JSON.parse(response.content[0].text);assert.ok(!value.error,JSON.stringify(value));return value;};
+  const invoke=async(name,args)=>{let value;const deadline=Date.now()+120000;do{const response=await client.callTool({name,arguments:args});value=JSON.parse(response.content[0].text);assert.ok(!value.error,JSON.stringify(value));if(!value.in_progress||!args.request_id)return value;await sleep(25);}while(Date.now()<deadline);assert.fail('The same MCP request did not finish.');};
   const snapshot=async id=>{let cursor,result,items=[];do{result=await invoke('get_run',{run_id:id,...(cursor?{cursor}:{})});items.push(...result.items);cursor=result.next_cursor;}while(cursor);return {...result,items};};
   const converge=async(id,predicate)=>{const deadline=Date.now()+90000;while(Date.now()<deadline){const run=await snapshot(id);if(predicate(run))return run;await sleep(100);}assert.fail('MCP contract did not converge.');};
   let runID;
