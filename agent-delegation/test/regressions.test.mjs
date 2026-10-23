@@ -311,3 +311,27 @@ test('a server start intent without an identity cannot release a slot even if th
   writeJson(path.join(a.job_dir,'worker.json'),{...worker,phase:'cancelled',server:{pid:99999999,birth:'confirmed stopped'}});
   await f.engine.cancel(run);
 });
+
+test('reconciliation collects a stop record published during process ownership checks', async t=>{
+  const f=await controlled(t);
+  f.engine.spawn=async (_run,a)=>{
+    writeJson(path.join(a.job_dir,'worker.json'),{protocol:WORKER_FORMAT,id:a.id,phase:'cancelling',updated:Date.now(),
+      host:{pid:99999999,birth:'exited fixture host'},inputs:[],replies:{},verification:[]});
+    fs.mkdirSync(path.join(a.job_dir,'process-intents'),{recursive:true});
+  };
+  const {run_id}=await submit(f,[task('a')]),run=f.engine.getRun(run_id);
+  await f.engine.launch(run,run.tasks[0]);
+  const a=run.tasks[0].attempts[0],file=path.join(a.job_dir,'worker.json');
+  run.state='cancelling';a.state='cancelling';a.worker=readJson(file);f.store.save();
+  const original=Engine.prototype.workerState;let reads=0;
+  t.mock.method(Engine.prototype,'workerState',function(attempt){
+    const state=original.call(this,attempt);
+    // The worker finishes after reconciliation reads its starting snapshot,
+    // before the slower OS ownership query reports that the host has exited.
+    if(attempt.id===a.id&&++reads===2)writeJson(file,{...state,phase:'cancelled',stopped:true});
+    return state;
+  });
+  await f.engine.reconcile(run);
+  assert.equal(run.state,'cancelled');assert.equal(a.worker.stopped,true);assert.equal(a.worker.phase,'cancelled');
+  assert.equal(new Store(f.data).state.runs[0].tasks[0].attempts[0].worker.stopped,true);
+});
