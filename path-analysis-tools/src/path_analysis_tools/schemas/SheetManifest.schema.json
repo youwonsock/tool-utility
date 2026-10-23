@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:path-analysis-tools:v1:SheetManifest",
+  "title": "SheetManifest",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "document_type": {
+      "const": "SheetManifest"
+    },
+    "analysis_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sheets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "columns": {
+            "enum": [
+              2,
+              3
+            ]
+          },
+          "rows": {
+            "enum": [
+              2,
+              3
+            ]
+          },
+          "margin": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "padding": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "valid_cells": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "uniqueItems": true
+          },
+          "cells": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "index": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "ref": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "rect": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "timestamp": {
+                  "type": "number",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "index",
+                "ref",
+                "rect"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 0
+          }
+        },
+        "required": [
+          "id",
+          "path",
+          "sha256",
+          "columns",
+          "rows",
+          "margin",
+          "padding",
+          "valid_cells",
+          "cells"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "schema_version",
+    "document_type",
+    "analysis_id",
+    "sheets"
+  ],
+  "additionalProperties": false
+}

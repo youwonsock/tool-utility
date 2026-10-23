@@ -1,0 +1,9 @@
+{
+  "status": "passed",
+  "tests": 53,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "python": "3.14.8"
+}

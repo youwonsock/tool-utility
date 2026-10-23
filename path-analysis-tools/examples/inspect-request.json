@@ -1,0 +1,22 @@
+{
+  "analysis_id": "synthetic-example",
+  "sheets": [
+    {
+      "id": "synthetic",
+      "path": "synthetic-grid.png",
+      "columns": 3,
+      "rows": 3,
+      "valid_cells": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ]
+    }
+  ],
+  "output": "manifest.json"
+}

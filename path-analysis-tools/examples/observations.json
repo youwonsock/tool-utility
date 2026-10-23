@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "document_type": "ObservationSet",
+  "analysis_id": "synthetic-example",
+  "frame_id": "draft-local",
+  "mode": "create",
+  "targets": [
+    {
+      "id": "player",
+      "label": "Player",
+      "runs": [
+        {
+          "id": "recording",
+          "segments": [
+            {
+              "id": "travel",
+              "label": "Travel",
+              "samples": [
+                {
+                  "id": "frame-0",
+                  "status": "estimated",
+                  "position": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "frame_refs": [
+                    "synthetic:0"
+                  ],
+                  "protected": false,
+                  "note": "synthetic ground truth fixture"
+                },
+                {
+                  "id": "frame-1",
+                  "status": "estimated",
+                  "position": [
+                    0,
+                    0,
+                    2
+                  ],
+                  "frame_refs": [
+                    "synthetic:1"
+                  ],
+                  "protected": false,
+                  "note": "synthetic ground truth fixture"
+                },
+                {
+                  "id": "frame-2",
+                  "status": "estimated",
+                  "position": [
+                    0,
+                    0,
+                    4
+                  ],
+                  "frame_refs": [
+                    "synthetic:2"
+                  ],
+                  "protected": true,
+                  "note": "synthetic ground truth fixture"
+                },
+                {
+                  "id": "frame-3",
+                  "status": "estimated",
+                  "position": [
+                    2,
+                    1,
+                    4
+                  ],
+                  "frame_refs": [
+                    "synthetic:3"
+                  ],
+                  "protected": true,
+                  "note": "synthetic ground truth fixture"
+                },
+                {
+                  "id": "frame-4",
+                  "status": "estimated",
+                  "position": [
+                    4,
+                    2,
+                    4
+                  ],
+                  "frame_refs": [
+                    "synthetic:4"
+                  ],
+                  "protected": true,
+                  "note": "synthetic ground truth fixture"
+                },
+                {
+                  "id": "frame-5",
+                  "status": "excluded",
+                  "position": null,
+                  "frame_refs": [
+                    "synthetic:5"
+                  ],
+                  "protected": false,
+                  "note": "camera away"
+                },
+                {
+                  "id": "frame-6",
+                  "status": "estimated",
+                  "position": [
+                    10,
+                    2,
+                    4
+                  ],
+                  "frame_refs": [
+                    "synthetic:6"
+                  ],
+                  "protected": false,
+                  "note": "synthetic ground truth fixture"
+                },
+                {
+                  "id": "frame-7",
+                  "status": "estimated",
+                  "position": [
+                    10,
+                    2,
+                    6
+                  ],
+                  "frame_refs": [
+                    "synthetic:7"
+                  ],
+                  "protected": false,
+                  "note": "synthetic ground truth fixture"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

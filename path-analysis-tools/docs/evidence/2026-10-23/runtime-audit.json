@@ -1,0 +1,14 @@
+[
+  {
+    "profile": "windows-x64",
+    "files": 2426,
+    "bytes": 96977717,
+    "manifest_sha256": "3cedf994b59db030c169af4e8782fd46b70db73939640971aa07bb1bbfa0ed8f"
+  },
+  {
+    "profile": "macos-arm64",
+    "files": 2092,
+    "bytes": 136254447,
+    "manifest_sha256": "54164e0e3f051fcf5fb07c89dd05801b423865805fe1f7e835adb0d0fc4f3d36"
+  }
+]
