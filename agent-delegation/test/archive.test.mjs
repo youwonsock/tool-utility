@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { Store, Engine, ARCHIVE_AGE, emptyState, digest, journalRecord, prepareStorage, loadState,
-  writeJson, remoteCall, processIdentity } from '../dist/index.mjs';
+  writeJson, remoteCall, processIdentity, alive, sleep } from '../dist/index.mjs';
 import { cli } from './helpers.mjs';
 
 const epoch=1_800_000_000_000;
@@ -105,9 +105,16 @@ test('migration blocks leases, a live old service and unknown storage formats',a
 
 test('daemon cleanup retains an archived run and its event history',async t=>{
   const root=setup(t),store=new Store(root,()=>epoch);store.state.runs=[run(root)];store.save();await store.archiveNext();
-  t.after(async()=>{try{await remoteCall(root,cli,'',{},'/stop');}catch{}});
-  assert.equal((await remoteCall(root,cli,'',{run_id:'run_old'},'/cleanup')).evidence_retained,true);
-  const view=await remoteCall(root,cli,'get_run',{run_id:'run_old'});assert.equal(view.archived,true);assert.equal(view.event_cursor,1);
+  try {
+    assert.equal((await remoteCall(root,cli,'',{run_id:'run_old'},'/cleanup')).evidence_retained,true);
+    const view=await remoteCall(root,cli,'get_run',{run_id:'run_old'});assert.equal(view.archived,true);assert.equal(view.event_cursor,1);
+  } finally {
+    // Close before setup's after hook removes the directory: Windows locks the daemon log.
+    const descriptor=JSON.parse(fs.readFileSync(path.join(root,'service.json')));
+    await remoteCall(root,cli,'',{},'/stop');
+    const deadline=Date.now()+15000;
+    while(await alive(descriptor.owner)) {assert.ok(Date.now()<deadline,'Daemon did not stop');await sleep(100);}
+  }
 });
 
 test('journal append failure never publishes an archive index; restart keeps the original run',async t=>{
