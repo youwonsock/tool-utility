@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 export const PROTOCOL = 1;
-export const STORE_FORMAT = 2;
+export const STORE_FORMAT = 3;
 export const WORKER_FORMAT = 2;
 export const VERSION = '1.0.0';
 export const BASELINE = '1.18.30';
@@ -128,8 +128,19 @@ export type Run = {
   final_verification: Command[]; resources: Resource[]; settings: Settings;
   validation?: Validation; error?: string;
   validation_history?: Validation[];
+  ended_at?: number;
   finalize_intent?: { validation_id: string; commit: string; revision: number; started: number };
 };
-export type State = { protocol: number; revision: number; runs: Run[]; requests: Record<string, { hash: string; status: 'intent' | 'done'; result?: unknown }>; events: { seq: number; run_id: string; type: string; data: unknown }[]; metrics: { responses: number; response_bytes: number; mutations: number } };
+export type RequestRecord = { hash: string; status: 'intent' | 'done'; result?: unknown; completed_at?: number };
+export type RunEvent = { seq: number; run_id: string; type: string; data: unknown };
+export type ArchiveRef = { file: string; hash: string; archived_at: number };
+export type RunSummary = { run_id: string; repo: string; branch: string; state: RunState; revision: number; tasks: number; created: number; ended_at?: number; event_cursor: number };
+export type RunArchive = { protocol: number; run: Run; events: RunEvent[] };
+export type State = {
+  protocol: number; revision: number; runs: Run[]; requests: Record<string, RequestRecord>; events: RunEvent[];
+  event_seq: number; archived_runs: Record<string, ArchiveRef & { summary: RunSummary }>;
+  archived_requests: Record<string, ArchiveRef>; resource_hashes: Record<string, string>;
+  metrics: { responses: number; response_bytes: number; mutations: number };
+};
 export class Fault extends Error { constructor(public code: string, message: string, public details?: unknown) { super(message); } }
 export function invariant(value: unknown, code: string, message: string, details?: unknown): asserts value { if (!value) throw new Fault(code, message, details); }

@@ -9,6 +9,7 @@ import { PROTOCOL, STORE_FORMAT, WORKER_FORMAT, platforms, VERSION, Fault, invar
 import { mkdir, uid, readJson, writeJson, processIdentity, alive, sleep } from './io.js';
 import { git } from './git.js';
 import { holdsResources, canCleanup } from './lifecycle.js';
+import { prepareStorage, attemptsStopped } from './persistence.js';
 
 type Descriptor = { protocol: number; version: string; url: string; token: string; owner: ProcessIdentity; executable: string };
 export async function serve(root: string, executableFile: string) {
@@ -25,6 +26,7 @@ export async function serve(root: string, executableFile: string) {
     } finally { fs.rmSync(reap, { recursive: true }); }
   }
   writeJson(path.join(lock, 'owner.json'), { owner });
+  await prepareStorage(root);
   const store = new Store(root); const engine = new Engine(store, executableFile);
   await engine.recoverPreparations();
   const token = uid('auth');
@@ -56,7 +58,7 @@ export async function serve(root: string, executableFile: string) {
         await engine.serial(async () => {
           const run = engine.getRun(input.run_id);
           invariant(canCleanup(run), 'JOBS_ACTIVE', 'Only completed or confirmed-cancelled runs can be cleaned.');
-          for (const a of engine.allAttempts(run)) invariant(!await alive(a.worker?.host) && !await alive(a.worker?.server), 'JOBS_ACTIVE', 'An owned process is still alive.');
+          invariant(await attemptsStopped(run), 'JOBS_ACTIVE', 'Owned process termination is not confirmed.');
           const worktrees = [run.integration_dir, ...engine.allAttempts(run).map(a => a.directory), ...(run.validation_history ?? []).map(v => v.attempt.directory)];
           for (const directory of [...new Set(worktrees)]) if (fs.existsSync(directory)) await git(run.repo, ['worktree','remove','--force',directory]);
           // Preserve durable metadata and evidence. Cleanup is only about owned disposable worktrees.
