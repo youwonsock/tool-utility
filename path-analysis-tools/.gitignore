@@ -1,7 +1,6 @@
 .build/
 __pycache__/
 *.py[cod]
-.DS_Store
 *.log
 mcp-config.local.json
 .venv/
@@ -10,3 +9,4 @@ build/
 *.egg-info/
 !portable/
 !portable/**
+.DS_Store
