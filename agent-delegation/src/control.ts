@@ -106,3 +106,12 @@ export function publishChanges(store:Store, changes:EffectChange[]) {
     const key=change.path.at(-1)!;if(change.remove)delete target[key];else target[key]=copy(change.value);
   }
 }
+
+/** A pending response is itself promised work: keep its timer referenced until it fires.
+ * Clear it on fast completion so read-only diagnostics never leave a 35-second idle timer. */
+export function withProgress<T>(operation:Promise<T>,milliseconds:number,pending:()=>unknown):Promise<T|unknown> {
+  return new Promise((resolve,reject)=>{
+    const timer=setTimeout(()=>resolve(pending()),milliseconds);
+    operation.then(value=>{clearTimeout(timer);resolve(value);},error=>{clearTimeout(timer);reject(error);});
+  });
+}

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { Store } from './store.js';
-import { ControlQueue, effectStore, publishChanges } from './control.js';
+import { ControlQueue, effectStore, publishChanges, withProgress } from './control.js';
 import { PROTOCOL, STORE_FORMAT, WORKER_FORMAT, VERSION, backendVersions, platforms, Fault, invariant, schemas, type Attempt, type AttemptState, type Run, type Task, type TaskSpec, type ToolName, type WorkerSpec, type WorkerState, type Resource, type SubmitArgs, type WorkerSelection, type WorkerConfig, type DurableOperation } from './types.js';
 import { uid, digest, readJson, writeJson, mkdir, alive, terminate, inside, processIdentity, bootId, treeAlive, exec } from './io.js';
 import { branch, clean, git, head, repository, worktree, materialize, validateScope, resultCommit, integrate, targetReady, checkContext, contextHash } from './git.js';
@@ -116,7 +116,7 @@ export class Engine {
       }catch(error){return this.finishRequest(args.request_id,this.errorResult(error));}
     });
     if('result' in admitted)return admitted.result;
-    return Promise.race([admitted.promise,new Promise(resolve=>{const timer=setTimeout(()=>resolve(this.pending(admitted.operation)),1000);timer.unref();})]);
+    return withProgress(admitted.promise,1000,()=>this.pending(admitted.operation));
   }
   private finishRequest(id:string,result:unknown) {
     const prior=this.store.state.requests[id]!;this.store.state.requests[id]={...prior,status:'done',result,completed_at:this.store.clock()};this.store.save();return {result};
@@ -281,10 +281,10 @@ export class Engine {
       selected=resolveWorker(this.store.root,args.worker);
       repo=args.repo?await repository(args.repo):undefined;
       connection.stage='installation';selected.runtime=await resolveRuntime(selected);
-      const spec:WorkerSpec={protocol:WORKER_FORMAT,host_executable:this.executableFile,diagnostic:true,worker:selected,id:doctorID,directory:args.repo||this.store.root,job_dir:jobDir,goal:'',acceptance:[],scope:[],verification:[],resources:[],context:[],timeout_ms:15000,validation:false,model:selected.model,executable:selected.executable,executable_args:selected.executable_args,password:uid('secret')};
+      const spec:WorkerSpec={protocol:WORKER_FORMAT,host_executable:this.executableFile,diagnostic:true,worker:selected,id:doctorID,directory:args.repo||this.store.root,job_dir:jobDir,goal:'',acceptance:[],scope:[],verification:[],resources:[],context:[],timeout_ms:30000,validation:false,model:selected.model,executable:selected.executable,executable_args:selected.executable_args,password:uid('secret')};
       writeJson(path.join(jobDir,'spec.json'),spec);
       connection.stage='initialization';
-      const result=await exec(process.execPath,[this.executableFile,'worker',jobDir],{env:{...process.env,AGENT_DELEGATION_WORKER:'1'},timeout:22000});
+      const result=await exec(process.execPath,[this.executableFile,'worker',jobDir],{env:{...process.env,AGENT_DELEGATION_WORKER:'1'},timeout:45000});
       state=readJson<WorkerState>(path.join(jobDir,'worker.json'));
       invariant(result.code===0&&state,'CLI_INCOMPATIBLE','Diagnostic worker could not initialize.',{stderr:result.stderr});
       validateWorkerState(state);
@@ -333,8 +333,10 @@ export class Engine {
   }
   async doctor(args:{repo?:string;worker?:WorkerSelection}) {
     const admitted=await this.serial(async()=>{const operation=this.admit('doctor',args);return {operation,promise:this.execute(operation,args)};});
-    return Promise.race([admitted.promise,new Promise(resolve=>{const timer=setTimeout(()=>resolve({...this.pending(admitted.operation),compatible:false,connection:{healthy:false,code:'DIAGNOSTIC_PENDING',message:'Diagnostic cleanup is still in progress; no model request was sent.'}}),35000);timer.unref();})]);
+    return withProgress(admitted.promise,35000,()=>({...this.pending(admitted.operation),compatible:false,connection:{healthy:false,code:'DIAGNOSTIC_PENDING',message:'Diagnostic cleanup is still in progress; no model request was sent.'}}));
   }
+  // The owned compatibility runner awaits one diagnostic through termination; MCP uses doctor().
+  async diagnose(args:{repo?:string;worker?:WorkerSelection}) {return this.runEffect('doctor',args);}
   async submit(args:SubmitArgs) {return this.runEffect('submit_tasks',args);}
   async launch(run:Run,task:Task) {return this.runEffect('launch',{run_id:run.id,task_id:task.spec.id});}
   async collect(run:Run) {return this.runEffect('collect',{run_id:run.id});}
@@ -346,7 +348,7 @@ export class Engine {
     const hot=await this.serial(async()=>{if(this.store.isArchived(id))return;const operation=this.admit('cleanup',{run_id:id});return {operation,promise:this.execute(operation,{run_id:id})};});
     let admitted=hot;
     if(!admitted){const run=await this.store.runAsync(id);invariant(run,'NOT_FOUND','Run not found.');admitted=await this.serial(async()=>{const operation=this.admit('cleanup',{run_id:id},undefined,undefined,run);return {operation,promise:this.execute(operation,{run_id:id},run)};});}
-    const selected=admitted;return Promise.race([selected.promise,new Promise(resolve=>{const timer=setTimeout(()=>resolve(this.pending(selected.operation)),1000);timer.unref();})]);
+    const selected=admitted;return withProgress(selected.promise,1000,()=>this.pending(selected.operation));
   }
   private async effectCleanup(run:Run) {
     invariant(['completed','cancelled'].includes(run.state),'JOBS_ACTIVE','Only finished runs can be cleaned.');

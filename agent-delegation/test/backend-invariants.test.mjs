@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { createBackend, resolveWorker, uid, sleep, connection, restrictions, workerPolicyHash, exec } from '../dist/index.mjs';
 import { fixture, cli } from './helpers.mjs';
 import { mockProfiles, selection } from './native-helpers.mjs';
@@ -33,6 +34,18 @@ for(const [platform,version]of Object.entries({opencode:'1.19.0',codex:'0.162.1'
     assert.match(result.connection.error,/policy|configuration|hook/i);
   });
 }
+
+test('Kilo diagnostic retains the original 30s startup budget after a successful provider response',async t=>{
+  const f=await fixture(t);f.engine.stop();mockProfiles(f);
+  const flag=path.join(f.dir,'provider-ready'),clock=path.join(f.dir,'diagnostic-clock.mjs');
+  fs.writeFileSync(clock,`import fs from 'node:fs';const original=Date.now.bind(Date);Date.now=()=>original()+(fs.existsSync(${JSON.stringify(flag)})?16000:0);`);
+  const file=path.join(f.data,'profiles.json'),profiles=JSON.parse(fs.readFileSync(file));
+  profiles.profiles['mock-kilo'].args.push(`--advance-clock-after-provider=${flag}`);fs.writeFileSync(file,JSON.stringify(profiles));
+  const before=process.env.NODE_OPTIONS;process.env.NODE_OPTIONS=`${before??''} --import=${pathToFileURL(clock).href}`.trim();
+  t.after(()=>{if(before===undefined)delete process.env.NODE_OPTIONS;else process.env.NODE_OPTIONS=before;});
+  const result=await f.engine.doctor({repo:f.repo,worker:selection('kilo')});
+  assert.equal(fs.existsSync(flag),true);assert.equal(result.connection.healthy,true,JSON.stringify(result.connection));assert.equal(result.connection.stage,'termination');
+});
 
 for(const platform of ['opencode','kilo'])test(`${platform} rejects an incompatible session API without dispatching a prompt`,async t=>{
   const result=await diagnose(t,platform,['--invalid-session']);

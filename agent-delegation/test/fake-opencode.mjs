@@ -31,7 +31,11 @@ const server = http.createServer(async (req,res) => {
   const input = body ? JSON.parse(body) : {};
   const send = (data, code = 200) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(data)); };
   if (url.pathname === '/global/health') return send({ healthy: true, version });
-  if (url.pathname === '/provider') return send({ all: [{ id: 'fake', models: { test: { id: 'test' } } }], connected: ['fake'], default: { fake: 'test' } });
+  if (url.pathname === '/provider') {
+    const clockFlag=argv.find(arg=>arg.startsWith('--advance-clock-after-provider='))?.slice('--advance-clock-after-provider='.length);
+    if(clockFlag)fs.writeFileSync(clockFlag,'ready');
+    return send({ all: [{ id: 'fake', models: { test: { id: 'test' } } }], connected: ['fake'], default: { fake: 'test' } });
+  }
   if (url.pathname === '/config') return send(overlay);
   if (url.pathname === '/session' && req.method === 'POST') { audit({ event: 'session' }); return send(argv.includes('--invalid-session')?{sessionID:session.id}:session); }
   if (url.pathname === '/session/ses_test') return send(session);
