@@ -56,7 +56,10 @@ export function transition(changes: Changes) {
   if (changes.task) checkTransition(taskGraph, changes.task[0].state, changes.task[1], 'task');
   if (changes.attempt) checkTransition(attemptGraph, changes.attempt[0].state, changes.attempt[1], 'attempt');
   if (changes.validation) checkTransition(validationGraph, changes.validation[0].state, changes.validation[1], 'validation');
-  if (changes.run) changes.run[0].state = changes.run[1];
+  if (changes.run) {
+    changes.run[0].state = changes.run[1];
+    if (['completed','cancelled'].includes(changes.run[1])) changes.run[0].ended_at ??= Date.now();
+  }
   if (changes.task) changes.task[0].state = changes.task[1];
   if (changes.attempt) changes.attempt[0].state = changes.attempt[1];
   if (changes.validation) changes.validation[0].state = changes.validation[1];
@@ -90,6 +93,15 @@ function validateAttempt(a: Attempt) {
 }
 export function validateStoredState(state: State) {
   invariant(state.protocol===STORE_FORMAT,'STATE_CORRUPT','Unknown stored state format.');
+  invariant(Number.isSafeInteger(state.event_seq) && state.event_seq >= 0 && state.archived_runs && state.archived_requests && state.resource_hashes, 'STATE_CORRUPT', 'Missing storage indexes.');
+  invariant(state.events.every(e => Number.isSafeInteger(e.seq) && e.seq > 0 && e.seq <= state.event_seq), 'STATE_CORRUPT', 'Invalid event sequence.');
+  for (const [id, ref] of Object.entries(state.archived_runs)) {
+    invariant(ref.summary.run_id === id && ['completed','cancelled'].includes(ref.summary.state) && !state.runs.some(r => r.id === id), 'STATE_CORRUPT', 'Invalid archived run summary.');
+    invariant(ref.summary.event_cursor <= state.event_seq, 'STATE_CORRUPT', 'Archived event cursor exceeds sequence.');
+  }
+  for (const ref of [...Object.values(state.archived_runs), ...Object.values(state.archived_requests)]) {
+    invariant(typeof ref.file === 'string' && /^archives\/(runs|requests)\/[a-f0-9]{64}\/[a-f0-9]{64}\.json$/.test(ref.file) && /^[a-f0-9]{64}$/.test(ref.hash) && Number.isFinite(ref.archived_at), 'STATE_CORRUPT', 'Invalid archive reference.');
+  }
   for (const run of state.runs) {
     known(run.state, runStates, 'run');
     invariant(run.worker&&workerSchema.safeParse({platform:run.worker.platform,model:run.worker.model,profile:run.worker.profile}).success,'STATE_CORRUPT','Unknown stored run worker selection.');

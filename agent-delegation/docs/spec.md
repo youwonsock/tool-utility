@@ -16,7 +16,7 @@ The current conversation owns planning, review, correction instructions and fina
 - Final validation freezes task revision, integration commit, context hash and commands. It runs in a separate worktree. Source changes invalidate it. Final approval must name the validation, commit and revision. Finalize rechecks the original checkout and uses `git merge --ff-only --no-overwrite-ignore`; recovery observes rather than resets user changes.
 - Mutating MCP calls require idempotency IDs. Responses are paginated valid JSON (4 KiB); artifacts use 16 KiB pages. Observed command evidence is distinct from model claims.
 - Submission validates every task/resource/context before preparing owned files and worktrees, then publishes the whole batch with its event in one journal record. Durable preparation manifests permit safe cleanup of unchanged unpublished resources or recovery of committed responses. Uncertain persistence fences dispatch until restart; no implementation request is replayed.
-- Typed lifecycle rules keep existing state names and validate grouped transitions. RPC remains 1; storage and newly launched workers use format 2, only; other or missing formats are unsupported. Corrections immediately remove the old result from review. Cancellation is one-way and overrides late verification snapshots; termination uncertainty retains leases. Rejections preserve structured reasons, changed files and bounded UTF-8 previews without reading symlink targets or authentication bodies.
+- Typed lifecycle rules keep existing state names and validate grouped transitions. RPC remains 1; storage and new submission preparations use format 3 and workers use format 2. Stopped format-2 storage migrates with a durable backup; other or missing formats are unsupported. Corrections immediately remove the old result from review. Cancellation is one-way and overrides late verification snapshots; termination uncertainty retains leases. Rejections preserve structured reasons, changed files and bounded UTF-8 previews without reading symlink targets or authentication bodies.
 - Service and workers survive MCP disconnection. Stop/cancel require confirmed termination. Install/update copies self-contained versioned bundles and a marketplace into user storage, retaining old releases. Host exports do not change global registration. Supervisor conversations are not launched by the service; no authored GUI or public marketplace publishing is included.
 
 ## Platform and recovery contracts
@@ -51,7 +51,7 @@ versions and hashes. Workers compare the submitted identity before startup
 and model dispatch. New correction attempts discover the current compatible
 installation under the frozen configuration/model; existing attempts do not
 reload a different runtime. Missing/changed identity records RUNTIME_CHANGED
-without model replay. Existing format-2 terminal records stay readable; an
+without model replay. Existing format-2 terminal records migrate before reading; an
 unfinished attempt without identity must finish/cancel with its old release.
 Missing/other record formats remain unsupported. A live old service or leased
 attempt blocks installation switching with UPDATE_PENDING.
@@ -81,3 +81,9 @@ Paid-model testing is separate from the model-free checks. Installation activati
 ## Naming and inputs
 
 The package, plugin and MCP server are agent-delegation. Only delegate-agents is exported. Model selection uses worker.model. Diagnostics and initial submissions default to OpenCode; task worker overrides replace the run selection. Runtime configuration uses AGENT_DELEGATION environment variables without aliases.
+
+## Seven-day archives
+
+Runs retain their first terminal ended_at; completed/cancelled runs and done request responses move to checksummed cold files after seven days. Startup/hourly scans perform one move per serialized scheduler tick. Leased/unconfirmed processes and unresolved submission preparations block run archival. Request intents remain hot; archived response hashes and results preserve idempotency. Summaries, resource fingerprints and the global event sequence remain in the hot checkpoint. list_runs includes both stores ordered by created time/ID; get_run/wait_run/artifacts and cleanup retain access. New archived-run mutations return RUN_ARCHIVED, after idempotency lookup. Responses add archived/archived_at/ended_at without new tools or inputs.
+
+Archive files publish before index/removal commits. Uncertain commit/checkpoint delivery fences dispatch; missing/corrupt archives never become fresh requests. Journal replay reads records incrementally. Atomic compaction runs at 256 records or max(32 MiB, four current-record sizes). Format-2 migration verifies stopped ownership, backs up raw files, persists a migration marker and resumes interrupted publications before dispatch. Legacy terminal/response ages start at migration time. Evidence, logs, worktrees and backups are not automatically removed.

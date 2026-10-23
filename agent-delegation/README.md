@@ -35,7 +35,7 @@ GUI·IDE·CLI 지시자는 MCP로 연결합니다. GUI 구현자 자동 제어�
 ## 설치
 
 ```sh
-git clone --branch codex/delegation-platform-backends https://github.com/youwonsock/tool-utility.git
+git clone --branch main https://github.com/youwonsock/tool-utility.git
 cd tool-utility/agent-delegation
 ```
 
@@ -122,7 +122,9 @@ MCP가 처음 호출될 때 서비스가 시작됩니다. 지시자 대화 종�
 
 변경 요청에는 `request_id`가 필요합니다. 같은 ID·내용은 기록된 응답을 반환하고 다른 내용은 거부합니다. 이전 요청의 실행 여부가 불확실하면 `REQUEST_UNCERTAIN`을 반환하므로 기록을 대조한 뒤 현재 상태에 맞는 다음 동작을 결정합니다.
 
-제출 전에 자원 참조와 모든 문맥을 검증하고, 준비한 작업 묶음을 한 번에 등록합니다. 준비 중 오류는 빈 실행이나 일부 작업을 등록하지 않습니다. 저장 결과가 불확실하면 새 dispatch를 중단하며, 재시작 시 journal과 제출 준비 기록을 대조합니다. 공통 상태 규칙의 오류는 `STATE_TRANSITION`, 알 수 없는 저장 상태는 `STATE_CORRUPT`입니다. 기존 상태 이름과 MCP·서비스 RPC 버전 1을 유지합니다. 저장 형식과 신규 워커 기록은 2이며, 구형 또는 형식이 누락된 기록은 지원하지 않습니다. 새 데이터 경로에서 시작하세요.
+제출 전에 자원 참조와 모든 문맥을 검증하고, 준비한 작업 묶음을 한 번에 등록합니다. 준비 중 오류는 빈 실행이나 일부 작업을 등록하지 않습니다. 저장 결과가 불확실하면 새 dispatch를 중단하며, 재시작 시 journal과 제출 준비 기록을 대조합니다. 공통 상태 규칙의 오류는 `STATE_TRANSITION`, 알 수 없는 저장 상태는 `STATE_CORRUPT`입니다. MCP·서비스 RPC는 1, 저장 형식은 3, 워커 기록은 2입니다. 이전 저장 형식 2는 이전 서비스·워커가 종료된 뒤 새 서비스 첫 시작에서 백업하고 자동 이전합니다. 알 수 없는 형식이나 형식이 없는 기록은 거절합니다.
+
+완료·취소 실행과 완료된 요청 응답은 각각 종료·응답 완료 후 7일이 지나면 `archives/`에 별도 보관합니다. 서비스 시작과 매시간 대상을 검색해 한 건씩 처리하며, 프로세스·자원 잠금·미해결 제출 준비가 있는 실행은 보류합니다. `list_runs`·`get_run`은 보관 기록도 포함하고 `archived`, `archived_at`, `ended_at`을 표시합니다. 상세·이벤트·증거 조회와 `cleanup`은 계속 사용할 수 있고, 새 상태 변경은 `RUN_ARCHIVED`입니다. 같은 요청 ID·내용의 재전송은 보관된 응답을 반환합니다. 보관 기록·증거·로그·사용자 파일은 자동 삭제하지 않습니다.
 
 기본 응답은 MCP JSON 포장을 포함해 4 KiB, 산출물 응답은 16 KiB 이내입니다. `next_cursor`, `after`, `next_offset`을 따라 조회합니다. 큰 구조화 응답은 JSON을 잘라내지 않고 전체 응답을 가리키는 `artifact_id`를 반환합니다. `get_artifact`로 해당 JSON 전체를 이어 읽을 수 있습니다. 모델의 요약과 관찰된 명령·종료 코드는 별도 필드입니다. `unknown`, 미실행, 중단은 성공으로 승인할 수 없습니다.
 
