@@ -6,10 +6,11 @@ import { launchOpenCode, resolvedConfig, restrictions, enforceHttpPolicy, httpSd
 import { workerEnvironment } from '../profiles.js';
 import { spawnRuntime, stopOwned } from './process.js';
 import type { Answer, BackendContext, Observation, WorkerBackend } from './contract.js';
-import { permissionKey } from './policy.js';
+import { workerPermissionKey, toolPolicy, mutationPaths } from './policy.js';
 import { verificationShell } from '../shell.js';
 import { executableVersion, reportedVersion } from './version.js';
 import { loadSdk, requireSdkMethods, callSdkFactory } from '../runtime.js';
+import { assertScopeMonitor, scopeMonitorHealthy } from '../scope.js';
 
 // Each generated SDK remains owned by its corresponding native runtime.
 export class HttpBackend implements WorkerBackend {
@@ -27,7 +28,7 @@ export class HttpBackend implements WorkerBackend {
     const version=await executableVersion(spec);
     const initial=await resolvedConfig(spec.executable,spec.executable_args,spec.directory,workerEnvironment(worker));
     state.verification_shell=verificationShell(worker.shell,initial.shell);save();
-    const overlay=restrictions(initial,spec.resources,spec.directory);
+    const overlay=restrictions(initial,spec.resources,spec.directory,spec.context.map(c=>c.path));
     const env={...workerEnvironment(worker),KILO_SERVER_PASSWORD:spec.password,KILO_SERVER_USERNAME:'kilo',KILO_NO_DAEMON:'1',KILO_CONFIG_CONTENT:JSON.stringify(overlay)};
     const effective=await resolvedConfig(spec.executable,spec.executable_args,spec.directory,env);
     const allowed=new Set(spec.resources.map(r=>r.connection.name));
@@ -67,6 +68,7 @@ export class HttpBackend implements WorkerBackend {
   }
   async dispatch(prompt:string,requestID:string) {
     const {state}=this.context;
+    assertScopeMonitor(this.context.spec,state);
     await this.client.session.promptAsync({sessionID:state.session_id,messageID:requestID,model:state.model,agent:'delegate-worker',parts:[{type:'text',text:prompt}]},{throwOnError:true});
   }
   async observe():Promise<Observation> {
@@ -75,7 +77,13 @@ export class HttpBackend implements WorkerBackend {
     const statuses=(await this.client.session.status({}, {throwOnError:true})).data;
     const permissions=(await this.client.permission.list({}, {throwOnError:true})).data;
     const questions=(await this.client.question.list({}, {throwOnError:true})).data;
-    const inputs:InputRequest[]=[...permissions.filter((p:any)=>p.sessionID===state.session_id).map((p:any)=>({id:p.id,kind:'permission',details:p,grant_key:permissionKey(p.permission,{patterns:p.patterns}),supported_decisions:['once','always','reject']})),
+    const allowedPermissions:any[]=[];
+    for(const permission of permissions.filter((p:any)=>p.sessionID===state.session_id)) {
+      const decision=this.permissionDecision(permission);
+      if(decision==='ask')allowedPermissions.push(permission);
+      else await this.client.permission.reply({requestID:permission.id,reply:decision==='allow'?'once':'reject'},{throwOnError:true});
+    }
+    const inputs:InputRequest[]=[...allowedPermissions.map((p:any)=>({id:p.id,kind:'permission',details:p,grant_key:this.permissionGrant(p),supported_decisions:['once','always','reject']})),
       ...questions.filter((q:any)=>q.sessionID===state.session_id).map((q:any)=>({id:q.id,kind:'question',details:q,supported_decisions:['answer','reject']}))];
     const accepted=messages.some((m:any)=>m.info.id===state.prompt_id&&m.info.role==='user');
     const replies=messages.filter((m:any)=>m.info.role==='assistant'&&m.info.parentID===state.prompt_id),last=replies.at(-1);
@@ -86,8 +94,32 @@ export class HttpBackend implements WorkerBackend {
       usage:replies.map((m:any)=>({model:`${m.info.providerID}/${m.info.modelID}`,tokens:m.info.tokens,cost:m.info.cost})),
       error:last?.info.error?JSON.stringify(last.info.error):complete&&['tool-calls','unknown'].includes(last.info.finish)?'Assistant did not finish its implementation turn.':undefined};
   }
+  private permissionInput(permission:any):Record<string,unknown> {
+    if(/bash|shell|exec|command/i.test(permission.permission))return {...permission.metadata,command:permission.metadata?.command??permission.patterns};
+    // Native patterns must enumerate all touched files. Metadata supplies rename
+    // endpoints and multichange patch paths as well; opaque globs fail closed.
+    const patterns=permission.patterns;
+    if(!Array.isArray(patterns)||!patterns.length||patterns.some(p=>typeof p!=='string'||/[*?\[\]]/.test(p)))return {};
+    // Preserve both sources independently: neither a metadata key nor a native
+    // pattern may erase another native edit/rename/patch endpoint.
+    return {...permission.metadata,native_paths:patterns,metadata_paths:permission.metadata??{}};
+  }
+  private permissionGrant(permission:any){return workerPermissionKey(this.context.spec,permission.permission,{patterns:permission.patterns,metadata:permission.metadata??{},input:this.permissionInput(permission)});}
+  private permissionDecision(permission:any) {
+    const {spec,state}=this.context;
+    if(!scopeMonitorHealthy(spec,state))return 'deny';
+    if(typeof permission.permission!=='string')return 'deny';
+    if(permission.permission==='external_directory'||/task|skill|background/i.test(permission.permission))return 'deny';
+    const input=this.permissionInput(permission);
+    if(/edit|write|delete|rename|patch/i.test(permission.permission)&&!mutationPaths(permission.permission,input)?.length)return 'deny';
+    return toolPolicy(permission.permission,input,spec.directory,spec.context.map(c=>c.path),spec.scope);
+  }
   async reply(input:InputRequest,answer:Answer):Promise<'sent'> {
     if(input.kind==='permission') {
+      const latest=(await this.client.permission.list({}, {throwOnError:true})).data.find((p:any)=>p.id===input.id&&p.sessionID===this.context.state.session_id);
+      invariant(latest,'INPUT','Native permission is no longer pending.');
+      invariant(this.permissionGrant(latest)===input.grant_key,'MCP_POLICY','Native permission changed before the reply.');
+      invariant(answer.decision==='reject'||this.permissionDecision(latest)!=='deny','MCP_POLICY','Permission no longer satisfies the hard worker policy.');
       // Framework grants are attempt-local. Never save native global permission rules.
       await this.client.permission.reply({requestID:input.id,reply:answer.decision==='always'?'once':answer.decision},{throwOnError:true});
     } else if(answer.decision==='reject')await this.client.question.reject({requestID:input.id},{throwOnError:true});

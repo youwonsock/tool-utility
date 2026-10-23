@@ -25,7 +25,18 @@ jobs:
           cache: npm
           cache-dependency-path: agent-delegation/package-lock.json
       - run: npm ci
-      - run: npm run check
+      - name: Regression checks with bounded sanitized diagnostics
+        env:
+          AGENT_DELEGATION_TEST_ROOT: ${{ runner.temp }}/agent-delegation-owned-fixtures
+        run: node scripts/ci-check.mjs regression "${{ runner.temp }}/agent-delegation-diagnostics"
+      - name: Upload sanitized regression failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-regression-${{ matrix.os }}
+          path: ${{ runner.temp }}/agent-delegation-diagnostics/
+          if-no-files-found: ignore
+          retention-days: 7
   native:
     strategy:
       fail-fast: false
@@ -45,6 +56,14 @@ jobs:
       - run: npm ci
       - run: npm run build
       - name: Prepare separate test SDKs and CLIs without changing global installations
-        run: node scripts/prepare-connections.mjs "${{ runner.temp }}/agent-delegation-connections"
+        run: node scripts/ci-check.mjs prepare "${{ runner.temp }}/agent-delegation-diagnostics" "${{ runner.temp }}/agent-delegation-connections"
       - name: Native initialization and connection checks without model tasks
-        run: npm run check:connections -- "${{ runner.temp }}/agent-delegation-connections"
+        run: node scripts/ci-check.mjs native "${{ runner.temp }}/agent-delegation-diagnostics" "${{ runner.temp }}/agent-delegation-connections"
+      - name: Upload sanitized native failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-native-${{ matrix.os }}
+          path: ${{ runner.temp }}/agent-delegation-diagnostics/
+          if-no-files-found: ignore
+          retention-days: 7

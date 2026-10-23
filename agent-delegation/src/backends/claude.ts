@@ -7,11 +7,12 @@ import type { Options, Query, PermissionResult } from './claude-contract.js';
 import { invariant, type InputRequest } from '../types.js';
 import { writeJson, digest } from '../io.js';
 import { workerEnvironment } from '../profiles.js';
-import { connection, toolPolicy, permissionKey } from './policy.js';
+import { connection, toolPolicy, workerPermissionKey } from './policy.js';
 import { beginProcess, registerProcess, stopOwned } from './process.js';
 import type { Answer, BackendContext, Observation, WorkerBackend } from './contract.js';
 import { reportedVersion } from './version.js';
 import { loadSdk, requireSdkMethods, runtimeFault, findExecutable, callSdkFactory } from '../runtime.js';
+import { assertScopeMonitor, scopeMonitorHealthy } from '../scope.js';
 
 class PromptQueue<T> implements AsyncIterable<T> {
   private waiting?: (value:IteratorResult<T>)=>void;
@@ -25,7 +26,7 @@ export class ClaudeBackend implements WorkerBackend {
   private query?:Query;
   private queue=new PromptQueue<any>();
   private messages:any[]=[];
-  private pending=new Map<string,{input:InputRequest;resolve:(value:PermissionResult)=>void;native:Record<string,unknown>;native_id:string}>();
+  private pending=new Map<string,{input:InputRequest;resolve:(value:PermissionResult)=>void;native:Record<string,unknown>;native_id:string;tool:string}>();
   private registrations:Promise<unknown>[]=[];
   private complete=false;
   private accepted=false;
@@ -44,8 +45,9 @@ export class ClaudeBackend implements WorkerBackend {
     const resources=new Set(spec.resources.map(r=>r.connection.name));
     const mcpServers=Object.fromEntries(spec.resources.map(r=>[r.connection.name,connection(r,spec.directory)]));
     const policy=(name:string,input:Record<string,unknown>)=>{
+      if(!scopeMonitorHealthy(spec,state))return 'deny';
       if(name.startsWith('mcp__')&&!resources.has(name.split('__')[1]!))return 'deny';
-      return toolPolicy(name,input,spec.directory,spec.context.map(c=>c.path));
+      return toolPolicy(name,input,spec.directory,spec.context.map(c=>c.path),spec.scope);
     };
     const options:Options={
       cwd:spec.directory,sessionId:sessionID,model:typeof spec.model==='string'?spec.model:undefined,
@@ -67,9 +69,9 @@ export class ClaudeBackend implements WorkerBackend {
         const id=`input_${digest({sessionID,nativeID}).slice(0,32)}`;
         const question=name==='AskUserQuestion';
         const request:InputRequest={id,kind:question?'question':'permission',details:question?{questions:input.questions}:{tool:name,input},
-          supported_decisions:question?['answer','reject']:['once','always','reject'],...(question?{}:{grant_key:permissionKey(name,input)})};
+          supported_decisions:question?['answer','reject']:['once','always','reject'],...(question?{}:{grant_key:workerPermissionKey(spec,name,input)})};
         return new Promise<PermissionResult>(resolve=>{
-          this.pending.set(id,{input:request,resolve,native:input,native_id:nativeID});
+          this.pending.set(id,{input:request,resolve,native:input,native_id:nativeID,tool:name});
           details.signal.addEventListener('abort',()=>{this.pending.delete(id);resolve({behavior:'deny',message:'Execution was cancelled.',interrupt:true});},{once:true});
         });
       },
@@ -128,6 +130,7 @@ export class ClaudeBackend implements WorkerBackend {
   }
   async createSession(){invariant(this.context.state.session_id,'SESSION_UNCERTAIN','Claude session intent is missing.');}
   async dispatch(prompt:string,_requestID:string) {
+    assertScopeMonitor(this.context.spec,this.context.state);
     this.queue.push({type:'user',session_id:this.context.state.session_id,uuid:this.context.state.native_request_id,message:{role:'user',content:prompt},parent_tool_use_id:null});
   }
   async observe():Promise<Observation> {
@@ -139,6 +142,8 @@ export class ClaudeBackend implements WorkerBackend {
   }
   async reply(input:InputRequest,answer:Answer):Promise<'uncertain'> {
     const pending=this.pending.get(input.id);invariant(pending,'INPUT','Native input is no longer pending.');
+    const {spec}=this.context;
+    invariant(answer.decision==='reject'||scopeMonitorHealthy(spec,this.context.state)&&(input.kind==='question'||toolPolicy(pending.tool,pending.native,spec.directory,spec.context.map(c=>c.path),spec.scope)!=='deny'),'MCP_POLICY','Permission no longer satisfies the hard worker policy.');
     this.answered.set(input.id,pending.native_id);
     if(answer.decision==='reject') {this.pending.delete(input.id);pending.resolve({behavior:'deny',message:'The supervisor rejected this operation.'});return 'uncertain';}
     if(input.kind==='question') {

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 export const PROTOCOL = 1;
-export const STORE_FORMAT = 3;
+export const STORE_FORMAT = 4;
 export const WORKER_FORMAT = 2;
 export const VERSION = '1.0.0';
 export const BASELINE = '1.18.30';
@@ -96,6 +96,7 @@ export type WorkerState = {
   runtime?:RuntimeIdentity; error_code?:string; error_details?:unknown; diagnostic_stage?:string;
   prompt_id: string; prompt_intent?: number; prompt_accepted?: boolean;
   native_request_id?:string; turn_id?:string; permission_grants?:string[];
+  scope_guard?:{status:'starting'|'healthy'|'violated'|'unknown';checked_at:number;policy_hash:string;evidence?:string};
   verification_shell?:ShellSpec;
   verification: Evidence[]; shell_intent?: { index: number; message_id: string; command: string; process?:ProcessIdentity };
   inputs: InputRequest[]; replies: Record<string, 'intent' | 'sent' | 'uncertain'>;
@@ -129,14 +130,22 @@ export type Run = {
   validation?: Validation; error?: string;
   validation_history?: Validation[];
   ended_at?: number;
+  control_generation?: number;
   finalize_intent?: { validation_id: string; commit: string; revision: number; started: number };
 };
-export type RequestRecord = { hash: string; status: 'intent' | 'done'; result?: unknown; completed_at?: number };
+export type RequestRecord = { hash: string; status: 'intent' | 'done'; result?: unknown; completed_at?: number; operation_id?:string };
+export type DurableOperation = {
+  id:string; kind:string; request_id?:string; request_hash?:string; run_id?:string; repository_key?:string;
+  status:'running'|'completed'|'uncertain'; created:number; updated:number; expected_revision?:number; generation?:number;
+  inputs:unknown; reservations:{slot?:boolean;attempt_id?:string;resources?:string[];repository?:string};
+  result?:unknown; error?:{code:string;message:string};
+};
 export type RunEvent = { seq: number; run_id: string; type: string; data: unknown };
 export type ArchiveRef = { file: string; hash: string; archived_at: number };
 export type RunSummary = { run_id: string; repo: string; branch: string; state: RunState; revision: number; tasks: number; created: number; ended_at?: number; event_cursor: number };
 export type RunArchive = { protocol: number; run: Run; events: RunEvent[] };
 export type State = {
+  operations: Record<string, DurableOperation>;
   protocol: number; revision: number; runs: Run[]; requests: Record<string, RequestRecord>; events: RunEvent[];
   event_seq: number; archived_runs: Record<string, ArchiveRef & { summary: RunSummary }>;
   archived_requests: Record<string, ArchiveRef>; resource_hashes: Record<string, string>;

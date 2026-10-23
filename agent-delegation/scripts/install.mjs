@@ -14,6 +14,7 @@ fingerprint(path.join(source,'plugins')); fingerprint(path.join(source,'.agents'
 fingerprint(path.join(source,'dist','skills'));
 checksum.update(fs.readFileSync(path.join(source,'dist','workflow.md')));
 checksum.update(fs.readFileSync(path.join(source,'dist','contract.md')));
+checksum.update(fs.readFileSync(path.join(source,'dist','storage-worker.mjs')));
 const stamp = checksum.digest('hex').slice(0,12);
 const release = path.join(root, 'releases', `${version}-${stamp}`);
 const installedCli = path.join(release, 'plugins', 'agent-delegation', 'runtime', 'cli.mjs');
@@ -34,6 +35,7 @@ pluginManifest.version = `${pluginManifest.version.split('+')[0]}+codex.${stamp}
 fs.writeFileSync(pluginManifestFile,JSON.stringify(pluginManifest,null,2));
 fs.mkdirSync(path.join(plugin, 'runtime'), { recursive: true });
 fs.writeFileSync(path.join(plugin, 'runtime', 'cli.mjs'), bundle);
+fs.copyFileSync(path.join(source,'dist','storage-worker.mjs'),path.join(plugin,'runtime','storage-worker.mjs'));
 fs.copyFileSync(path.join(source,'dist','workflow.md'),path.join(plugin,'runtime','workflow.md'));
 fs.copyFileSync(path.join(source,'dist','contract.md'),path.join(plugin,'runtime','contract.md'));
 // Generated skills replace source-only wrappers. Removing that owned directory
@@ -49,7 +51,7 @@ if (!fs.existsSync(release)) fs.renameSync(staging, release); else fs.rmSync(sta
 const noRegister = process.argv.includes('--no-register');
 for(const file of ['service.json','state.json']) {
   const location=path.join(dataRoot(),file);
-  if(fs.existsSync(location)&&!(file==='state.json'?[2,STORE_FORMAT]:[PROTOCOL]).includes(JSON.parse(fs.readFileSync(location)).protocol)) {
+  if(fs.existsSync(location)&&!(file==='state.json'?[2,3,STORE_FORMAT]:[PROTOCOL]).includes(JSON.parse(fs.readFileSync(location)).protocol)) {
     console.log(JSON.stringify({staged:release,update_pending:true,reason:'Protocol/storage version differs. Finish existing work with the previous release; it was preserved.'},null,2));
     process.exit(0);
   }

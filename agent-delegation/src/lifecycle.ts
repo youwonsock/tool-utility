@@ -88,24 +88,35 @@ export function validateWorkerState(worker: WorkerState) {
   invariant(worker.protocol===WORKER_FORMAT,'STATE_CORRUPT','Unknown worker record format.');
   if(worker.backend!==undefined)known(worker.backend,platforms,'backend');
 }
-function validateAttempt(a: Attempt) {
+export function validateStoredAttempt(a: Attempt) {
   known(a?.state, attemptStates, 'attempt'); if (a.worker) validateWorkerState(a.worker);
 }
 export function validateStoredState(state: State) {
   invariant(state.protocol===STORE_FORMAT,'STATE_CORRUPT','Unknown stored state format.');
-  invariant(Number.isSafeInteger(state.event_seq) && state.event_seq >= 0 && state.archived_runs && state.archived_requests && state.resource_hashes, 'STATE_CORRUPT', 'Missing storage indexes.');
+  invariant(Number.isSafeInteger(state.event_seq) && state.event_seq >= 0 && state.archived_runs && state.archived_requests && state.resource_hashes && state.operations, 'STATE_CORRUPT', 'Missing storage indexes.');
   invariant(state.events.every(e => Number.isSafeInteger(e.seq) && e.seq > 0 && e.seq <= state.event_seq), 'STATE_CORRUPT', 'Invalid event sequence.');
+  invariant(Number.isSafeInteger(state.revision)&&state.revision>=0,'STATE_CORRUPT','Invalid stored revision.');
+  let previousEvent=0;for(const event of state.events){invariant(event.seq>previousEvent,'STATE_CORRUPT','Stored event sequences are not unique and ordered.');previousEvent=event.seq;}
+  for(const[id,operation]of Object.entries(state.operations))invariant(operation&&operation.id===id&&['running','completed','uncertain'].includes(operation.status)&&typeof operation.kind==='string'&&Number.isFinite(operation.created)&&Number.isFinite(operation.updated)&&operation.reservations&&typeof operation.reservations==='object','STATE_CORRUPT','Invalid durable operation.');
+  const activeIDs=new Set(state.runs.map(run=>run.id));
+  invariant(activeIDs.size===state.runs.length,'STATE_CORRUPT','Duplicate live run identity.');
   for (const [id, ref] of Object.entries(state.archived_runs)) {
-    invariant(ref.summary.run_id === id && ['completed','cancelled'].includes(ref.summary.state) && !state.runs.some(r => r.id === id), 'STATE_CORRUPT', 'Invalid archived run summary.');
+    invariant(ref.summary.run_id === id && ['completed','cancelled'].includes(ref.summary.state) && !activeIDs.has(id), 'STATE_CORRUPT', 'Invalid archived run summary.');
     invariant(ref.summary.event_cursor <= state.event_seq, 'STATE_CORRUPT', 'Archived event cursor exceeds sequence.');
   }
   for (const ref of [...Object.values(state.archived_runs), ...Object.values(state.archived_requests)]) {
     invariant(typeof ref.file === 'string' && /^archives\/(runs|requests)\/[a-f0-9]{64}\/[a-f0-9]{64}\.json$/.test(ref.file) && /^[a-f0-9]{64}$/.test(ref.hash) && Number.isFinite(ref.archived_at), 'STATE_CORRUPT', 'Invalid archive reference.');
   }
-  for (const run of state.runs) {
-    known(run.state, runStates, 'run');
+  for (const run of state.runs) validateStoredRun(run);
+}
+export function validateStoredRun(run: Run) {
+    known(run?.state, runStates, 'run');
+    invariant(Array.isArray(run.tasks),'STATE_CORRUPT','Missing run tasks.');
     invariant(run.worker&&workerSchema.safeParse({platform:run.worker.platform,model:run.worker.model,profile:run.worker.profile}).success,'STATE_CORRUPT','Unknown stored run worker selection.');
-    for (const task of run.tasks) { known(task.state, taskStates, 'task');invariant(task.worker&&workerSchema.safeParse({platform:task.worker.platform,model:task.worker.model,profile:task.worker.profile}).success,'STATE_CORRUPT','Unknown stored task worker selection.');for (const a of task.attempts) validateAttempt(a); }
-    for (const v of [...(run.validation ? [run.validation] : []), ...(run.validation_history ?? [])]) { known(v.state, validationStates, 'validation'); validateAttempt(v.attempt); }
-  }
+    for (const task of run.tasks) validateStoredTask(task);
+    for (const v of [...(run.validation ? [run.validation] : []), ...(run.validation_history ?? [])]) { known(v.state, validationStates, 'validation'); validateStoredAttempt(v.attempt); }
+}
+
+export function validateStoredTask(task: Task) {
+  known(task?.state,taskStates,'task');invariant(task.worker&&workerSchema.safeParse({platform:task.worker.platform,model:task.worker.model,profile:task.worker.profile}).success,'STATE_CORRUPT','Unknown stored task worker selection.');invariant(Array.isArray(task.attempts),'STATE_CORRUPT','Missing task attempts.');for(const attempt of task.attempts)validateStoredAttempt(attempt);
 }

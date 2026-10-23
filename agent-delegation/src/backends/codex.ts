@@ -2,11 +2,12 @@ import path from 'node:path';
 import { invariant, type InputRequest } from '../types.js';
 import { writeJson, digest } from '../io.js';
 import { workerEnvironment } from '../profiles.js';
-import { connection, permissionKey, forbiddenCommand } from './policy.js';
+import { connection, workerPermissionKey, toolPolicy } from './policy.js';
 import { spawnRuntime, stopOwned } from './process.js';
 import { JsonRpcPeer, type RpcFrame } from './json-rpc.js';
 import type { Answer, BackendContext, Observation, WorkerBackend } from './contract.js';
 import { executableVersion } from './version.js';
+import { assertScopeMonitor, scopeMonitorHealthy } from '../scope.js';
 
 function toml(value:unknown):string {
   if(typeof value==='string')return JSON.stringify(value);
@@ -51,8 +52,9 @@ export class CodexBackend implements WorkerBackend {
       this.error=`Unsupported native server request: ${frame.method}`;
       this.peer?.write({id:frame.id,error:{code:-32601,message:'Worker backend does not support this request.'}});return;
     }
-    if(frame.method==='item/commandExecution/requestApproval'&&forbiddenCommand(Array.isArray(p.command)?p.command.join(' '):String(p.command??''))) {
-      this.peer!.write({id:frame.id,result:{decision:'decline'}});return;
+    const decision=question?'ask':this.permissionDecision(frame.method,p);
+    if(!question&&decision!=='ask') {
+      this.peer!.write({id:frame.id,result:frame.method==='item/permissions/requestApproval'?{permissions:{},scope:'turn'}:{decision:decision==='deny'?'decline':'accept'}});return;
     }
     if(frame.method==='mcpServer/elicitation/request') {
       const server=p.serverName??p.server_name;
@@ -60,8 +62,19 @@ export class CodexBackend implements WorkerBackend {
     }
     const logical={...p};delete logical.threadId;delete logical.turnId;delete logical.itemId;
     const input:InputRequest={id,kind:question?'question':'permission',details:p,supported_decisions:question?['answer','reject']:['once','always','reject'],
-      ...(question?{}:{grant_key:permissionKey(frame.method,logical)})};
+      ...(question?{}:{grant_key:workerPermissionKey(spec,frame.method,logical)})};
     this.pending.set(id,{frame,input});
+  }
+  private permissionDecision(method:string,params:Record<string,any>) {
+    const {spec,state}=this.context;
+    if(!scopeMonitorHealthy(spec,state))return 'deny';
+    if(method==='item/permissions/requestApproval')return 'deny'; // Native broad grants cannot override the path policy.
+    if(method==='item/commandExecution/requestApproval') {
+      if(typeof params.command!=='string'&&!Array.isArray(params.command))return 'deny';
+      return toolPolicy('exec_command',params,spec.directory,spec.context.map(c=>c.path),spec.scope);
+    }
+    if(method==='item/fileChange/requestApproval')return toolPolicy('fileChange',params,spec.directory,spec.context.map(c=>c.path),spec.scope);
+    return 'ask';
   }
   private async launch(overrides:Record<string,unknown>) {
     const {spec}=this.context;
@@ -114,15 +127,17 @@ export class CodexBackend implements WorkerBackend {
   }
   async createSession() {
     const {spec,state,save}=this.context;
-    writeJson(path.join(spec.job_dir,'session-intent.json'),{at:Date.now(),id:spec.id});
-    const response=await this.peer!.request('thread/start',{cwd:spec.directory,model:this.model??null,approvalPolicy:'on-request',approvalsReviewer:'user',sandbox:'workspace-write',ephemeral:true,
+    writeJson(path.join(spec.job_dir,'session-intent.json'),{at:Date.now(),id:spec.id,ephemeral:false});
+    // Durable owned threads support thread/read(includeTurns); ephemeral threads
+    // reject that API after an accepted prompt. Never retry a turn to recover it.
+    const response=await this.peer!.request('thread/start',{cwd:spec.directory,model:this.model??null,approvalPolicy:'on-request',approvalsReviewer:'user',sandbox:'workspace-write',ephemeral:false,
       developerInstructions:'Implement only the assigned task. Do not delegate, commit, change branches, or modify protected context files.'});
     invariant(response.thread?.id&&response.approvalPolicy==='on-request'&&response.approvalsReviewer==='user','MCP_POLICY','Native thread did not retain worker approval policy.');
     invariant(typeof response.model==='string'&&response.model.length>0&&(this.model===undefined||response.model===this.model),'MODEL_UNAVAILABLE','Codex did not resolve the requested model. No substitute model will be dispatched.');
     state.session_id=response.thread.id;state.model=response.model;this.thread=response.thread;save();
   }
   async dispatch(prompt:string,requestID:string) {
-    const {state,save}=this.context;
+    const {state,save,spec}=this.context;assertScopeMonitor(spec,state);
     const response=await this.peer!.request('turn/start',{threadId:state.session_id,clientUserMessageId:requestID,input:[{type:'text',text:prompt,text_elements:[]}]});
     state.turn_id=response.turn?.id;this.accepted=true;save();
   }
@@ -140,6 +155,7 @@ export class CodexBackend implements WorkerBackend {
   async reply(input:InputRequest,answer:Answer):Promise<'uncertain'> {
     const pending=this.pending.get(input.id);invariant(pending,'INPUT','Native request is no longer pending.');
     const {frame}=pending,p=frame.params??{};let result:unknown;
+    invariant(input.kind==='question'||answer.decision==='reject'||this.permissionDecision(frame.method!,p)!=='deny','MCP_POLICY','Permission no longer satisfies the hard worker policy.');
     if(frame.method==='item/tool/requestUserInput') {
       const questions=p.questions??[];
       invariant(answer.decision==='reject'||answer.answers?.length===questions.length,'INPUT','Answer count differs from question count.');

@@ -32,12 +32,12 @@ test('mixed workers preserve dependency gates, resource leases and correction co
   const run=f.store.state.runs.find(r=>r.id===s.run_id);
   const advance=async predicate=>{
     const deadline=Date.now()+90000;
-    do{await f.engine.serial(()=>f.engine.tick());if(predicate())return;await sleep(100);}while(Date.now()<deadline);
+    do{await f.engine.tick();if(predicate())return;await sleep(100);}while(Date.now()<deadline);
     assert.fail('Mixed-worker scheduler did not converge.');
   };
   await advance(()=>run.tasks[0].attempts[0]?.inputs.length);
   assert.equal(run.tasks[1].attempts.length,0);assert.equal(run.tasks[2].attempts.length,0);
-  const first=run.tasks[0].attempts[0],frozen=structuredClone(run.tasks[0].worker);
+  const first=run.tasks[0].attempts[0],frozen=JSON.parse(JSON.stringify(run.tasks[0].worker));
   await callOk(f,'respond_to_request',{request_id:uid('answer'),run_id:run.id,attempt_id:first.id,input_id:first.inputs[0].id,decision:'answer',answers:[['Proceed']]});
   await advance(()=>run.tasks[0].state==='needs_review'&&run.tasks[1].state==='needs_review');
   assert.equal(run.tasks[2].attempts.length,0);

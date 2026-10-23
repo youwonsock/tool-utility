@@ -7,9 +7,8 @@ import { Engine } from './engine.js';
 import { Store } from './store.js';
 import { PROTOCOL, STORE_FORMAT, WORKER_FORMAT, platforms, VERSION, Fault, invariant, schemas, type ProcessIdentity, type ToolName } from './types.js';
 import { mkdir, uid, readJson, writeJson, processIdentity, alive, sleep } from './io.js';
-import { git } from './git.js';
-import { holdsResources, canCleanup } from './lifecycle.js';
-import { prepareStorage, attemptsStopped } from './persistence.js';
+import { holdsResources } from './lifecycle.js';
+import { prepareStorage } from './persistence.js';
 
 type Descriptor = { protocol: number; version: string; url: string; token: string; owner: ProcessIdentity; executable: string };
 export async function serve(root: string, executableFile: string) {
@@ -27,7 +26,7 @@ export async function serve(root: string, executableFile: string) {
   }
   writeJson(path.join(lock, 'owner.json'), { owner });
   await prepareStorage(root);
-  const store = new Store(root); const engine = new Engine(store, executableFile);
+  const store = new Store(root); await store.flushCheckpoint(); const engine = new Engine(store, executableFile);
   await engine.recoverPreparations();
   const token = uid('auth');
   const equal = (a: string, b: string) => { const x = Buffer.from(a), y = Buffer.from(b); return x.length === y.length && crypto.timingSafeEqual(x, y); };
@@ -49,22 +48,12 @@ export async function serve(root: string, executableFile: string) {
         await engine.serial(async () => {
           const running = engine.allAttempts().filter(holdsResources);
           if (running.length && input.cancel === true) for (const run of store.state.runs.filter(r => !['completed','cancelled'].includes(r.state))) await engine.cancel(run);
-          invariant(!running.length, 'JOBS_ACTIVE', 'Jobs are active. Cancellation has been requested if --cancel was supplied; wait for confirmed termination before stopping.');
-          engine.stop(); store.save();
+          invariant(!engine.busy(), 'JOBS_ACTIVE', 'Jobs are active. Cancellation has been requested if --cancel was supplied; wait for confirmed termination before stopping.');
+          engine.beginShutdown(); store.save();
         });
         send(200, { stopped: true }); server.close(); return;
       }
-      if (req.url === '/cleanup') {
-        await engine.serial(async () => {
-          const run = engine.getRun(input.run_id);
-          invariant(canCleanup(run), 'JOBS_ACTIVE', 'Only completed or confirmed-cancelled runs can be cleaned.');
-          invariant(await attemptsStopped(run), 'JOBS_ACTIVE', 'Owned process termination is not confirmed.');
-          const worktrees = [run.integration_dir, ...engine.allAttempts(run).map(a => a.directory), ...(run.validation_history ?? []).map(v => v.attempt.directory)];
-          for (const directory of [...new Set(worktrees)]) if (fs.existsSync(directory)) await git(run.repo, ['worktree','remove','--force',directory]);
-          // Preserve durable metadata and evidence. Cleanup is only about owned disposable worktrees.
-          store.event(run.id, 'worktrees_cleaned', {});
-        }); send(200, { cleaned: input.run_id, evidence_retained: true }); return;
-      }
+      if (req.url === '/cleanup') { send(200,await engine.cleanup(input.run_id));return; }
       invariant(req.url === '/call' && typeof input.name === 'string' && input.name in schemas, 'TOOL', 'Unknown endpoint or tool.');
       send(200, await engine.call(input.name as ToolName, input.args), input.name === 'get_artifact', input.source === 'mcp');
     } catch (e) { send(400, { error: { code: e instanceof Fault ? e.code : 'INVALID_REQUEST', message: (e as Error).message } }); }
@@ -72,12 +61,12 @@ export async function serve(root: string, executableFile: string) {
   await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
   const address = server.address(); invariant(address && typeof address !== 'string', 'SERVICE', 'No service address.');
   writeJson(path.join(root, 'service.json'), { protocol: PROTOCOL, version: VERSION, owner, token, url: `http://127.0.0.1:${address.port}`, executable: executableFile } satisfies Descriptor);
-  for (const run of store.state.runs.filter(r => !['completed','cancelled'].includes(r.state))) await engine.reconcile(run);
+  for (const run of store.state.runs.filter(r => !['completed','cancelled'].includes(r.state))) await engine.reconcile(run,true);
   engine.start();
   const closed = new Promise<void>(resolve => server.on('close', resolve));
-  const shutdown = () => { engine.stop(); server.close(); };
+  const shutdown = () => { engine.beginShutdown(); server.close(); };
   process.once('SIGTERM', shutdown); process.once('SIGINT', shutdown);
-  await closed; await engine.serial(async () => { store.save(); });
+  await closed;await engine.drain(); await engine.serial(async () => { store.save(); });await store.close();
   const current = readJson<Descriptor>(path.join(root, 'service.json'));
   if (current?.token === token) { fs.rmSync(path.join(root, 'service.json'), { force: true }); fs.rmSync(lock, { recursive: true, force: true }); }
 }

@@ -7,6 +7,7 @@ import { createBackend, type WorkerBackend, type Answer } from './backends/index
 import { stopOwned } from './backends/process.js';
 import { runVerification } from './verification.js';
 import { assertRuntimeUnchanged } from './runtime.js';
+import { ScopeGuard, awaitGuardedTermination } from './scope-guard.js';
 
 export async function worker(jobDir:string) {
   const spec=readJson<WorkerSpec>(path.join(jobDir,'spec.json'))!;
@@ -18,6 +19,7 @@ export async function worker(jobDir:string) {
   const state:WorkerState={protocol:WORKER_FORMAT,id:spec.id,phase:'starting',updated:Date.now(),host,prompt_id:uid('msg'),verification:[],inputs:[],replies:{}};
   const save=()=>{state.updated=Date.now();writeJson(path.join(jobDir,'worker.json'),state);};save();
   const context={spec,state,save};
+  const guard=spec.diagnostic?undefined:new ScopeGuard(context,async()=>{await backend?.cancel().catch(()=>undefined);await stopOwned(context);});
   let backend:WorkerBackend|undefined,cancelled=false,controlBusy=false,resumePhase:WorkerPhase='implementing';
   const deadline=Date.now()+spec.timeout_ms;
   const cancelledNow=()=>cancelled||fs.existsSync(path.join(jobDir,'cancel.json'))||Date.now()>=deadline;
@@ -34,6 +36,7 @@ export async function worker(jobDir:string) {
   const timer=setInterval(()=>{void control();},250);
   try {
     invariant(!cancelledNow(),'CANCELLED','Cancelled before start.');
+    await guard?.start();
     if(!spec.validation||spec.diagnostic) {
       backend=createBackend(context);await backend.start();
       invariant(!cancelledNow(),'CANCELLED','Cancelled during native startup.');
@@ -55,8 +58,10 @@ export async function worker(jobDir:string) {
       try{await backend.dispatch(prompt,state.prompt_id);state.prompt_accepted=true;save();}
       catch{moveWorker(state,'reconciling_delivery');state.error='Prompt response lost; inspecting the same session without resending.';save();}
       while(true) {
+        await guard?.check();guard?.assertHealthy();
         await control();invariant(!cancelledNow(),'CANCELLED','Execution cancelled or timed out.');
         const observed=await backend.observe();
+        guard?.assertHealthy();
         for(const id of observed.reply_confirmations??[])if(state.replies[id])state.replies[id]='sent';
         durableWrite(path.join(jobDir,'transcript.json'),JSON.stringify(observed.transcript));state.transcript='transcript.json';
         state.prompt_accepted ||= observed.accepted;state.inputs=observed.inputs;
@@ -64,6 +69,7 @@ export async function worker(jobDir:string) {
         else if(!state.inputs.length&&state.phase==='needs_input')moveWorker(state,resumePhase);
         save();
         for(const input of state.inputs) {
+          guard?.assertHealthy();
           const answer=readJson<Answer>(path.join(jobDir,'replies',`${Buffer.from(input.id).toString('hex')}.json`))
             ??(input.grant_key&&state.permission_grants?.includes(input.grant_key)?{decision:'once' as const}:undefined);
           if(!answer||state.replies[input.id])continue;
@@ -86,14 +92,18 @@ export async function worker(jobDir:string) {
         await sleep(200);
       }
     } else {moveWorker(state,'creating_session');moveWorker(state,'verifying');save();}
+    await guard?.beginVerification();
     for(let index=0;index<spec.verification.length;index++) {
+      guard?.assertHealthy();
       invariant(!cancelledNow(),'CANCELLED','Verification cancelled or timed out.');
-      const evidence=await runVerification(context,index,spec.verification[index]!,cancelledNow);
+      const evidence=await runVerification(context,index,spec.verification[index]!,()=>cancelledNow()||state.scope_guard?.status==='violated'||state.scope_guard?.status==='unknown');
+      await guard?.flush();guard?.assertHealthy();
       state.verification.push(evidence);save();
       if(evidence.status==='unknown'||evidence.status==='cancelled')break;
     }
-    moveWorker(state,cancelledNow()?'cancelled':'completed');save();
+    await guard?.flush();guard?.assertHealthy();moveWorker(state,cancelledNow()?'cancelled':'completed');save();
   }catch(e) {
+    e=guard?.fault()??e;
     moveWorker(state,cancelledNow()?'cancelled':'failed');state.error=e instanceof Fault?`${e.code}: ${e.message}`:(e as Error).message;
     if(e instanceof Fault){state.error_code=e.code;state.error_details=e.details;}save();
   }finally {
@@ -101,6 +111,11 @@ export async function worker(jobDir:string) {
     if(backend)await backend.cancel().catch(()=>undefined);
     state.stopped=backend?await backend.confirmStopped():await stopOwned(context);
     if(!state.stopped){moveWorker(state,'stop_uncertain');state.error??='Owned process termination could not be confirmed.';}
+    if(!state.stopped) {
+      save();
+      await awaitGuardedTermination(guard,async()=>{state.stopped=backend?await backend.confirmStopped():await stopOwned(context);save();return state.stopped;});
+    }
+    await guard?.flush();await guard?.stop();
     save();
   }
 }

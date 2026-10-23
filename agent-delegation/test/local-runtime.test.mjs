@@ -57,7 +57,7 @@ test('CLI missing is detected before creating submission artifacts', async t => 
 
 async function advance(f,predicate){
   const deadline=Date.now()+30000;
-  while(Date.now()<deadline){await f.engine.serial(()=>f.engine.tick());if(predicate())return;await api.sleep(75);}
+  while(Date.now()<deadline){await f.engine.tick();if(predicate())return;await api.sleep(75);}
   assert.fail('Explicit scheduler ticks did not reach the expected process/task state.');
 }
 

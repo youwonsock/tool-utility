@@ -22,7 +22,9 @@ worktrees. Keep this division when changing either platform.
    next_offset to inspect bounded diffs, observed checks and model reports.
 5. Answer pending questions or permission requests with respond_to_request.
    Honor supported_decisions. Permission "always" is restricted to this
-   attempt. An uncertain reply is reconciled, never blindly sent again.
+   attempt's exact command, cwd and policy/scope hash. Hard path protections,
+   delegation/background execution and Git ownership restrictions cannot be
+   elevated by a grant. An uncertain reply is reconciled, never blindly sent again.
 6. Review only the latest stopped needs_review attempt. Compare its actual
    commit, bounded diff, observed exit codes, context and acceptance criteria.
    A model report is not verification evidence. Use review_task to approve
@@ -39,7 +41,9 @@ worktrees. Keep this division when changing either platform.
    never load a replacement SDK or replay its model request.
 9. Use cancel_run to request cancellation. "cancelling" remains until process
    termination is confirmed; preserve integrated work and evidence. Never
-   start another worker to resolve uncertain delivery.
+   start another worker to resolve uncertain delivery. Cancellation is persisted
+   before termination waiting. A durable finalizing barrier rejects later cancel
+   with RUN_FROZEN; a cancellation accepted before it prevents final application.
 10. Once the accepted tasks are integrated, call validate_run. It freezes the
     revision, commit, context and commands, then executes checks in a dedicated
     worktree without a model request. Inspect the observed verification.
@@ -47,10 +51,23 @@ worktrees. Keep this division when changing either platform.
     and revision. This is supervisor approval. Source changes and ignored-file
     collisions block the fast-forward and remain preserved.
 
-Identical request_id retries return the recorded response. A changed payload
+Long mutations can first return {in_progress:true, operation_id,
+operation_status:"running", run_id?}. Follow get_run.operations and retry the
+same request ID/payload for its eventual result; never submit a replacement ID
+to speed it up. Unowned effects after restart remain uncertain until reconciled.
+Identical request_id retries return progress or the recorded final response. A changed payload
 with that ID is rejected. REQUEST_UNCERTAIN requires evidence reconciliation,
 not a new ID or repeat model invocation.
 
 Native runtime constraints and tool capabilities differ. Use declared MCP
 resources only; preflight rejects unsupported transport/configuration. The
 same service owns scheduling, Git, states, leases and evidence for all workers.
+
+Direct edits/delete/rename/patches are checked against every native path before
+execution. The worker owns an independent filesystem/Git/context monitor, including
+declared verification. It survives service disconnection, preserves violation
+files/evidence, stops owned execution and keeps leases until confirmed stopped.
+Missing or stale monitor health fails closed; scope_or_context_error cannot be
+approved. Do not describe these guards as OS isolation for arbitrary supervisor-
+approved programs. Storage format 4 migrates stopped format 2/3 data with backup;
+RPC 1/worker 2 and the 12 MCP inputs remain unchanged. Consult operations before rollback.

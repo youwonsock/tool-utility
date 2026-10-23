@@ -18,7 +18,7 @@ test('a target commit added after validation is preserved and blocks finalizatio
 test('result commit written before service failure is recovered as the same immutable commit',async t=>{
   const f=await fixture(t);const s=await submit(f,[task('a',{files:{'a.txt':'a'}})]);const r=await until(f,s.run_id,r=>r.tasks[0].state==='needs_review');const a=r.tasks[0].attempts[0],commit=a.commit;
   // Recreate the durable state immediately before recording the Git commit result.
-  a.commit=undefined;a.state='running';a.commit_intent=true;r.tasks[0].state='running';f.store.save();await f.engine.serial(()=>f.engine.collect(r));
+  a.commit=undefined;a.state='running';a.commit_intent=true;r.tasks[0].state='running';f.store.save();await f.engine.collect(r);
   assert.equal(a.commit,commit);assert.equal(a.state,'needs_review');
 });
 test('unknown launch holds leases; proven reboot interrupts without dispatch',async t=>{

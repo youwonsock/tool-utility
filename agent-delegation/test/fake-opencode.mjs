@@ -42,7 +42,7 @@ const server = http.createServer(async (req,res) => {
     const text = input.parts.map(p => p.text).join('\n');
     const matches = [...text.matchAll(/FAKE_ACTION:(.+)/g)]; action = JSON.parse(matches.at(-1)?.[1] || '{}');
     messages.push({ info: { id: input.messageID, role: 'user', sessionID: session.id }, parts: input.parts }); busy = true;
-    if (action.input) pending = { id: 'req_test', sessionID: session.id, kind: action.input, questions: [{ question: 'Proceed?', header: 'Test', options: [] }], permission: 'bash', patterns: ['test'] };
+    if (action.input||action.permission) pending = { id: 'req_test', sessionID: session.id, kind: action.input??'permission', questions: [{ question: 'Proceed?', header: 'Test', options: [] }], permission: 'bash', patterns: ['test'],...action.permission };
     else timer = setTimeout(finish, action.delay ?? 20);
     if (action.drop_response) { req.socket.destroy(); return; }
     return send(null,204);
@@ -50,6 +50,8 @@ const server = http.createServer(async (req,res) => {
   if (url.pathname === '/permission') return send(pending?.kind === 'permission' ? [pending] : []);
   if (url.pathname === '/question') return send(pending?.kind === 'question' ? [pending] : []);
   if (/\/(permission|question)\/req_test\/(reply|reject)/.test(url.pathname)) {
+    audit({event:'permission_reply',reply:input.reply});
+    if(input.reply==='reject')action.files={};
     pending = undefined;
     if (resumeShell) { const resume=resumeShell;resumeShell=undefined;resume(); } else timer = setTimeout(finish,10);
     return send(true);

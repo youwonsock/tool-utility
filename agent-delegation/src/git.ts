@@ -3,6 +3,7 @@ import path from 'node:path';
 import { exec, hash, inside, mkdir, safeRelative, samePath, digest } from './io.js';
 import { invariant, Fault, type ContextFile } from './types.js';
 import type { Store } from './store.js';
+import { scopeAllows as allows } from './scope.js';
 
 export async function git(cwd: string, args: string[], allowFailure = false) {
   const result = await exec('git', ['-c','core.quotepath=false', ...args], { cwd, timeout: 120000 });
@@ -31,9 +32,7 @@ export async function worktree(repo: string, directory: string, commit: string, 
   await git(repo, ['worktree','add', ...(name ? ['-b', name] : ['--detach']), directory, commit]);
 }
 export function scopeAllows(scope: string[], file: string) {
-  safeRelative(file);
-  if (file.split('/').some(p => p === '.git')) return false;
-  return scope.some(entry => entry === '**' || (entry.endsWith('/**') ? file.startsWith(entry.slice(0, -2)) : entry.endsWith('/') ? file.startsWith(entry) : file === entry));
+  return allows(scope,file);
 }
 export function validateScope(scope: string[]) {
   for (const p of scope) if (p !== '**') { safeRelative(p.replace(/\/\*\*$|\/$/, '')); invariant(!p.replace(/\/\*\*$/, '').includes('*'), 'SCOPE', 'Use exact paths, directories ending in /, or /**.'); }
@@ -69,7 +68,7 @@ export async function materialize(store: Store, cwd: string, files: ContextFile[
   }
 }
 export function checkContext(cwd: string, files: ContextFile[]) {
-  for (const file of files) invariant(fs.existsSync(inside(cwd, file.path)) && hash(fs.readFileSync(inside(cwd, file.path))) === file.hash, 'CONTEXT_CHANGED', `Context changed: ${file.path}`);
+  for (const file of files) invariant(fs.existsSync(inside(cwd, file.path)) && hash(fs.readFileSync(inside(cwd, file.path))) === file.hash && (file.mode===undefined||(fs.statSync(inside(cwd,file.path)).mode&0o777)===file.mode), 'CONTEXT_CHANGED', `Context changed: ${file.path}`);
 }
 export const contextHash = (files: ContextFile[]) => digest(files.map(f => ({ path: f.path, hash: f.hash })));
 export async function resultCommit(cwd: string, base: string, scope: string[], context: ContextFile[], title: string) {
