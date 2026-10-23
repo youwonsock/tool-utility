@@ -20,9 +20,9 @@ function syncDirectory(directory: string) {
   const fd = fs.openSync(directory,'r'); try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
 }
 function validateManifest(store: Store, m: Manifest, requestID: string) {
-  invariant(m.protocol === STORE_FORMAT && m.request_id === requestID && idSchema.safeParse(m.run_id).success, 'STATE_CORRUPT','Invalid submission preparation record.');
+  invariant([2,STORE_FORMAT].includes(m.protocol) && m.request_id === requestID && idSchema.safeParse(m.run_id).success, 'STATE_CORRUPT','Invalid submission preparation record.');
   invariant(m.result?.run_id===m.run_id && Array.isArray(m.result.tasks) && m.result.tasks.every(id=>idSchema.safeParse(id).success) && Array.isArray(m.files) && typeof m.new_run==='boolean' && typeof m.repo==='string' && typeof m.base==='string','STATE_CORRUPT','Invalid prepared submission fields.');
-  invariant(store.state.requests[requestID]?.hash === m.request_hash, 'STATE_CORRUPT','Submission request does not match its durable intent.');
+  invariant(store.request(requestID)?.hash === m.request_hash, 'STATE_CORRUPT','Submission request does not match its durable intent.');
   invariant(m.integration_dir === path.join(store.root,'worktrees',m.run_id,'integration') && m.integration_branch === `codex/agent-delegation-${m.run_id}`, 'STATE_CORRUPT','Invalid prepared worktree identity.');
   for (const file of m.files) {
     const artifact = file.path.startsWith(`artifacts/${m.run_id}/artifact_`) && !file.path.slice(`artifacts/${m.run_id}/`.length).includes('/');
@@ -31,7 +31,7 @@ function validateManifest(store: Store, m: Manifest, requestID: string) {
   }
 }
 function published(store: Store, m: Manifest) {
-  return store.state.runs.some(r=>r.id===m.run_id) && store.state.events.some(e=>e.run_id===m.run_id && e.type==='tasks_submitted' && (e.data as {request_id?:string})?.request_id===m.request_id);
+  return !!store.run(m.run_id) && store.events(m.run_id).some(e=>e.type==='tasks_submitted' && (e.data as {request_id?:string})?.request_id===m.request_id);
 }
 async function rollback(store: Store, m: Manifest, directory: string) {
   // Only unpublished, unchanged resources owned by this exact preparation may be removed.
@@ -70,7 +70,7 @@ export async function recoverSubmissions(store: Store) {
     const request=data.request_id ? store.state.requests[data.request_id] : undefined;
     if (data.request_id && request?.status==='intent') {
       invariant(store.state.runs.some(r=>r.id===event.run_id),'STATE_CORRUPT','Published submission has no run.');
-      store.state.requests[data.request_id]={...request,status:'done',result:{run_id:event.run_id,revision:data.revision,tasks:data.tasks}}; store.save();
+      store.state.requests[data.request_id]={...request,status:'done',completed_at:store.clock(),result:{run_id:event.run_id,revision:data.revision,tasks:data.tasks}}; store.save();
     }
   }
   const root=path.join(store.root,'submissions'); if (!fs.existsSync(root)) return;
@@ -79,15 +79,15 @@ export async function recoverSubmissions(store: Store) {
     const directory=inside(root,entry), m=readJson<Manifest>(path.join(directory,'manifest.json'));
     // No external creation begins before the manifest is durable.
     if (!m) {
-      const owned=store.state.requests[entry] && (fs.readdirSync(directory).every(name=>/^manifest\.json\.[a-f0-9-]+\.tmp$/.test(name)) || store.state.events.some(e=>e.type==='tasks_submitted' && (e.data as {request_id?:string})?.request_id===entry));
+      const owned=store.request(entry) && (fs.readdirSync(directory).every(name=>/^manifest\.json\.[a-f0-9-]+\.tmp$/.test(name)) || store.state.events.some(e=>e.type==='tasks_submitted' && (e.data as {request_id?:string})?.request_id===entry));
       if (owned) fs.rmSync(directory,{recursive:true});
       else process.stderr.write(`Submission directory ${entry} has no ownership manifest; it was preserved.\n`);
       continue;
     }
     validateManifest(store,m,entry);
     if (published(store,m)) {
-      const request=store.state.requests[entry]!;
-      if (request.status==='intent') { store.state.requests[entry]={...request,status:'done',result:m.result}; store.save(); }
+      const request=store.request(entry)!;
+      if (request.status==='intent') { store.state.requests[entry]={...request,status:'done',completed_at:store.clock(),result:m.result}; store.save(); }
       fs.rmSync(directory,{recursive:true});
     } else {
       try { await rollback(store,m,directory); }
@@ -116,6 +116,8 @@ export async function submitTasks(store: Store, args: SubmitArgs, validateGraph:
     const keys=candidate.resources.map(r=>r.resource_key);
     invariant(new Set(keys).size===keys.length,'RESOURCE','Duplicate resource key.');
     for (const profile of candidate.resources) {
+      const priorHash=store.state.resource_hashes[profile.resource_key];
+      invariant(!priorHash || priorHash===digest(profile),'RESOURCE_PROFILE','The same resource_key must refer to the same profile service-wide.');
       for (const other of store.state.runs.flatMap(r=>r.resources)) if (other.resource_key===profile.resource_key) {
         invariant(digest(other)===digest(profile),'RESOURCE_PROFILE','The same resource_key must refer to the same profile service-wide.');
       }

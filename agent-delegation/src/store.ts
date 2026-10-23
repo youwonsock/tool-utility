@@ -1,56 +1,143 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { STORE_FORMAT, Fault, invariant, type State } from './types.js';
+import { STORE_FORMAT, Fault, invariant, type State, type Run, type RunArchive, type ArchiveRef, type RequestRecord, type RunSummary } from './types.js';
 import { digest, mkdir, readJson, writeJson, durableWrite, uid, inside } from './io.js';
 import { validateStoredState } from './lifecycle.js';
+import { ARCHIVE_AGE, emptyState, journalRecord, loadState, attemptsStopped } from './persistence.js';
 
 export const responseBytes = (value: unknown) => Buffer.byteLength(JSON.stringify({ content: [{ type: 'text', text: JSON.stringify(value) }], isError: false }));
 
 export class Store {
   state: State;
   uncertain = false;
-  constructor(public root: string) {
+  private records = 0;
+  private journalBytes = 0;
+  constructor(public root: string, public clock: () => number = Date.now) {
     mkdir(root);
-    this.state = readJson<State>(path.join(root, 'state.json')) ?? { protocol: STORE_FORMAT, revision: 0, runs: [], requests: {}, events: [], metrics: { responses: 0, response_bytes: 0, mutations: 0 } };
-    invariant(this.state.protocol === STORE_FORMAT, 'UPDATE_PENDING', 'Unsupported storage format. Use a fresh Agent Delegation data directory.');
-    // The durable journal is authoritative if a crash occurred between journal and snapshot.
-    const journal = path.join(root, 'journal.jsonl');
-    if (fs.existsSync(journal)) {
-      const content = fs.readFileSync(journal, 'utf8');
-      const complete = content.slice(0, content.lastIndexOf('\n') + 1);
-      if (complete.length !== content.length) durableWrite(journal, complete);
-      for (const line of complete.split('\n')) {
-        if (!line) continue;
-        const item = JSON.parse(line) as { hash: string; state: State };
-        invariant(item.hash === digest(item.state), 'JOURNAL_CORRUPT', 'A committed journal record failed its checksum.');
-        invariant(item.state.protocol===STORE_FORMAT,'UPDATE_PENDING','Journal contains an unsupported storage format.');
-        if (item.state.revision > this.state.revision) this.state = item.state;
-      }
-    }
-    invariant(this.state.protocol === STORE_FORMAT, 'UPDATE_PENDING', 'Journal format differs.');
+    invariant(!fs.existsSync(path.join(root, 'migration.json')), 'UPDATE_PENDING', 'Resume storage migration before opening the store.');
+    const loaded = loadState(root);
+    this.state = loaded.state ?? emptyState();
+    invariant(this.state.protocol === STORE_FORMAT, 'UPDATE_PENDING', 'Storage migration is required; start the new service after stopping the previous release.');
     validateStoredState(this.state);
+    for (const key of ['requests','archived_runs','archived_requests','resource_hashes'] as const) {
+      this.state[key] = Object.assign(Object.create(null), this.state[key]);
+    }
+    if (loaded.bytes !== loaded.completeBytes) {
+      const fd = fs.openSync(path.join(root, 'journal.jsonl'), 'r+');
+      try { fs.ftruncateSync(fd, loaded.completeBytes); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+    }
+    this.records = loaded.records; this.journalBytes = loaded.completeBytes;
     this.state.metrics = readJson<State['metrics']>(path.join(root, 'metrics.json')) ?? this.state.metrics;
-    this.state.metrics.mutations = Object.keys(this.state.requests).length;
+    this.state.metrics.mutations = Object.keys(this.state.requests).length + Object.keys(this.state.archived_requests).length;
   }
   save() {
-    invariant(!this.uncertain, 'REQUEST_UNCERTAIN', 'Storage delivery is uncertain. Restart and reconcile the durable journal before further mutations.');
+    invariant(!this.uncertain, 'REQUEST_UNCERTAIN', 'Storage delivery is uncertain. Restart and reconcile before further mutations.');
+    for (const run of this.state.runs) {
+      if (['completed','cancelled'].includes(run.state)) run.ended_at ??= this.clock();
+      for (const resource of run.resources) {
+        const hash = digest(resource), prior = this.state.resource_hashes[resource.resource_key];
+        invariant(!prior || prior === hash, 'RESOURCE_PROFILE', 'The same resource_key must refer to the same profile service-wide.');
+        this.state.resource_hashes[resource.resource_key] = hash;
+      }
+    }
     validateStoredState(this.state);
     this.state.revision++;
     try {
+      const record = journalRecord(this.state), bytes = Buffer.byteLength(record);
       const fd = fs.openSync(path.join(this.root, 'journal.jsonl'), 'a', 0o600);
-      try { fs.writeFileSync(fd, `${JSON.stringify({ hash: digest(this.state), state: this.state })}\n`); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+      try { fs.writeFileSync(fd, record); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+      this.records++; this.journalBytes += bytes;
       writeJson(path.join(this.root, 'state.json'), this.state);
+      if (this.records >= 256 || this.journalBytes >= Math.max(32 * 1024 * 1024, bytes * 4)) {
+        durableWrite(path.join(this.root, 'journal.jsonl'), record);
+        this.records = 1; this.journalBytes = bytes;
+      }
     } catch (e) {
       this.uncertain = true;
-      throw new Fault('REQUEST_UNCERTAIN', 'Journal/snapshot delivery is uncertain. No further work will dispatch before restart and reconciliation.', { reason: (e as Error).message });
+      throw new Fault('REQUEST_UNCERTAIN', 'Journal/snapshot/checkpoint delivery is uncertain. Restart and reconcile before dispatch.', { reason: (e as Error).message });
     }
   }
+  isArchived(id: string) { return Object.hasOwn(this.state.archived_runs, id); }
+  private readArchive<T>(ref: ArchiveRef): T {
+    try {
+      const value = readJson<T>(inside(this.root, ref.file));
+      invariant(value && digest(value) === ref.hash, 'STATE_CORRUPT', 'Archived record is missing or corrupt.');
+      return value;
+    } catch (e) { throw new Fault('STATE_CORRUPT', 'Archived record could not be verified.', { file: ref.file, reason: (e as Error).message }); }
+  }
+  private writeArchive(kind: 'runs' | 'requests', id: string, value: unknown, archived_at = this.clock()): ArchiveRef {
+    const hash = digest(value), file = `archives/${kind}/${digest(id)}/${hash}.json`;
+    writeJson(inside(this.root, file), value);
+    return { file, hash, archived_at };
+  }
+  run(id: string): Run | undefined {
+    const current = this.state.runs.find(r => r.id === id); if (current) return current;
+    const ref = this.state.archived_runs[id]; if (!ref) return undefined;
+    const archive = this.readArchive<RunArchive>(ref);
+    invariant(archive.protocol === STORE_FORMAT && archive.run.id === id, 'STATE_CORRUPT', 'Archive identity mismatch.');
+    return archive.run;
+  }
+  events(id: string) {
+    const ref = this.state.archived_runs[id];
+    return ref ? this.readArchive<RunArchive>(ref).events : this.state.events.filter(e => e.run_id === id);
+  }
+  summaries() {
+    return [...this.state.runs.map(run => ({ ...this.summary(run), archived: false, archived_at: null })),
+      ...Object.values(this.state.archived_runs).map(ref => ({ ...ref.summary, archived: true, archived_at: ref.archived_at }))]
+      .sort((a,b) => a.created - b.created || a.run_id.localeCompare(b.run_id));
+  }
+  summary(run: Run): RunSummary {
+    return { run_id: run.id, repo: run.repo, branch: run.branch, state: run.state, revision: run.revision,
+      tasks: run.tasks.length, created: run.created, ended_at: run.ended_at, event_cursor: this.state.events.filter(e => e.run_id === run.id).at(-1)?.seq ?? 0 };
+  }
+  request(id: string): RequestRecord | undefined {
+    if (Object.hasOwn(this.state.requests, id)) return this.state.requests[id];
+    const ref = this.state.archived_requests[id]; if (!ref) return undefined;
+    const archive = this.readArchive<{ id: string; request: RequestRecord }>(ref);
+    invariant(archive.id === id && archive.request.status === 'done', 'STATE_CORRUPT', 'Archived request identity mismatch.');
+    return archive.request;
+  }
   event(run_id: string, type: string, data: unknown) {
-    this.state.events.push({ seq: (this.state.events.at(-1)?.seq ?? 0) + 1, run_id, type, data }); this.save();
+    const event = { seq: this.state.event_seq + 1, run_id, type, data };
+    const ref = this.state.archived_runs[run_id];
+    if (ref) {
+      const archive = this.readArchive<RunArchive>(ref); archive.events.push(event);
+      const next = this.writeArchive('runs', run_id, archive, ref.archived_at);
+      this.state.archived_runs[run_id] = { ...next, summary: { ...ref.summary, event_cursor: event.seq } };
+    } else this.state.events.push(event);
+    this.state.event_seq = event.seq; this.save();
+  }
+  // Called only on the engine's serialized queue. One durable move per scheduler tick.
+  async archiveNext(): Promise<boolean> {
+    invariant(!this.uncertain, 'REQUEST_UNCERTAIN', 'Reconcile storage before archiving.');
+    const cutoff = this.clock() - ARCHIVE_AGE;
+    const preparations = path.join(this.root, 'submissions');
+    const blocked = new Set<string>();
+    if (fs.existsSync(preparations)) for (const name of fs.readdirSync(preparations)) {
+      const manifest = readJson<{ run_id: string }>(inside(preparations, `${name}/manifest.json`));
+      // Missing manifests can hide ownership; retain everything until submission recovery resolves them.
+      if (!manifest) return false; blocked.add(manifest.run_id);
+    }
+    for (const run of this.state.runs) {
+      if (!['completed','cancelled'].includes(run.state) || run.ended_at === undefined || run.ended_at > cutoff || blocked.has(run.id) || !await attemptsStopped(run)) continue;
+      const summary = this.summary(run), events = this.events(run.id);
+      const ref = this.writeArchive('runs', run.id, { protocol: STORE_FORMAT, run, events } satisfies RunArchive);
+      this.state.archived_runs[run.id] = { ...ref, summary };
+      this.state.runs = this.state.runs.filter(r => r !== run);
+      this.state.events = this.state.events.filter(e => e.run_id !== run.id);
+      this.save(); return true;
+    }
+    for (const [id, request] of Object.entries(this.state.requests)) {
+      if (request.status !== 'done' || request.completed_at === undefined || request.completed_at > cutoff || fs.existsSync(path.join(preparations,id))) continue;
+      const ref = this.writeArchive('requests', id, { id, request });
+      this.state.archived_requests[id] = ref; delete this.state.requests[id];
+      this.save(); return true;
+    }
+    return false;
   }
   async mutation(id: string, payload: unknown, action: () => Promise<unknown>) {
     invariant(!this.uncertain, 'REQUEST_UNCERTAIN', 'Storage delivery is uncertain. Restart and reconcile before changing state.');
-    const key = digest(payload); const prior = this.state.requests[id];
+    const key = digest(payload); const prior = this.request(id);
     if (prior) {
       invariant(prior.hash === key, 'IDEMPOTENCY_CONFLICT', 'Request ID was already used with different content.');
       invariant(prior.status === 'done', 'REQUEST_UNCERTAIN', 'Previous request intent exists; reconcile state before issuing a new request.');
@@ -62,7 +149,7 @@ export class Store {
       if (this.uncertain || e instanceof Fault && e.code === 'REQUEST_UNCERTAIN') throw e;
       result = { error: { code: e instanceof Fault ? e.code : 'INTERNAL', message: (e as Error).message, ...(e instanceof Fault && e.details !== undefined ? { details: e.details } : {}) } };
     }
-    this.state.requests[id] = { hash: key, status: 'done', result };
+    this.state.requests[id] = { hash: key, status: 'done', result, completed_at: this.clock() };
     try { this.save(); } catch (e) { this.state.requests[id] = { hash: key, status: 'intent' }; throw e; }
     return result;
   }

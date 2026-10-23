@@ -19,6 +19,8 @@ export class Engine {
   private timer?: NodeJS.Timeout;
   private polling = false;
   private preparationsRecovered = false;
+  private nextArchiveScan = 0;
+  private archiving = false;
   constructor(public store: Store, public executableFile: string, public options = {
     concurrency: Number(process.env.AGENT_DELEGATION_CONCURRENCY || 2),
   }) { invariant(Number.isSafeInteger(options.concurrency) && options.concurrency > 0, 'CONFIG', 'Invalid service concurrency.'); }
@@ -45,16 +47,16 @@ export class Engine {
       throw new Fault('STATE_CORRUPT','Worker record could not be read.',{attempt_id:attempt.id,reason:(e as Error).message});
     }
   }
-  getRun(id: string) { const run = this.store.state.runs.find(r => r.id === id); invariant(run, 'NOT_FOUND', 'Run not found.'); return run; }
+  getRun(id: string) { const run = this.store.run(id); invariant(run, 'NOT_FOUND', 'Run not found.'); return run; }
   allAttempts(run?: Run) { return (run ? [run] : this.store.state.runs).flatMap(r => [...r.tasks.flatMap(t => t.attempts), ...(r.validation ? [r.validation.attempt] : [])]); }
   async call(name: ToolName, raw: unknown): Promise<unknown> {
     const args: any = schemas[name].parse(raw);
     if (name === 'wait_run') {
       const deadline = Date.now() + args.timeout_ms;
       this.getRun(args.run_id);
-      while (!this.store.state.events.some(e => e.run_id === args.run_id && e.seq > args.after) && Date.now() < deadline) await sleep(100);
+      while (!this.store.isArchived(args.run_id) && !this.store.events(args.run_id).some(e => e.seq > args.after) && Date.now() < deadline) await sleep(100);
       return this.serial(async () => {
-        const events = this.store.state.events.filter(e => e.run_id === args.run_id && e.seq > args.after);
+        const events = this.store.events(args.run_id).filter(e => e.seq > args.after);
         const page = this.store.page(events, undefined, { run_id: args.run_id, after: args.after });
         const consumed = page.next_cursor ? Number(page.next_cursor) : events.length;
         return { ...page, after: events[consumed - 1]?.seq ?? args.after, next_cursor: undefined };
@@ -67,10 +69,11 @@ export class Engine {
     });
   }
   private async dispatch(name: ToolName, args: any): Promise<unknown> {
+    invariant(!args.run_id || !this.store.isArchived(args.run_id) || ['get_run','wait_run'].includes(name), 'RUN_ARCHIVED', 'Archived runs are read-only. Submit a new run for further work.');
     switch (name) {
       case 'doctor': return this.doctor(args);
       case 'submit_tasks': return this.submit(args);
-      case 'list_runs': return this.store.page(this.store.state.runs.map(r => ({ run_id: r.id, repo: r.repo, branch: r.branch, state: r.state, revision: r.revision, tasks: r.tasks.length, created: r.created })), args.cursor);
+      case 'list_runs': return this.store.page(this.store.summaries(), args.cursor);
       case 'get_run': return this.view(this.getRun(args.run_id), args.cursor);
       case 'get_artifact': return this.store.artifactPage(args.artifact_id, args.offset, args.limit);
       case 'review_task': return this.review(args);
@@ -87,8 +90,9 @@ export class Engine {
       const a = t.attempts.at(-1);
       return { task_id: t.spec.id, state: t.state, dependencies: t.spec.dependencies, worker:publicWorker(t.worker), attempt: a && { id: a.id, number: a.number, state: a.state, directory: a.directory, commit: a.commit, model: a.model, backend:a.worker?.backend, backend_version:a.worker?.backend_version, runtime:publicRuntime(a.worker?.runtime??a.execution?.runtime), runtime_error:a.runtime_error, verification: a.verification, artifacts: a.artifacts, inputs: a.inputs, error: a.error, integrated_commit: a.integrated_commit } };
     }), cursor, { run_id: run.id, state: run.state, revision: run.revision, base: run.base, integration_commit: run.integration_commit,worker:publicWorker(run.worker),
+      ended_at: run.ended_at, archived: this.store.isArchived(run.id), archived_at: this.store.state.archived_runs[run.id]?.archived_at ?? null,
       validation: run.validation && { id: run.validation.id, state: run.validation.state, commit: run.validation.commit, revision: run.validation.revision, attempt_id: run.validation.attempt.id, directory: run.validation.attempt.directory, artifacts: run.validation.attempt.artifacts, verification: run.validation.attempt.verification, inputs: run.validation.attempt.inputs, error: run.validation.attempt.error }, error: run.error,
-      event_cursor: this.store.state.events.filter(e => e.run_id === run.id).at(-1)?.seq ?? 0,
+      event_cursor: this.store.events(run.id).at(-1)?.seq ?? 0,
     });
   }
   async doctor(args: { repo?: string; worker?:WorkerSelection }) {
@@ -159,6 +163,11 @@ export class Engine {
         const locks = this.lockedResources(); if (task.spec.resources.some(key => locks.has(key))) continue;
         await this.launch(run, task); count = this.allAttempts().filter(occupiesSlot).length;
       }
+    }
+    if (this.archiving || this.store.clock() >= this.nextArchiveScan) {
+      this.nextArchiveScan = this.store.clock() + 3_600_000;
+      try { this.archiving = await this.store.archiveNext(); }
+      catch (error) { this.archiving = false; throw error; }
     }
   }
   async launch(run: Run, task: Task) {

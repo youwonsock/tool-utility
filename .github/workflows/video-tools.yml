@@ -35,6 +35,17 @@ jobs:
       - name: Audit committed distribution files
         if: ${{ !inputs.refresh }}
         run: python tools/build_runtime.py --audit --git
+      - name: Exercise bundled runtime and stdio MCP media operations
+        timeout-minutes: 5
+        run: |
+          python -c "import os,pathlib,subprocess,sys; runtime='portable/windows-x64/python/python.exe' if sys.platform=='win32' else 'portable/macos-arm64/python/bin/python3.14'; report=pathlib.Path(os.environ['RUNNER_TEMP'])/'video-tools-smoke'/'report.json'; subprocess.run([runtime,'-I','-B','-X','utf8','tools/verify_smoke.py','--report',str(report)],check=True)"
+      - name: Preserve media regression diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: video-smoke-${{ matrix.os }}
+          path: ${{ runner.temp }}/video-tools-smoke/report.json
+          if-no-files-found: warn
       - name: Preserve runtime artifacts
         if: always()
         uses: actions/upload-artifact@v4

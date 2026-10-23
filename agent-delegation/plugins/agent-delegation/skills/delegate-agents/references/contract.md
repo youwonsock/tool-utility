@@ -61,7 +61,7 @@ Submission preflight failure publishes no partial task set. Prepared metadata an
 
 Rejected results include `rejected-result.json` alongside the tracked diff. It preserves the error code/details and changed-file list, plus at most 64 KiB of UTF-8 preview for an untracked ordinary file. Check `truncated`, size, and SHA-256; binary, authentication, and symlink targets are not text previews. Collection errors do not replace the original rejection.
 
-The service RPC is version 1. Storage, submission preparations and workers use format 2 only. Missing or other record formats are rejected. The exported skill is delegate-agents; model settings use worker.model.
+The service RPC is version 1. Storage and new submission preparations use format 3; workers use format 2. Stopped format-2 storage is backed up and migrated before service execution; its prepared submissions remain recoverable. Missing or unknown formats are rejected. The exported skill is delegate-agents; model settings use worker.model.
 
 Permission requests include supported_decisions. "always" applies only within the current attempt and does not save global native permission rules. Reply delivery remains uncertain until an acknowledgement or causally subsequent native result is observed. get_run exposes platform/profile/model/version, while credentials and raw native connection configuration remain private.
 
@@ -70,3 +70,5 @@ Native plugin shell.env hooks are not executed by the common verifier. Declare r
 Agent Delegation settings use AGENT_DELEGATION_HOME, AGENT_DELEGATION_INSTALL_ROOT, AGENT_DELEGATION_CONCURRENCY and per-platform AGENT_DELEGATION_{OPENCODE,CODEX,CLAUDE,KILO}_EXECUTABLE / _EXECUTABLE_ARGS. Worker recursion is guarded by AGENT_DELEGATION_WORKER. There are no aliases for prior settings or inputs.
 
 External SDK roots use AGENT_DELEGATION_{OPENCODE,CLAUDE,KILO}_SDK_ROOT. The SDK path points to the package directory, not its parent node_modules. GUI supervisors use MCP; GUI implementer automation is outside the contract.
+
+Completed/cancelled runs and completed request responses are archived after seven days. list_runs includes hot and archived summaries sorted by creation time/ID. list_runs and get_run add archived, archived_at and ended_at. get_run, wait_run, get_artifact and cleanup still work for archived runs. New archived-run mutations return RUN_ARCHIVED; identical request_id retries first return the original response from either store. Missing/corrupt archive data returns STATE_CORRUPT and must never be treated as a new request. Global event sequences remain monotonic after archival. No records/evidence/logs are automatically deleted.
