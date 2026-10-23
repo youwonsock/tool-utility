@@ -638,7 +638,11 @@ export class Engine {
       if (state && processesAlive) {
         if (run.state === 'cancelling') { const spec=readJson<WorkerSpec>(path.join(attempt.job_dir,'spec.json'));const stopped=spec?await stopOwned({spec,state,save:()=>writeJson(path.join(attempt.job_dir,'worker.json'),state)}):state.server?await terminate(state.server,true):false; if (stopped) { if (!workerTerminal(state)) moveWorker(state,'cancelled'); state.stopped = true; writeJson(path.join(attempt.job_dir, 'worker.json'), state); } }
         else { moveAttempt(attempt,'orphaned'); attempt.error = 'Worker host exited while its OpenCode server is still alive. Cancel to stop the owned process before correction; no request was replayed.'; }
-      } else if (state?.stopped) continue;
+      } else if (state?.stopped || this.workerState(attempt)?.stopped) {
+        // OS ownership probes may outlive the worker's final atomic write. Let
+        // collection verify that newer stop record before ending the attempt.
+        continue;
+      }
       else if (owner && !evidence?.uncertain && (evidence?.ledger ? process.platform!=='win32'||evidence.identities.length===0 : (state?.server && process.platform !== 'win32') || !fs.existsSync(path.join(attempt.job_dir, 'server-intent.json')))) {
         this.finishAttempt(run,attempt,'interrupted'); attempt.error = 'Worker process exited; no automatic retry was made.';
       } else { moveAttempt(attempt,'orphaned'); attempt.error = 'Launch ownership is uncertain. Resource leases remain held. Inspect the job directory/processes before cleanup.'; }
