@@ -21,10 +21,13 @@ if(external) {
 }
 const results=[];
 for(const platform of platforms) {
-  const result=await engine.call('doctor',{repo,worker:{platform}});
-  results.push({platform,compatible:result.compatible,backend_version:result.backend_version,runtime:result.runtime,connection:result.connection,error:result.error});
+  const started=Date.now();
+  // This local verification process owns the diagnostic to completion. The MCP
+  // doctor's bounded progress response is not a final compatibility verdict.
+  const result=await engine.diagnose({repo,worker:{platform}});
+  results.push({platform,elapsed_ms:Date.now()-started,compatible:result.compatible,backend_version:result.backend_version,runtime:result.runtime,connection:result.connection,error:result.error});
   console.log(JSON.stringify(results.at(-1)));
 }
-fs.writeFileSync(path.join(root,'connections.json'),JSON.stringify({paid_model_requests:0,root,results},null,2));
+fs.writeFileSync(path.join(root,'connections.json'),JSON.stringify({paid_model_requests:0,node:process.version,root,results},null,2));
 console.log(JSON.stringify({evidence:path.join(root,'connections.json'),model_tasks:'not exercised',gui:'not exercised'}));
 assert.ok(results.every(result=>result.compatible&&result.connection?.healthy),'One or more native connection checks failed. Inspect the evidence directory.');

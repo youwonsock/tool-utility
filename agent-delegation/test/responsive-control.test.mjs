@@ -216,3 +216,14 @@ test('every resource-wait resume reserves a fresh slot after a previous resume b
   await f.engine.reconcile(f.engine.getRun(run.id));await f.engine.reconcile(f.engine.getRun(competing.id));
   assert.equal(f.engine.getRun(run.id).state,'cancelled');assert.equal(f.engine.getRun(competing.id).state,'cancelled');
 });
+
+test('a promised progress response keeps a child event loop alive without unrelated handles',async t=>{
+  const f=await fixture(t,{service:true}),script=path.join(f.dir,'progress-without-handles.mjs');
+  const source=`import assert from 'node:assert/strict';import {Engine,Store} from ${JSON.stringify(new URL('../dist/index.mjs',import.meta.url).href)};
+let release;Engine.prototype.effectSubmit=async()=>{await new Promise(resolve=>{release=resolve;});return {finished:true};};
+const engine=new Engine(new Store(${JSON.stringify(path.join(f.dir,'child-data'))}),${JSON.stringify(cli)});
+const args={request_id:'progress_without_handles',repo:${JSON.stringify(f.repo)},tasks:[{id:'a',goal:'held mock effect',scope:['a.txt'],acceptance:['done']}]};
+const progress=await engine.call('submit_tasks',args);assert.equal(progress.in_progress,true);release();const result=await engine.call('submit_tasks',args);assert.equal(result.finished,true);await engine.drain();await engine.store.close();console.log(JSON.stringify({progress:true,finished:true}));`;
+  fs.writeFileSync(script,source);const {exec}=await import('../dist/index.mjs');const result=await exec(process.execPath,[script],{timeout:10000});
+  assert.equal(result.code,0,result.stderr);assert.deepEqual(JSON.parse(result.stdout.trim()),{progress:true,finished:true});
+});
