@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "status": "complete",
+  "can_apply": false,
+  "requires_replan": false,
+  "successful_operations": 18,
+  "total_operations": 18,
+  "unsupported_capabilities": [],
+  "conflicts": [],
+  "created_bindings": {
+    "68d069fb-6573-5cc1-8cd2-2cbd859b4bfb": "unity-scene-file:<validation-workspace>/XP-Hero-PathValidation.unity#460468298",
+    "cdf2b175-1410-5651-893a-f428828eb746": "unity-scene-file:<validation-workspace>/XP-Hero-PathValidation.unity#1404117148",
+    "30d24c7a-d45a-5518-9d47-d2cfcb4ae88a": "unity-scene-file:<validation-workspace>/XP-Hero-PathValidation.unity#1517860550",
+    "21d05057-14f5-5b41-a282-7e08e4015a5c": "unity-scene-file:<validation-workspace>/XP-Hero-PathValidation.unity#26091200",
+    "b1d97451-250c-5b4b-bfdb-1f388362870e": "unity-scene-file:<validation-workspace>/XP-Hero-PathValidation.unity#2017855905",
+    "8cea149d-b34e-57a8-8f1c-556e5c3d5066": "unity-scene-file:<validation-workspace>/XP-Hero-PathValidation.unity#1571458392",
+    "a820d769-6e35-5f4c-9945-46372596f3e7": "unity-scene-file:<validation-workspace>/XP-Hero-PathValidation.unity#1535120818",
+    "d93d2298-97e3-5e37-ae07-fb5e6f81e640": "unity-scene-file:<validation-workspace>/XP-Hero-PathValidation.unity#620476752",
+    "022ab362-2c06-5667-821d-0f764adc5a5d": "unity-scene-file:<validation-workspace>/XP-Hero-PathValidation.unity#1241355914",
+    "992adcc2-b784-54a7-ae40-ab7eb12e699e": "unity-scene-file:<validation-workspace>/XP-Hero-PathValidation.unity#177309621",
+    "563774f5-88a5-59aa-972c-d14ca92e2bca": "unity-scene-file:<validation-workspace>/XP-Hero-PathValidation.unity#1252435025",
+    "82ef1339-9d75-5bd3-924d-7643c8ef67e4": "unity-scene-file:<validation-workspace>/XP-Hero-PathValidation.unity#1560677800"
+  },
+  "pending_operations": []
+}

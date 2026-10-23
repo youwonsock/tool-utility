@@ -1,0 +1,94 @@
+{
+  "status": "passed",
+  "producer": "actual video-tools extract_images",
+  "source": "generated lossless color fixture",
+  "real_video_vision": "not_run",
+  "checks": [
+    {
+      "grid": "2x2",
+      "extension": "png",
+      "sheet_count": 2,
+      "valid_cells_checked": 7,
+      "last_sheet_valid_cells": 3,
+      "cell_size": [
+        100,
+        100
+      ],
+      "output_size": [
+        219,
+        219
+      ],
+      "tiled_size": [
+        218,
+        218
+      ],
+      "max_color_error": 0
+    },
+    {
+      "grid": "2x2",
+      "extension": "jpg",
+      "sheet_count": 2,
+      "valid_cells_checked": 7,
+      "last_sheet_valid_cells": 3,
+      "cell_size": [
+        100,
+        100
+      ],
+      "output_size": [
+        219,
+        219
+      ],
+      "tiled_size": [
+        218,
+        218
+      ],
+      "max_color_error": 1
+    },
+    {
+      "grid": "3x3",
+      "extension": "png",
+      "sheet_count": 1,
+      "valid_cells_checked": 7,
+      "last_sheet_valid_cells": 7,
+      "cell_size": [
+        100,
+        100
+      ],
+      "output_size": [
+        326,
+        326
+      ],
+      "tiled_size": [
+        324,
+        324
+      ],
+      "max_color_error": 0
+    },
+    {
+      "grid": "3x3",
+      "extension": "jpg",
+      "sheet_count": 1,
+      "valid_cells_checked": 7,
+      "last_sheet_valid_cells": 7,
+      "cell_size": [
+        100,
+        100
+      ],
+      "output_size": [
+        326,
+        326
+      ],
+      "tiled_size": [
+        324,
+        324
+      ],
+      "max_color_error": 1
+    }
+  ],
+  "source_frames": 8,
+  "extraction": {
+    "start": 0,
+    "end": 7,
+    "interval": 1
+  }
+}

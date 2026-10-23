@@ -1,0 +1,5 @@
+{
+  "manifest": "manifest.json",
+  "frame_ref": "synthetic:3",
+  "output": "frame-3.png"
+}

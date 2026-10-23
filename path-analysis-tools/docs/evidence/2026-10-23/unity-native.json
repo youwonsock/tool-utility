@@ -1,0 +1,56 @@
+{
+  "status": "passed",
+  "project": "<xp-hero-project>/Assets",
+  "scene": "<validation-workspace>/XP-Hero-PathValidation.unity",
+  "durableFileIdBindings": 11,
+  "runtimeMode": "native_manual_tick_edit_mode",
+  "playMode": false,
+  "sequences": [
+    {
+      "id": "68d069fb-6573-5cc1-8cd2-2cbd859b4bfb",
+      "segments": 2,
+      "length": 19.9999962,
+      "movedAfterOneSecond": 1.88854361,
+      "endError": 6.74349565e-07,
+      "completed": true
+    },
+    {
+      "id": "022ab362-2c06-5667-821d-0f764adc5a5d",
+      "segments": 1,
+      "length": 4.72136259,
+      "movedAfterOneSecond": 0.944272,
+      "endError": 0.0,
+      "completed": true
+    }
+  ],
+  "originalScene": "Assets/Supercent/XP Hero/Scenes/Current/Current.unity",
+  "originalDirty": true,
+  "ready": true,
+  "importedValidationScene": "Assets/__PathAnalysisValidation_20261023_aGwokr/Validation.unity",
+  "movementSettings": [
+    {
+      "curve": "Linear",
+      "moveType": "TimeBased",
+      "duration": 5.0,
+      "events": 0
+    },
+    {
+      "curve": "Linear",
+      "moveType": "TimeBased",
+      "duration": 5.0,
+      "events": 0
+    },
+    {
+      "curve": "Linear",
+      "moveType": "TimeBased",
+      "duration": 5.0,
+      "events": 0
+    }
+  ],
+  "boundaries": [
+    {
+      "distinctTransforms": true,
+      "positionError": 0.0
+    }
+  ]
+}

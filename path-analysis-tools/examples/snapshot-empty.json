@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "document_type": "SceneSnapshot",
+  "scene_id": "replace-with-scene-id",
+  "scope_id": "replace-with-selected-root",
+  "frame_id": "draft-local",
+  "frame_transform": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1
+  ],
+  "capabilities": [
+    "create_node",
+    "update_node",
+    "set_order",
+    "delete_node",
+    "rebuild"
+  ],
+  "nodes": [],
+  "orders": []
+}

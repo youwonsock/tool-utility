@@ -1,0 +1,4 @@
+* text=auto eol=lf
+*.command text eol=lf
+*.bat text eol=crlf
+portable/** -text

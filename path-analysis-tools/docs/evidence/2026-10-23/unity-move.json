@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "status": "complete",
+  "can_apply": false,
+  "requires_replan": false,
+  "successful_operations": 2,
+  "total_operations": 2,
+  "unsupported_capabilities": [],
+  "conflicts": [],
+  "created_bindings": {},
+  "pending_operations": []
+}

@@ -1,0 +1,12 @@
+.build/
+__pycache__/
+*.py[cod]
+.DS_Store
+*.log
+mcp-config.local.json
+.venv/
+dist/
+build/
+*.egg-info/
+!portable/
+!portable/**
