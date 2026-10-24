@@ -57,7 +57,7 @@ export function mutationPaths(tool:string,input:Record<string,unknown>):string[]
   collect(input);
   if(input.changes&&typeof input.changes==='object'&&!Array.isArray(input.changes))paths.push(...Object.keys(input.changes));
   // Codex's canonical PreToolUse payload carries an apply_patch body in
-  // tool_input.command. Other native adapters use one of the legacy fields.
+  // tool_input.command. Other native adapters expose patch bodies through their own input fields.
   // Conflicting/malformed aliases must not hide paths from the policy check.
   const patches=[input.patch,input.patch_text,input.input,...(/patch/i.test(tool)?[input.command]:[])].filter(value=>value!==undefined);
   if(patches.some(value=>typeof value!=='string')||new Set(patches).size>1)return [];

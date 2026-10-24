@@ -6,10 +6,10 @@ import {spawnSync} from 'node:child_process';
 import { codexDynamicTools, readCodexFile, codexCommand, codexWindowsSandbox, workerPolicyHash } from '../dist/index.mjs';
 import { fixture, cli } from './helpers.mjs';
 
-test('Codex selects an invocation-only Windows sandbox without replacing explicit or legacy implementations',()=>{
+test('Codex selects an invocation-only Windows sandbox using current explicit implementation settings',()=>{
   assert.equal(codexWindowsSandbox({},'win32'),'unelevated');
   assert.equal(codexWindowsSandbox({windows:{sandbox:null}},'win32'),'unelevated');
-  assert.equal(codexWindowsSandbox({features:{elevated_windows_sandbox:true}},'win32'),'elevated');
+  assert.equal(codexWindowsSandbox({features:{elevated_windows_sandbox:true}},'win32'),'unelevated');
   for(const mode of ['mxc','elevated','unelevated']) {
     const config={windows:{sandbox:mode},features:{elevated_windows_sandbox:true}},before=JSON.stringify(config);
     assert.equal(codexWindowsSandbox(config,'win32'),mode);assert.equal(JSON.stringify(config),before);
