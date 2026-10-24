@@ -9,8 +9,10 @@ if(argv.includes('--version')){console.log(`codex-cli ${version}`);process.exit(
 const send=frame=>process.stdout.write(`${JSON.stringify(frame)}\n`);
 const overrides={};
 function value(text){let quoted=false,escaped=false,result='';for(const char of text){if(char==='"'&&!escaped)quoted=!quoted;result+=char==='='&&!quoted?':':char;escaped=char==='\\'&&!escaped;}return JSON.parse(result);}
-for(let i=0;i<argv.length;i++)if(argv[i]==='-c'){const raw=argv[++i],split=raw.indexOf('=');overrides[raw.slice(0,split)]=value(raw.slice(split+1));}
-const config={model:argv.includes('--default-model-null')?null:'fake-model',mcp_servers:{inherited:{enabled:true}},...overrides};
+for(let i=0;i<argv.length;i++)if(argv[i]==='-c'){const raw=argv[++i],split=raw.indexOf('='),key=raw.slice(0,split),parsed=value(raw.slice(split+1));if(key==='windows.sandbox')overrides.windows={...overrides.windows,sandbox:parsed};else overrides[key]=parsed;}
+const configuredWindowsMode=argv.find(arg=>arg.startsWith('--windows-sandbox='))?.slice('--windows-sandbox='.length);
+const config={model:argv.includes('--default-model-null')?null:'fake-model',mcp_servers:{inherited:{enabled:true}},...(configuredWindowsMode?{windows:{sandbox:configuredWindowsMode}}:{}),...overrides};
+if(argv.includes('--ignore-windows-sandbox'))delete config.windows;
 if(argv.includes('--untrusted-unsupported')&&config.approval_policy==='untrusted'){console.error('approval_policy = "untrusted" is no longer supported');process.exit(1);}
 if(argv.includes('--incompatible-policy')&&config.hooks)config.web_search='enabled';
 const hookKey=argv.includes('--windows-hook-key')?'C:\\<session-flags>\\config.toml:pre_tool_use:0:0':'/<session-flags>/config.toml:pre_tool_use:0:0';
@@ -42,7 +44,14 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
   if(frame.method==='initialized')return;
   if(frame.method==='config/read')return reply({config,origins:{}});
   if(frame.method==='hooks/list')return reply({data:[{cwd:process.cwd(),hooks:[hookEntry(),...(argv.includes('--extra-hook')?[{...hookEntry(),key:'inherited'}]:[])],warnings:[],errors:[]}]});
-  if(frame.method==='thread/start'){ephemeral=p.ephemeral===true;dynamicTools=p.dynamicTools??[];audit({event:'session',ephemeral,dynamic_tools:dynamicTools.map(tool=>tool.name)});return reply({thread,model:p.model==='unavailable-model'?'fake-model':p.model??config.model??'fake-model',modelProvider:'fake',cwd:process.cwd(),approvalPolicy:p.approvalPolicy,approvalsReviewer:'user',sandbox:{type:argv.includes('--unsafe-sandbox')?'dangerFullAccess':'workspaceWrite'}});}
+  if(frame.method==='thread/start'){
+    ephemeral=p.ephemeral===true;dynamicTools=p.dynamicTools??[];audit({event:'session',ephemeral,dynamic_tools:dynamicTools.map(tool=>tool.name)});
+    const windows=process.platform==='win32'||argv.includes('--windows-no-sandbox-fallback');
+    const sandbox=argv.includes('--unsafe-sandbox')?{type:'dangerFullAccess'}:argv.includes('--opaque-sandbox')?{type:'unknown',opaque:'not a verified boundary'}
+      :argv.includes('--external-sandbox')?{type:'externalSandbox',networkAccess:'restricted'}
+      :argv.includes('--read-only-sandbox')||windows&&!config.windows?.sandbox?{type:'readOnly',networkAccess:false}:{type:'workspaceWrite'};
+    return reply({thread,model:p.model==='unavailable-model'?'fake-model':p.model??config.model??'fake-model',modelProvider:'fake',cwd:process.cwd(),approvalPolicy:p.approvalPolicy,approvalsReviewer:'user',sandbox});
+  }
   if(frame.method==='thread/read'){
     if(ephemeral&&p.includeTurns)return send({id:frame.id,error:{code:-32600,message:'ephemeral threads do not support includeTurns'}});
     if(thread.turns.length&&(argv.includes('--empty-rollout-always')||argv.includes('--empty-rollout-once')&&readErrors++===0)) {

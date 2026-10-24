@@ -83,8 +83,19 @@ for(const flag of ['--untrusted-hook','--extra-hook'])test(`Codex rejects ${flag
 test('Codex treats native hook keys as opaque on Windows and retains the exact trusted hash',async t=>{
   const result=await diagnose(t,'codex',['--windows-hook-key']);assert.equal(result.connection.healthy,true,JSON.stringify(result.connection));
 });
-test('Codex rejects a native sandbox substitution before model dispatch',async t=>{
-  const {backend}=await native(t,'codex',undefined,['--unsafe-sandbox']);await assert.rejects(()=>backend.createSession(),e=>e.code==='MCP_POLICY');
+for(const [flag,observed]of [['--unsafe-sandbox','dangerFullAccess'],['--read-only-sandbox','readOnly'],['--external-sandbox','externalSandbox'],['--opaque-sandbox','unknown']])test(`Codex rejects native ${observed} sandbox substitution before model dispatch`,async t=>{
+  const {backend}=await native(t,'codex',undefined,[flag]);await assert.rejects(()=>backend.createSession(),e=>e.code==='MCP_POLICY'&&e.details.observed_sandbox_type===observed&&e.details.requested_sandbox_type==='workspaceWrite');
+});
+test('Codex native Windows projection requires an implementation instead of silently accepting read-only',async t=>{
+  const {backend}=await native(t,'codex',undefined,['--windows-no-sandbox-fallback']);
+  if(process.platform==='win32')await backend.createSession();
+  else await assert.rejects(()=>backend.createSession(),e=>e.code==='MCP_POLICY'&&e.details.observed_sandbox_type==='readOnly');
+});
+for(const mode of ['mxc','elevated','unelevated'])test(`Codex preserves an explicit Windows ${mode} implementation`,async t=>{
+  const result=await diagnose(t,'codex',[`--windows-sandbox=${mode}`]);assert.equal(result.connection.healthy,true,JSON.stringify(result.connection));
+});
+test('Codex rejects a dropped Windows sandbox invocation override before creating a session',{skip:process.platform!=='win32'},async t=>{
+  const result=await diagnose(t,'codex',['--ignore-windows-sandbox']);assert.equal(result.connection.healthy,false);assert.match(result.connection.error,/Windows sandbox implementation differs/);
 });
 
 async function codexInput(backend) {
