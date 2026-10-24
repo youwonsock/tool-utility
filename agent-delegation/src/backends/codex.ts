@@ -8,7 +8,7 @@ import { JsonRpcPeer, type RpcFrame } from './json-rpc.js';
 import type { Answer, BackendContext, Observation, WorkerBackend } from './contract.js';
 import { executableVersion } from './version.js';
 import { assertScopeMonitor, scopeMonitorHealthy } from '../scope.js';
-import { CODEX_COMMAND_TOOL, CODEX_READ_TOOL, codexCommand, codexDynamicTools, readCodexFile } from './codex-tools.js';
+import { CODEX_COMMAND_TOOL, CODEX_READ_TOOL, codexCommand, codexDynamicTools, codexWindowsSandbox, readCodexFile } from './codex-tools.js';
 import { runSupervisedCommand } from '../verification.js';
 
 function toml(value:unknown):string {
@@ -37,6 +37,7 @@ export class CodexBackend implements WorkerBackend {
   private error?:string;
   private thread?:any;
   private model?:string;
+  private windowsSandbox?:string;
   constructor(private context:BackendContext){}
   private receive(frame:RpcFrame) {
     const {state,save,spec}=this.context;
@@ -122,6 +123,7 @@ export class CodexBackend implements WorkerBackend {
     const initial=(await this.peer!.request('config/read',{cwd:spec.directory,includeLayers:false})).config;
     invariant(initial&&typeof initial==='object','BACKEND_API','Codex config/read API returned an incompatible response.');
     invariant(await stopOwned(this.context),'STOP_UNCERTAIN','Codex configuration probe did not stop.');
+    this.windowsSandbox=codexWindowsSandbox(initial);
     const mcp:Record<string,unknown>=Object.fromEntries(Object.keys(initial.mcp_servers??{}).map(name=>[name,{enabled:false}]));
     for(const resource of spec.resources) {
       const c=connection(resource,spec.directory);
@@ -133,7 +135,8 @@ export class CodexBackend implements WorkerBackend {
     const hooks:Record<string,unknown>=Object.fromEntries(Object.keys(initial.hooks??{}).filter(event=>event!=='state').map(event=>[event,[]]));
     hooks.state={};
     hooks.PreToolUse=[{matcher:'.*',hooks:[{type:'command',command:hookCommand,timeout:15}]}];
-    const discovery={features:{...features,hooks:true,default_mode_request_user_input:true},mcp_servers:mcp,hooks,web_search:'disabled',approval_policy:'on-request',approvals_reviewer:'user'};
+    const discovery={features:{...features,hooks:true,default_mode_request_user_input:true},mcp_servers:mcp,hooks,web_search:'disabled',approval_policy:'on-request',approvals_reviewer:'user',
+      ...(this.windowsSandbox?{'windows.sandbox':this.windowsSandbox}:{})};
     await this.launch(discovery);
     const inspectHook=async(trusted:boolean,key?:string,hash?:string)=>{
       const listing=await this.peer!.request('hooks/list',{cwds:[spec.directory]});
@@ -157,6 +160,8 @@ export class CodexBackend implements WorkerBackend {
     invariant(effective&&typeof effective==='object','BACKEND_API','Codex config/read API returned an incompatible response.');
     invariant(Object.entries(overrides.features).every(([key,value])=>effective.features?.[key]===value)&&effective.web_search==='disabled','MCP_POLICY','Effective Codex feature policy differs.');
     invariant(effective.approval_policy==='on-request'&&effective.approvals_reviewer==='user','MCP_POLICY','Effective Codex approval policy differs.');
+    invariant(!this.windowsSandbox||effective.windows?.sandbox===this.windowsSandbox,'MCP_POLICY','Effective Codex Windows sandbox implementation differs.',
+      {requested_windows_sandbox:this.windowsSandbox??null,observed_windows_sandbox:['mxc','elevated','unelevated'].includes(effective.windows?.sandbox)?effective.windows.sandbox:'unsupported'});
     const actualHooks=effective.hooks?.PreToolUse;
     const hookCheck=Array.isArray(actualHooks)&&actualHooks.length===1&&actualHooks[0].matcher==='.*'&&actualHooks[0].hooks?.length===1
       &&actualHooks[0].hooks[0].type==='command'&&actualHooks[0].hooks[0].command===hookCommand&&actualHooks[0].hooks[0].async!==true;
@@ -180,7 +185,8 @@ export class CodexBackend implements WorkerBackend {
       dynamicTools:codexDynamicTools,
       developerInstructions:'Implement only the assigned task. Do not delegate, commit, change branches, or modify protected context files. Read source and protected context with delegate_read_file. Use delegate_run_command for foreground shell commands; it waits for supervisor approval. Ask questions with request_user_input. Native shell and other native tools are blocked. Edit only scoped files with apply_patch.'});
     invariant(response.thread?.id&&response.approvalPolicy==='on-request'&&response.approvalsReviewer==='user','MCP_POLICY','Native thread did not retain worker approval policy.');
-    invariant(response.sandbox?.type==='workspaceWrite','MCP_POLICY','Native thread did not retain the worker workspace-write sandbox.');
+    invariant(response.sandbox?.type==='workspaceWrite','MCP_POLICY','Native thread did not retain the worker workspace-write sandbox.',
+      {requested_sandbox_type:'workspaceWrite',observed_sandbox_type:['workspaceWrite','readOnly','dangerFullAccess','externalSandbox'].includes(response.sandbox?.type)?response.sandbox.type:'unknown',windows_sandbox:this.windowsSandbox??null});
     invariant(typeof response.model==='string'&&response.model.length>0&&(this.model===undefined||response.model===this.model),'MODEL_UNAVAILABLE','Codex did not resolve the requested model. No substitute model will be dispatched.');
     state.session_id=response.thread.id;state.model=response.model;this.thread=response.thread;save();
   }

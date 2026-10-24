@@ -10,6 +10,16 @@ export const CODEX_COMMAND_TOOL='delegate_run_command';
 const MAX_READ_BYTES=64*1024;
 type ReadPolicy=Pick<WorkerSpec,'directory'|'scope'|'context'>;
 
+export function codexWindowsSandbox(config:{windows?:{sandbox?:unknown}|null;features?:Record<string,unknown>|null},platform:NodeJS.Platform=process.platform) {
+  if(platform!=='win32')return;
+  const mode=config.windows?.sandbox??undefined;
+  invariant(mode===undefined||mode==='mxc'||mode==='elevated'||mode==='unelevated','MCP_POLICY','Configured Windows sandbox implementation is unsupported.');
+  // Pinned Codex maps workspace-write to read-only on Windows without a local
+  // implementation. Keep explicit/legacy choices; the restricted-token fallback
+  // needs no administrative setup and is passed only to this owned invocation.
+  return mode??(config.features?.elevated_windows_sandbox===true?'elevated':'unelevated');
+}
+
 function object(input:unknown,keys:string[]):Record<string,unknown> {
   invariant(input&&typeof input==='object'&&!Array.isArray(input),'INPUT','Tool arguments must be an object.');
   invariant(Object.keys(input).every(key=>keys.includes(key)),'INPUT','Tool arguments contain an unsupported field.');

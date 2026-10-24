@@ -108,6 +108,8 @@ OpenCode·Kilo·Claude는 사용자 설치 CLI와 해당 플랫폼 SDK가 필요
 
 Codex 워커는 `on-request` 승인 정책과 `workspace-write` 샌드박스를 사용하며 검증 기준 CLI는 0.162.1입니다. 모델 호출 없이 초기 설정을 검사하고, 상속된 훅·신뢰 상태를 제외한 소유 `PreToolUse` 훅 하나를 `hooks/list`로 찾습니다. 해당 key와 currentHash만 실행 인자의 `hooks.state`에 등록해 다시 시작한 뒤, 같은 명령·동기 실행·matcher와 `trusted` 상태를 확인합니다. 전역 설정의 훅 신뢰는 바꾸지 않습니다. `code_mode_host`를 활성화한 실행 서버에서 이 훅·feature·승인 설정·샌드박스·MCP 설정이 확인되기 전에는 모델 요청을 보내지 않습니다. 확인한 key·해시는 `jobs/<attempt>/hook-policy.json`에 남습니다. 필수 동기·신뢰 정보를 제공하지 않는 구형 CLI는 모델 호출 전에 거절하며, 사용자 CLI를 자동 업데이트하지 않습니다.
 
+Windows에서 구현을 선택하지 않으면 Codex가 요청한 `workspace-write`를 `read-only`로 바꾸므로, 워커는 소유한 실행 인자에서만 `windows.sandbox=unelevated`를 기본 선택합니다. 명시적인 `mxc`·`elevated`·`unelevated`와 기존 elevated 설정은 유지합니다. 관리자 설정 절차나 전역 설정 쓰기는 실행하지 않습니다. 적용된 Windows 구현과 thread 응답의 `workspaceWrite`를 모두 확인하며, 읽기 전용·전체 접근·외부 또는 불명확한 응답으로 검사를 완화하지 않습니다. 불일치 진단에는 요청·관찰한 정책 종류만 남깁니다.
+
 Codex의 네이티브 셸·exec·write_stdin은 명시적으로 거절합니다. 파일·문맥은 `delegate_read_file`로 범위 안의 일반 UTF-8 파일을 한 번에 최대 64 KiB씩 읽고, 심볼릭 링크·Git 메타데이터·외부 경로는 거절합니다. 직접 수정은 `apply_patch`의 `tool_input.command`에 담긴 모든 변경·이동 경로를 검사합니다. 셸 작업은 `delegate_run_command`의 소유한 app-server 요청을 대기시킨 채 기존 `respond_to_request`의 `once`·`always`·`reject`로 결정하며, 실행 직전 범위·문맥·감시 상태를 다시 검사합니다. 별도 command-host가 의도·종료 코드·로그와 `supervised-<id>-result.json`을 기록하고 해당 명령의 프로세스 트리만 종료하므로 Codex 서버의 소유권은 유지됩니다. 취소는 대기 작업을 새로 실행하지 않고 실행 중 명령도 소유 기록으로 종료합니다.
 
 현재 Codex `PreToolUse`의 `ask`는 파싱되지만 지원되지 않아 훅 오류 뒤 도구가 계속 실행될 수 있습니다. 따라서 소유 훅은 `allow`·`deny`만 출력하며, 두 동적 도구·범위가 확인된 `apply_patch`·기존 질문 응답으로 연결되는 `request_user_input`만 허용합니다. 나머지 네이티브 도구는 거절합니다. 선언된 MCP 도구도 네이티브 승인이 필요한 호출은 거절되며, 이 게이트웨이는 MCP 도구 승인을 아직 제공하지 않습니다. 자원 연결 진단 성공이 Codex에서 해당 도구를 실행할 수 있다는 뜻은 아닙니다. 서비스의 기존 MCP 도구 12개와 입력 형식은 유지합니다.

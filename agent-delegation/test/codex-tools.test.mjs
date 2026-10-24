@@ -3,8 +3,20 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
-import { codexDynamicTools, readCodexFile, codexCommand, workerPolicyHash } from '../dist/index.mjs';
+import { codexDynamicTools, readCodexFile, codexCommand, codexWindowsSandbox, workerPolicyHash } from '../dist/index.mjs';
 import { fixture, cli } from './helpers.mjs';
+
+test('Codex selects an invocation-only Windows sandbox without replacing explicit or legacy implementations',()=>{
+  assert.equal(codexWindowsSandbox({},'win32'),'unelevated');
+  assert.equal(codexWindowsSandbox({windows:{sandbox:null}},'win32'),'unelevated');
+  assert.equal(codexWindowsSandbox({features:{elevated_windows_sandbox:true}},'win32'),'elevated');
+  for(const mode of ['mxc','elevated','unelevated']) {
+    const config={windows:{sandbox:mode},features:{elevated_windows_sandbox:true}},before=JSON.stringify(config);
+    assert.equal(codexWindowsSandbox(config,'win32'),mode);assert.equal(JSON.stringify(config),before);
+  }
+  for(const mode of ['disabled','danger-full-access','unknown',false,{}])assert.throws(()=>codexWindowsSandbox({windows:{sandbox:mode}},'win32'),e=>e.code==='MCP_POLICY');
+  for(const platform of ['darwin','linux'])assert.equal(codexWindowsSandbox({},platform),undefined);
+});
 
 test('Codex read adapter bounds source reads and allows exact protected context without mutation grants',async t=>{
   const f=await fixture(t);f.engine.stop();fs.mkdirSync(path.join(f.repo,'src'));fs.writeFileSync(path.join(f.repo,'src','a.txt'),'hello world');fs.writeFileSync(path.join(f.repo,'AGENTS.md'),'protected rules');
