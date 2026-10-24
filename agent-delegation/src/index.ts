@@ -12,6 +12,7 @@ export * from './profiles.js';
 export * from './runtime.js';
 export * from './backends/index.js';
 export * from './backends/policy.js';
+export { JsonRpcPeer } from './backends/json-rpc.js';
 export { codexDynamicTools, readCodexFile, codexCommand, codexWindowsSandbox } from './backends/codex-tools.js';
 export * from './verification.js';
 export * from './hosts.js';
