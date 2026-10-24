@@ -124,7 +124,7 @@ export class CodexBackend implements WorkerBackend {
       invariant(c.type!=='sse','MCP_POLICY','Codex requires stdio or streamable HTTP resources.');
       mcp[resource.connection.name]=c.type==='stdio'?{command:c.command,args:c.args,env:c.env,enabled:true}:{url:c.url,http_headers:c.headers,enabled:true};
     }
-    const cli=spec.host_executable??path.resolve(process.argv[1]!);
+    const cli=spec.host_executable;
     const hookCommand=[process.execPath,cli,'policy-hook',spec.job_dir].map(quote).join(' ');
     const hooks:Record<string,unknown>=Object.fromEntries(Object.keys(initial.hooks??{}).filter(event=>event!=='state').map(event=>[event,[]]));
     hooks.state={};

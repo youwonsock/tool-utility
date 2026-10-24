@@ -19,3 +19,4 @@ export * from './verification.js';
 export * from './hosts.js';
 export { checkedMutationPath, workerPolicyHash } from './scope.js';
 export * from './scope-guard.js';
+export { processEvidence, stopOwned, confirmedStopped } from './backends/process.js';

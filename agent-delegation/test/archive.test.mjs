@@ -3,19 +3,15 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { Store, Engine, ARCHIVE_AGE, emptyState, digest, journalRecord, prepareStorage, loadState,
+import { Store, Engine, ARCHIVE_AGE, emptyState, digest, loadState, serve, connect,
   writeJson, remoteCall, processIdentity, alive, sleep } from '../dist/index.mjs';
 import { cli } from './helpers.mjs';
+import { storageTree } from './storage-preservation.mjs';
 
 const epoch=1_800_000_000_000;
 const worker={platform:'codex',profile:'codex-default',executable:process.execPath,executable_args:[],baseline:'test',config_hash:'test'};
 function setup(t){const root=fs.mkdtempSync(path.join(os.tmpdir(),'archive-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));return root;}
 function run(root,id='run_old',state='cancelled',ended_at=epoch-ARCHIVE_AGE){return {id,repo:path.join(root,'repo'),common_dir:path.join(root,'repo/.git'),branch:'main',base:'base',integration_branch:`codex/${id}`,integration_dir:path.join(root,'worktrees',id,'integration'),integration_commit:'base',state,revision:1,created:1,ended_at,tasks:[],context:[],worker,resources:[],final_verification:[],settings:{concurrency:2,timeout_ms:1000,max_retries:0}};}
-function legacy(root){
-  const state={...emptyState(),protocol:2,revision:5,runs:[run(root)],requests:{one:{hash:digest({a:1}),status:'done',result:{value:42}}}};
-  delete state.runs[0].ended_at;for(const key of ['event_seq','archived_runs','archived_requests','resource_hashes'])delete state[key];
-  writeJson(path.join(root,'state.json'),state);fs.writeFileSync(path.join(root,'journal.jsonl'),journalRecord(state));return state;
-}
 
 test('seven-day boundary, immutable end time, active runs and resource leases',async t=>{
   const root=setup(t),store=new Store(root,()=>epoch);
@@ -87,21 +83,13 @@ test('checkpoint rotation failure preserves commits and repairs a torn active ta
   reopened=new Store(root);assert.equal(reopened.state.events.length,256);assert.equal(loadState(root).bytes,loadState(root).completeBytes);
 });
 
-for(const publication of ['journal.jsonl','state.json','migration.json'])test(`format-2 migration resumes after ${publication} interruption and retains backups`,async t=>{
-  const root=setup(t);legacy(root);const before=fs.readFileSync(path.join(root,'journal.jsonl'));const rename=fs.renameSync,unlink=fs.unlinkSync;let fired=false;
-  const block=(a,b)=>{if(!fired&&b===path.join(root,publication)){fired=true;throw new Error('migration interruption');}return rename(a,b);};
-  const mock=publication==='migration.json'?t.mock.method(fs,'unlinkSync',file=>{if(file===path.join(root,'migration.json')&&!fired){fired=true;throw new Error('migration interruption');}return unlink(file);}):t.mock.method(fs,'renameSync',block);
-  await assert.rejects(prepareStorage(root,epoch),/migration interruption/);mock.mock.restore();await prepareStorage(root,epoch+1);
-  const store=new Store(root);assert.equal(store.state.protocol,4);assert.equal(store.state.runs[0].ended_at,epoch);assert.equal(store.state.requests.one.completed_at,epoch);
-  assert.deepEqual(await store.mutation('one',{a:1},async()=>assert.fail('replayed')),{value:42});
-  const backup=path.join(root,'backups',fs.readdirSync(path.join(root,'backups'))[0]);assert.deepEqual(fs.readFileSync(path.join(backup,'journal.jsonl')),before);assert.equal(fs.existsSync(path.join(root,'migration.json')),false);
-});
-
-test('migration blocks leases, a live old service and unknown storage formats',async t=>{
-  const root=setup(t),state=legacy(root);writeJson(path.join(root,'service.json'),{owner:await processIdentity(process.pid)});
-  await assert.rejects(prepareStorage(root),e=>e.code==='UPDATE_PENDING');fs.unlinkSync(path.join(root,'service.json'));
-  state.runs[0].tasks=[{attempts:[{state:'orphaned'}]}];writeJson(path.join(root,'state.json'),state);fs.writeFileSync(path.join(root,'journal.jsonl'),journalRecord(state));
-  await assert.rejects(prepareStorage(root),e=>e.code==='UPDATE_PENDING');writeJson(path.join(root,'state.json'),{protocol:99,revision:999});assert.throws(()=>new Store(root),e=>e.code==='UPDATE_PENDING');
+for(const format of [2,3,99,'missing',null,false,0,'invalid',[]])test(`unsupported snapshot ${JSON.stringify(format)} is rejected without startup or file changes`,async t=>{
+  const root=setup(t),state=typeof format==='number'&&format>0?{...emptyState(),protocol:format,runs:[run(root)]}:format==='missing'?{revision:1,runs:[],events:[]}:format;
+  writeJson(path.join(root,'state.json'),state);writeJson(path.join(root,'archives','retained.json'),{original:'keep evidence'});
+  const before=storageTree(root);
+  assert.throws(()=>loadState(root),e=>e.code==='UPDATE_PENDING');assert.throws(()=>new Store(root),e=>e.code==='UPDATE_PENDING');
+  await assert.rejects(serve(root,cli),e=>e.code==='UPDATE_PENDING');await assert.rejects(connect(root,cli),e=>e.code==='UPDATE_PENDING');
+  assert.deepEqual(storageTree(root),before);
 });
 
 test('daemon cleanup retains an archived run and its event history',async t=>{

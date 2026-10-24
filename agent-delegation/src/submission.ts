@@ -20,7 +20,7 @@ function syncDirectory(directory: string) {
   const fd = fs.openSync(directory,'r'); try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
 }
 function validateManifest(store: Store, m: Manifest, requestID: string) {
-  invariant([2,3,STORE_FORMAT].includes(m.protocol) && m.request_id === requestID && idSchema.safeParse(m.run_id).success, 'STATE_CORRUPT','Invalid submission preparation record.');
+  invariant(m.protocol===STORE_FORMAT && m.request_id === requestID && idSchema.safeParse(m.run_id).success, 'STATE_CORRUPT','Invalid submission preparation record.');
   invariant(m.result?.run_id===m.run_id && Array.isArray(m.result.tasks) && m.result.tasks.every(id=>idSchema.safeParse(id).success) && Array.isArray(m.files) && typeof m.new_run==='boolean' && typeof m.repo==='string' && typeof m.base==='string','STATE_CORRUPT','Invalid prepared submission fields.');
   invariant(store.request(requestID)?.hash === m.request_hash, 'STATE_CORRUPT','Submission request does not match its durable intent.');
   invariant(m.integration_dir === path.join(store.root,'worktrees',m.run_id,'integration') && m.integration_branch === `codex/agent-delegation-${m.run_id}`, 'STATE_CORRUPT','Invalid prepared worktree identity.');
@@ -66,22 +66,14 @@ async function rollback(store: Store, m: Manifest, directory: string, beforeClea
 }
 
 export async function recoverSubmissions(store: Store, onRollback?:(requestID:string)=>Promise<void>) {
-  // A crash after publication but before caching the response may outlive the manifest.
-  for (const event of store.state.events.filter(e=>e.type==='tasks_submitted')) {
-    const data=event.data as {request_id?:string;revision:number;tasks:string[]};
-    const request=data.request_id ? store.state.requests[data.request_id] : undefined;
-    if (data.request_id && request?.status==='intent') {
-      invariant(store.state.runs.some(r=>r.id===event.run_id),'STATE_CORRUPT','Published submission has no run.');
-      store.state.requests[data.request_id]={...request,status:'done',completed_at:store.clock(),result:{run_id:event.run_id,revision:data.revision,tasks:data.tasks}}; store.save();
-    }
-  }
   const root=path.join(store.root,'submissions'); if (!fs.existsSync(root)) return;
   for (const entry of fs.readdirSync(root)) {
     invariant(idSchema.safeParse(entry).success,'STATE_CORRUPT','Invalid submission directory.');
     const directory=inside(root,entry), m=readJson<Manifest>(path.join(directory,'manifest.json'));
     // No external creation begins before the manifest is durable.
     if (!m) {
-      const owned=store.request(entry) && (fs.readdirSync(directory).every(name=>/^manifest\.json\.[a-f0-9-]+\.tmp$/.test(name)) || store.state.events.some(e=>e.type==='tasks_submitted' && (e.data as {request_id?:string})?.request_id===entry));
+      const request=store.request(entry);
+      const owned=request && (fs.readdirSync(directory).every(name=>/^manifest\.json\.[a-f0-9-]+\.tmp$/.test(name)) || request.status==='done'&&store.state.events.some(e=>e.type==='tasks_submitted' && (e.data as {request_id?:string})?.request_id===entry));
       if (owned) fs.rmSync(directory,{recursive:true});
       else process.stderr.write(`Submission directory ${entry} has no ownership manifest; it was preserved.\n`);
       continue;
@@ -89,7 +81,7 @@ export async function recoverSubmissions(store: Store, onRollback?:(requestID:st
     validateManifest(store,m,entry);
     if (published(store,m)) {
       const request=store.request(entry)!;
-      if (request.status==='intent') { store.state.requests[entry]={...request,status:'done',completed_at:store.clock(),result:m.result}; store.save(); }
+      invariant(request.status==='done','REQUEST_UNCERTAIN','Published submission has no atomic response; its records were preserved.');
       fs.rmSync(directory,{recursive:true});
     } else {
       try { await rollback(store,m,directory,async()=>{await onRollback?.(entry);}); }

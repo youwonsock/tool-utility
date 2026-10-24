@@ -5,6 +5,17 @@ import path from 'node:path';
 import { Store, Engine, Fault, uid, sleep, writeJson, readJson, WORKER_FORMAT, transition, moveRun, rejectedEvidence } from '../dist/index.mjs';
 import { fixture, task, submit, review, callOk, cli, git } from './helpers.mjs';
 
+function processFixture(jobDir, identity, stopped=false) {
+  const id=uid('process');writeJson(path.join(jobDir,'process-intents',`${id}.json`),{id,at:Date.now()});
+  if(identity)writeJson(path.join(jobDir,'process-records',`${id}.json`),{identity,stopped});
+  return id;
+}
+function confirmFixtureProcesses(jobDir) {
+  const identity={pid:99999999,birth:'confirmed stopped'};
+  for(const file of fs.readdirSync(path.join(jobDir,'process-intents')))writeJson(path.join(jobDir,'process-records',file),{identity,stopped:true});
+  return identity;
+}
+
 async function controlled(t) {
   const f = await fixture(t);
   f.engine.stop();
@@ -82,7 +93,7 @@ test('cancel after a lost validation process does not reactivate the run', {skip
   await review(f,run,'a');
   f.engine.spawn=async (_run,a)=>{
     const identity={pid:99999999,birth:'dead'};
-    writeJson(path.join(a.job_dir,'server-intent.json'),{at:Date.now()});
+    processFixture(a.job_dir,identity);
     writeJson(path.join(a.job_dir,'worker.json'),{protocol:WORKER_FORMAT,id:a.id,phase:'verifying',updated:Date.now(),prompt_id:'msg',host:identity,server:identity,inputs:[],replies:{},verification:[]});
   };
   await callOk(f,'validate_run',{request_id:uid('validation'),run_id:run.id});
@@ -185,7 +196,7 @@ test('uncertain termination retains a lease and blocks successors until terminat
   let dispatches=0;
   f.engine.spawn=async (_run,a)=>{
     dispatches++;
-    writeJson(path.join(a.job_dir,'server-intent.json'),{at:Date.now()});
+    processFixture(a.job_dir);
     writeJson(path.join(a.job_dir,'worker.json'),{protocol:WORKER_FORMAT,id:a.id,phase:'stop_uncertain',updated:Date.now(),prompt_id:'msg',inputs:[],replies:{},verification:[]});
   };
   const first=await submit(f,[task('a',{}, {resources:['editor']})],{resources:[profile]});
@@ -198,13 +209,13 @@ test('uncertain termination retains a lease and blocks successors until terminat
   assert.equal(dispatches,1);
   assert.ok(f.engine.lockedResources().has('editor'));
   const worker=readJson(path.join(a.job_dir,'worker.json'));
-  writeJson(path.join(a.job_dir,'worker.json'),{...worker,phase:'cancelled',stopped:true,server:{pid:99999999,birth:'confirmed stopped'}});
+  writeJson(path.join(a.job_dir,'worker.json'),{...worker,phase:'cancelled',stopped:true,server:confirmFixtureProcesses(a.job_dir)});
   await f.engine.tick();
   await tickUntil(f,run.id,value=>value.state==='cancelled');
   await tickUntil(f,second.run_id,value=>value.tasks[0].attempts.length===1);
   assert.equal(dispatches,2);
   const next=f.engine.getRun(second.run_id).tasks[0].attempts[0];
-  writeJson(path.join(next.job_dir,'worker.json'),{...readJson(path.join(next.job_dir,'worker.json')),phase:'cancelled',stopped:true,server:{pid:99999999,birth:'confirmed stopped'}});
+  writeJson(path.join(next.job_dir,'worker.json'),{...readJson(path.join(next.job_dir,'worker.json')),phase:'cancelled',stopped:true,server:confirmFixtureProcesses(next.job_dir)});
 });
 
 test('rejection previews are bounded, UTF-8 safe and omit binary and authentication bodies', async t=>{
@@ -266,17 +277,24 @@ test('answered implementation input and service recovery cannot restart implemen
   assert.equal(run.validation.state,'passed');
 });
 
-test('a legacy committed submission can recover its response after its manifest was removed', async t=>{
+for(const preparation of ['absent','missing-manifest','published-manifest'])test(`a published submission without its atomic response and ${preparation} stays uncertain without recovery or replay`, async t=>{
   const f=await controlled(t),request_id=uid('submit'),args={request_id,repo:f.repo,tasks:[task('a')]};
   const committed=await f.call('submit_tasks',args);assert.equal(committed.run_id,f.store.state.runs[0].id);
   assert.equal(fs.existsSync(path.join(f.data,'submissions',request_id)),false);
-  // Older releases could persist publication before the response. New publication is
-  // atomic; explicitly retain this legacy recovery contract without weakening it.
   f.store.state.requests[request_id]={hash:f.store.state.requests[request_id].hash,status:'intent'};f.store.save();
-  const store=new Store(f.data),engine=new Engine(store,cli,{concurrency:2});
-  const result=await engine.call('submit_tasks',args);
-  assert.equal(result.run_id,store.state.runs[0].id);assert.equal(store.state.runs.length,1);
-  assert.equal(store.state.runs[0].tasks[0].attempts.length,0);
+  const store=new Store(f.data),engine=new Engine(store,cli,{concurrency:2}),run=store.state.runs[0],directory=path.join(f.data,'submissions',request_id);
+  let retained;
+  if(preparation!=='absent'){
+    fs.mkdirSync(directory,{recursive:true});
+    retained=path.join(directory,preparation==='missing-manifest'?'retained-evidence.txt':'manifest.json');
+    if(preparation==='missing-manifest')fs.writeFileSync(retained,'preserve uncertain preparation');
+    else writeJson(retained,{protocol:4,request_id,request_hash:store.state.requests[request_id].hash,run_id:run.id,repo:run.repo,base:run.base,new_run:true,integration_dir:run.integration_dir,integration_branch:run.integration_branch,files:[],result:committed});
+  }
+  const before=retained&&fs.readFileSync(retained);
+  await assert.rejects(engine.call('submit_tasks',args),error=>error.code==='REQUEST_UNCERTAIN');
+  if(retained)assert.deepEqual(fs.readFileSync(retained),before);
+  assert.equal(store.state.requests[request_id].status,'intent');
+  assert.equal(store.state.runs.length,1);assert.equal(store.state.runs[0].tasks[0].attempts.length,0);
   await engine.cancel(store.state.runs[0]);
 });
 
@@ -297,10 +315,10 @@ test('recovery preserves user changes in an unpublished prepared checkout', asyn
   assert.equal(fs.existsSync(run.integration_dir),false);
 });
 
-test('a server start intent without an identity cannot release a slot even if the snapshot claims stopped', async t=>{
+test('an owned process intent without an identity cannot release a slot even if the snapshot claims stopped', async t=>{
   const f=await controlled(t);let dispatches=0;
   f.engine.spawn=async (_run,a)=>{
-    dispatches++;writeJson(path.join(a.job_dir,'server-intent.json'),{at:Date.now()});
+    dispatches++;processFixture(a.job_dir);
     writeJson(path.join(a.job_dir,'worker.json'),{protocol:WORKER_FORMAT,id:a.id,phase:'completed',updated:Date.now(),prompt_id:'msg',inputs:[],replies:{},verification:[],stopped:true});
   };
   const s=await submit(f,[task('a'),task('b')],{settings:{concurrency:1}});
@@ -308,7 +326,7 @@ test('a server start intent without an identity cannot release a slot even if th
   const run=f.engine.getRun(s.run_id),a=run.tasks[0].attempts[0];
   assert.equal(a.state,'stop_uncertain');assert.equal(dispatches,1);assert.equal(run.tasks[1].attempts.length,0);
   const worker=readJson(path.join(a.job_dir,'worker.json'));
-  writeJson(path.join(a.job_dir,'worker.json'),{...worker,phase:'cancelled',server:{pid:99999999,birth:'confirmed stopped'}});
+  writeJson(path.join(a.job_dir,'worker.json'),{...worker,phase:'cancelled',server:confirmFixtureProcesses(a.job_dir)});
   await f.engine.cancel(run);
 });
 

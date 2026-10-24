@@ -69,5 +69,7 @@ declared verification. It survives service disconnection, preserves violation
 files/evidence, stops owned execution and keeps leases until confirmed stopped.
 Missing or stale monitor health fails closed; scope_or_context_error cannot be
 approved. Do not describe these guards as OS isolation for arbitrary supervisor-
-approved programs. Storage format 4 migrates stopped format 2/3 data with backup;
-RPC 1/worker 2 and the 12 MCP inputs remain unchanged. Consult operations before rollback.
+approved programs. Only storage/submission format 4, RPC 1 and worker format 2
+are supported; the 12 MCP inputs remain unchanged. Old formats and unfinished
+migration records are preserved and rejected without conversion. Use operations
+for whole-root backup/restore or starting a separate empty current data root.

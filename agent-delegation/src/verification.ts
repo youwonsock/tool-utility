@@ -38,7 +38,7 @@ export async function runSupervisedCommand(context:BackendContext,requestID:stri
   const intent:CommandIntent={command,shell,argv:verificationInvocation(shell,command.command,directory),directory,receipt:receiptFile,log,environment_hash:digest(Object.keys(env).sort().map(key=>[key,/KEY|TOKEN|SECRET|PASSWORD|AUTH/i.test(key)?'<credential>':env[key]]))};
   writeJson(intentFile,intent);
   invariant(!cancelled(),'CANCELLED','Cancelled before command dispatch.');
-  const runtime=await spawnRuntime(context,process.execPath,[spec.host_executable??path.resolve(process.argv[1]!),'command-host',intentFile],env,{primary:false});
+  const runtime=await spawnRuntime(context,process.execPath,[spec.host_executable,'command-host',intentFile],env,{primary:false});
   const deadline=Date.now()+command.timeout_ms;let receipt:Receipt|undefined,wasCancelled=false,stopped=false;
   try {
     while(!(receipt=readJson<Receipt>(receiptFile))) {
@@ -66,7 +66,7 @@ export async function runVerification(context:BackendContext,index:number,comman
   writeJson(intentFile,intent);
   state.shell_intent={index,message_id:id,command:command.command};save();
   invariant(!cancelled(),'CANCELLED','Cancelled before verification dispatch.');
-  await spawnRuntime(context,process.execPath,[spec.host_executable??path.resolve(process.argv[1]!),'command-host',intentFile],env);
+  await spawnRuntime(context,process.execPath,[spec.host_executable,'command-host',intentFile],env);
   state.shell_intent.process=state.server;save();
   const deadline=Date.now()+command.timeout_ms;
   let receipt:Receipt|undefined,wasCancelled=false;
