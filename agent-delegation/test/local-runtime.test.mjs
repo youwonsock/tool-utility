@@ -5,6 +5,7 @@ import path from 'node:path';
 import * as api from '../dist/index.mjs';
 import { fixture, task, submit, callOk, review, cli } from './helpers.mjs';
 import { mockProfiles, selection } from './native-helpers.mjs';
+import { configFixture, decodeInlineToml, sentinel, inputSentinel } from './codex-toml-fixture.mjs';
 const {uid}=api;
 
 test('missing external SDK returns actionable doctor diagnostics without registering work', async t => {
@@ -196,4 +197,16 @@ test('Windows cmd wrappers preserve the selected executable',{skip:process.platf
   // bounded DIAGNOSTIC_PENDING envelope is progress, not a compatibility result.
   const diagnostic=await f.engine.diagnose({repo:f.repo,worker:{platform:'codex',profile:'wrapper'}});
   assertDiagnosticReceipt(f,diagnostic,command);
+});
+test('Windows custom.cmd arguments retain exact Codex TOML keys and values without redirection',{skip:process.platform!=='win32'},async t=>{
+  const f=await fixture(t);f.engine.stop();const receiver=path.join(f.dir,'argv.mjs'),command=path.join(f.dir,'arguments.cmd');
+  fs.writeFileSync(receiver,'process.stdout.write(JSON.stringify(process.argv.slice(2)));\n');
+  fs.writeFileSync(command,'@setlocal EnableDelayedExpansion\r\n@"%AGENT_DELEGATION_TEST_NODE%" "%AGENT_DELEGATION_TEST_RECEIVER%" %*\r\n');
+  const args=['-c',`hooks=${api.codexToml(configFixture)}`],result=await api.exec(command,args,{cwd:f.repo,timeout:10000,env:{...process.env,
+    AGENT_DELEGATION_TEST_NODE:process.execPath,AGENT_DELEGATION_TEST_RECEIVER:receiver,AGENT_DELEGATION_CMD_SENTINEL:'UNEXPECTED-ENV-EXPANSION'}});
+  assert.equal(result.code,0,result.stderr);const observed=JSON.parse(result.stdout);
+  assert.deepEqual(observed,args);assert.deepEqual(decodeInlineToml(observed[1].slice('hooks='.length)),configFixture);
+  assert.equal(result.stdout.includes('UNEXPECTED-ENV-EXPANSION'),false,'A literal config key/value expanded a CMD environment variable.');
+  assert.equal(fs.existsSync(path.join(f.repo,sentinel)),false,'A literal config value was interpreted as CMD redirection.');
+  assert.equal(fs.existsSync(path.join(f.repo,inputSentinel)),false);
 });

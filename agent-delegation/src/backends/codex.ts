@@ -10,14 +10,8 @@ import { executableVersion } from './version.js';
 import { assertScopeMonitor, scopeMonitorHealthy } from '../scope.js';
 import { CODEX_COMMAND_TOOL, CODEX_READ_TOOL, codexCommand, codexDynamicTools, codexWindowsSandbox, readCodexFile } from './codex-tools.js';
 import { runSupervisedCommand } from '../verification.js';
+import { codexToml } from './codex-toml.js';
 
-function toml(value:unknown):string {
-  if(typeof value==='string')return JSON.stringify(value);
-  if(typeof value==='boolean'||typeof value==='number')return String(value);
-  if(Array.isArray(value))return `[${value.map(toml).join(',')}]`;
-  invariant(value&&typeof value==='object','CONFIG','Unsupported native configuration value.');
-  return `{${Object.entries(value).filter(([,v])=>v!==undefined&&v!==null).map(([k,v])=>`${JSON.stringify(k)}=${toml(v)}`).join(',')}}`;
-}
 function quote(value:string) {
   if(process.platform==='win32'){invariant(!/["%\r\n]/.test(value),'PATH','Native hook path cannot be quoted safely.');return `"${value}"`;}
   return `'${value.replaceAll("'","'\\''")}'`;
@@ -107,7 +101,7 @@ export class CodexBackend implements WorkerBackend {
   private async launch(overrides:Record<string,unknown>) {
     const {spec}=this.context;
     const args=[...spec.executable_args,...(spec.worker?.native_profile?['--profile',spec.worker.native_profile]:[]),
-      ...Object.entries(overrides).flatMap(([key,value])=>['-c',`${key}=${toml(value)}`]),'app-server','--listen','stdio://'];
+      ...Object.entries(overrides).flatMap(([key,value])=>['-c',`${key}=${codexToml(value)}`]),'app-server','--listen','stdio://'];
     const runtime=await spawnRuntime(this.context,spec.executable,args,workerEnvironment(spec.worker!));
     this.peer=new JsonRpcPeer(runtime.child,frame=>this.receive(frame));
     const initialization=await this.peer.request('initialize',{clientInfo:{name:'delegate-worker',version:'1.0.0'},capabilities:{experimentalApi:true}});
