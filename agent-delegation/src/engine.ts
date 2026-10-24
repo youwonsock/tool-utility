@@ -16,6 +16,7 @@ import { resolveRuntime, assertRuntimeUnchanged, publicRuntime } from './runtime
 import { inspectHttpSession } from './backends/http.js';
 import { attemptsStopped } from './persistence.js';
 import { confirmedStopped, stopOwned, processEvidence } from './backends/process.js';
+import { deploymentVersion } from './deployment.js';
 export class Engine {
   private queue = new ControlQueue();
   private effectCheckpoint?: () => Promise<void>;
@@ -302,6 +303,7 @@ export class Engine {
     }
     writeJson(path.join(jobDir,'diagnostic.json'),connection);
     return { version: VERSION, protocol: PROTOCOL, node: process.versions.node, platform: process.platform,
+      deployment:{version:deploymentVersion(this.executableFile),executable:this.executableFile},
       storage_format:STORE_FORMAT,worker_format:WORKER_FORMAT,worker:publicWorker(selected),backend_version:state?.backend_version,runtime:publicRuntime(state?.runtime??selected?.runtime),
       baseline:selected?.baseline, compatible:connection.healthy,
       connection, provider_authentication: 'Not exercised by doctor; a real model request is required to verify provider credentials.',
