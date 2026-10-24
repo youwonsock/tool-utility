@@ -22,11 +22,21 @@ export class JsonRpcPeer {
     // awaiting its RPCs immediately; process-tree proof still owns lease release.
     child.once('exit',()=>this.fail(new Fault('BACKEND_DISCONNECTED','Native process exited. No request was replayed.')));
     child.once('error',e=>this.fail(e));
+    // stdin is a separate Writable: asynchronous EPIPE can arrive after the
+    // child exit/close event or teardown. Keep its listener for the stream's
+    // lifetime so a late write failure cannot become an uncaught exception.
+    child.stdin?.on('error',error=>this.inputFailed(error));
   }
   private fail(error:Error){this.closed=true;for(const wait of this.pending.values()){clearTimeout(wait.timer);wait.reject(error);}this.pending.clear();}
+  private inputFailed(error:Error) {
+    const fault=new Fault('BACKEND_DISCONNECTED','Native input transport failed. No request was replayed.',{code:(error as NodeJS.ErrnoException).code??null});
+    this.fail(fault);return fault;
+  }
   write(frame:RpcFrame) {
-    invariant(!this.closed&&this.child.stdin?.writable,'BACKEND_DISCONNECTED','Native transport is closed.');
-    this.child.stdin.write(`${JSON.stringify(frame)}\n`);
+    const input=this.child.stdin;
+    invariant(!this.closed&&input?.writable,'BACKEND_DISCONNECTED','Native transport is closed.');
+    const payload=`${JSON.stringify(frame)}\n`;
+    try{input.write(payload);}catch(error){throw this.inputFailed(error as Error);}
   }
   request(method:string,params:unknown,timeout=30000):Promise<any> {
     const id=this.next++;

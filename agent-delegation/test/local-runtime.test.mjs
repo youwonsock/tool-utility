@@ -174,10 +174,26 @@ test('SDK constructor API failures are actionable and stop the owned native proc
   assert.equal(state.stopped,true);assert.equal(state.prompt_intent,undefined);
 });
 
+function assertDiagnosticReceipt(f,diagnostic,executable) {
+  assert.equal(diagnostic.compatible,true,JSON.stringify(diagnostic));assert.equal(diagnostic.runtime.cli.path,executable);
+  assert.equal(Object.values(f.store.state.operations).filter(operation=>operation.kind==='doctor').length,0);
+  const jobs=fs.readdirSync(path.join(f.data,'diagnostics'));assert.equal(jobs.length,1);
+  const directory=path.join(f.data,'diagnostics',jobs[0]),spec=JSON.parse(fs.readFileSync(path.join(directory,'spec.json')));
+  const receipt=JSON.parse(fs.readFileSync(path.join(directory,'diagnostic.json'))),worker=JSON.parse(fs.readFileSync(path.join(directory,'worker.json')));
+  assert.equal(spec.id,jobs[0]);assert.equal(spec.worker.executable,executable);assert.equal(receipt.healthy,true);
+  assert.equal(worker.phase,'completed');assert.equal(worker.stopped,true);assert.equal(worker.prompt_intent,undefined);
+}
+test('owned Codex diagnosis awaits one final receipt and retires its operation without a model request',async t=>{
+  const f=await fixture(t);f.engine.stop();mockProfiles(f);
+  const diagnostic=await f.engine.diagnose({repo:f.repo,worker:selection('codex')});
+  assertDiagnosticReceipt(f,diagnostic,process.execPath);
+});
 test('Windows cmd wrappers preserve the selected executable',{skip:process.platform!=='win32'},async t=>{
   const f=await fixture(t);f.engine.stop();
   const command=path.join(f.dir,'wrapper.cmd');fs.writeFileSync(command,`@"${process.execPath}" "${path.resolve('test/fake-codex.mjs')}" %*\r\n`);
   const profiles=JSON.parse(fs.readFileSync(path.join(f.data,'profiles.json')));profiles.profiles.wrapper={platform:'codex',executable:command};fs.writeFileSync(path.join(f.data,'profiles.json'),JSON.stringify(profiles));
-  const diagnostic=await f.engine.doctor({repo:f.repo,worker:{platform:'codex',profile:'wrapper'}});
-  assert.equal(diagnostic.compatible,true,JSON.stringify(diagnostic));assert.equal(diagnostic.runtime.cli.path,command);
+  // This test owns one diagnostic through process cleanup. The MCP doctor's
+  // bounded DIAGNOSTIC_PENDING envelope is progress, not a compatibility result.
+  const diagnostic=await f.engine.diagnose({repo:f.repo,worker:{platform:'codex',profile:'wrapper'}});
+  assertDiagnosticReceipt(f,diagnostic,command);
 });
