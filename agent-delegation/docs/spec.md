@@ -61,10 +61,27 @@ Protected context, Git metadata and parent directory removal remain hard denied.
 Existing-parent realpaths, case/short-name aliases, traversal, alternate streams
 and symlink/junction paths cannot escape protection. Opaque mutation payloads
 fail closed. HTTP runtimes confirm effective edit/bash ask policies and permission
-APIs; Codex confirms its synchronous hook/features/approval policy; Claude confirms
-hook registration and SDK permission callbacks before model dispatch.
+APIs; Codex discovers its sole owned synchronous PreToolUse hook with hooks/list,
+relaunches with only that entry's exact key/currentHash trusted in invocation
+overrides, and verifies trusted status, features, approval policy and the
+workspace-write sandbox before model dispatch. It enables code_mode_host for
+guarded execution without changing global hook trust. Claude confirms hook
+registration and SDK permission callbacks before model dispatch.
 
-Model shell/exec/write_stdin requests ask the supervisor by default. Delegation,
+Model shell/exec/write_stdin requests ask the supervisor by default. Codex blocks
+native shell/exec/write_stdin and uses the owned delegate_run_command dynamic
+tool for foreground commands. The app-server tool call stays pending while the
+existing supervisor permission request is answered; command intent, receipt,
+bounded output and owned-process termination are recorded without replacing or
+stopping the model server. delegate_read_file reads at most 64 KiB of regular
+UTF-8 text per call, restricted to task scope or exact protected context paths.
+Native apply_patch uses canonical tool_input.command and checks all patch paths.
+The native request_user_input question tool retains the existing supervisor
+question/answer route. The owned Codex hook emits only allow/deny: its current ask decision is unsupported
+and can fail open. Unknown tools and native MCP calls, including declared tools
+that would require ask, are explicitly denied; the dynamic gateway does not yet
+provide MCP tool approval. The public 12-tool MCP contract remains unchanged.
+Delegation,
 background and Git ownership mutations remain denied. Grants bind exact native
 command/input, cwd, attempt and scope/context policy hash; always remains local
 to that attempt and cannot override hard path denial. Late replies revalidate
@@ -84,7 +101,11 @@ A crashed worker requires explicit ownership reconciliation and retains leases.
 
 Codex owns a non-ephemeral thread because ephemeral thread/read(includeTurns)
 is rejected after accepted dispatch. The same owned thread is read to reconcile
-messages; observation failure never resends a model prompt.
+messages; observation failure never resends a model prompt. During the first
+30 seconds after dispatch, only the exact empty-rollout metadata error for that
+accepted owned session may be observed again on the next normal polling cycle.
+Other errors and expiration remain failures, and cancellation does not wait for
+rollout materialization.
 
 Submission checks only the actual task workers before preparing artifacts.
 Runtime identities retain real executable/SDK paths, argument-file identities,

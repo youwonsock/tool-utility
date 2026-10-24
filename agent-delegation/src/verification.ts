@@ -4,7 +4,7 @@ import spawn from 'cross-spawn';
 import { invariant, type Evidence, type ShellSpec, type Command } from './types.js';
 import { readJson, writeJson, mkdir, uid, digest, sleep, alive } from './io.js';
 import { workerEnvironment } from './profiles.js';
-import { spawnRuntime, stopOwned } from './backends/process.js';
+import { spawnRuntime, stopOwned, stopRuntimeIntent } from './backends/process.js';
 import type { BackendContext } from './backends/contract.js';
 import { verificationInvocation, verificationShell } from './shell.js';
 export { verificationShell } from './shell.js';
@@ -27,6 +27,33 @@ export async function commandHost(intentFile:string) {
   fs.fsyncSync(fd);fs.closeSync(fd);
   writeJson(intent.receipt,{exit_code:child.exitCode,error,output_bytes:total,truncated:total>written} satisfies Receipt);
   await new Promise<void>(()=>{setInterval(()=>{},1000);});
+}
+// Dynamic shell calls share the owned ledger with Codex, but finishing a command
+// must never stop the still-running model server or replace its root identity.
+export async function runSupervisedCommand(context:BackendContext,requestID:string,command:Command,directory:string,cancelled:()=>boolean) {
+  const {spec,state}=context,shell=state.verification_shell??verificationShell(spec.worker?.shell);
+  const prefix=path.join(spec.job_dir,`supervised-${digest(requestID).slice(0,32)}`),intentFile=`${prefix}-intent.json`,receiptFile=`${prefix}-receipt.json`,log=`${prefix}.log`;
+  invariant(!fs.existsSync(intentFile),'COMMAND_UNCERTAIN','This tool call already has an execution intent. It will not be replayed.');
+  const env:NodeJS.ProcessEnv={...workerEnvironment(spec.worker!),TERM:'dumb'};
+  const intent:CommandIntent={command,shell,argv:verificationInvocation(shell,command.command,directory),directory,receipt:receiptFile,log,environment_hash:digest(Object.keys(env).sort().map(key=>[key,/KEY|TOKEN|SECRET|PASSWORD|AUTH/i.test(key)?'<credential>':env[key]]))};
+  writeJson(intentFile,intent);
+  invariant(!cancelled(),'CANCELLED','Cancelled before command dispatch.');
+  const runtime=await spawnRuntime(context,process.execPath,[spec.host_executable??path.resolve(process.argv[1]!),'command-host',intentFile],env,{primary:false});
+  const deadline=Date.now()+command.timeout_ms;let receipt:Receipt|undefined,wasCancelled=false,stopped=false;
+  try {
+    while(!(receipt=readJson<Receipt>(receiptFile))) {
+      if(cancelled()||Date.now()>=deadline){wasCancelled=true;break;}
+      if(!await alive(runtime.identity))break;
+      await sleep(100);
+    }
+  } finally {stopped=await stopRuntimeIntent(context,runtime.intent);}
+  const exit=receipt?.exit_code??null,status=wasCancelled||cancelled()?'cancelled':Number.isInteger(exit)?exit===0?'passed':'failed':'unknown';
+  const output=Buffer.alloc(Math.min(fs.existsSync(log)?fs.statSync(log).size:0,64*1024));
+  if(output.length){const fd=fs.openSync(log,'r');try{fs.readSync(fd,output,0,output.length,0);}finally{fs.closeSync(fd);}}
+  const result={status,exit_code:exit,output:output.toString('utf8'),output_bytes:receipt?.output_bytes??output.length,truncated:(receipt?.output_bytes??output.length)>output.length,termination_confirmed:stopped};
+  writeJson(`${prefix}-result.json`,{...result,log:path.basename(log)});
+  invariant(stopped,'STOP_UNCERTAIN','Command process tree termination could not be confirmed.');
+  return result;
 }
 export async function runVerification(context:BackendContext,index:number,command:Command,cancelled:()=>boolean):Promise<Evidence> {
   const {spec,state,save}=context;

@@ -56,11 +56,17 @@ export function mutationPaths(tool:string,input:Record<string,unknown>):string[]
   };
   collect(input);
   if(input.changes&&typeof input.changes==='object'&&!Array.isArray(input.changes))paths.push(...Object.keys(input.changes));
-  const patch=input.patch??input.patch_text??input.input;
+  // Codex's canonical PreToolUse payload carries an apply_patch body in
+  // tool_input.command. Other native adapters use one of the legacy fields.
+  // Conflicting/malformed aliases must not hide paths from the policy check.
+  const patches=[input.patch,input.patch_text,input.input,...(/patch/i.test(tool)?[input.command]:[])].filter(value=>value!==undefined);
+  if(patches.some(value=>typeof value!=='string')||new Set(patches).size>1)return [];
+  const patch=patches[0];
   if(typeof patch==='string') {
     // The native apply_patch grammar exposes every add/update/delete and move.
     const matches=[...patch.matchAll(/^\*\*\* (?:Add File|Update File|Delete File|Move to): (.+)$/gm)];
     if(!patch.startsWith('*** Begin Patch')||!matches.length||!patch.trimEnd().endsWith('*** End Patch'))return [];
+    if(matches.some(match=>match[1]!==match[1]!.trim()||/[\x00-\x1f\x7f]/.test(match[1]!)))return [];
     paths.push(...matches.map(m=>m[1]!));
   }
   return [...new Set(paths)];
