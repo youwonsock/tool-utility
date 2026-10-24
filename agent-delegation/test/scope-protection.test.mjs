@@ -23,6 +23,19 @@ test('common scope semantics and direct mutation policy cover every edit, delete
     ['apply_patch',{input:'*** Begin Patch\n*** Add File: src/a.txt\n+a\n*** Delete File: AGENTS.md\n*** End Patch'}],
   ])assert.equal(policy(tool,input),'deny',JSON.stringify({tool,input}));
   assert.equal(policy('apply_patch',{input:'*** Begin Patch\n*** Add File: src/a.txt\n+a\n*** End Patch'}),'allow');
+  const canonicalPatch='*** Begin Patch\n*** Add File: src/a.txt\n+a\n*** End Patch';
+  assert.equal(policy('apply_patch',{command:canonicalPatch}),'allow');
+  assert.equal(policy('apply_patch',{input:canonicalPatch,command:canonicalPatch}),'allow');
+  for(const command of [
+    '*** Begin Patch\n*** Add File: outside.txt\n+bad\n*** End Patch',
+    '*** Begin Patch\n*** Update File: src/a.txt\n*** Move to: outside.txt\n@@\n-a\n+b\n*** End Patch',
+    '*** Begin Patch\n*** Add File: src/a.txt\n+ok\n*** Delete File: AGENTS.md\n*** End Patch',
+    '*** Begin Patch\n*** Add File: src/a.txt\n+missing terminator',
+    '*** Begin Patch\r\n*** Delete File: AGENTS.md\r\n*** End Patch',
+    '*** Begin Patch\n*** Delete File: AGENTS.md \n*** End Patch',
+  ])assert.equal(policy('apply_patch',{command}),'deny',command);
+  assert.equal(policy('apply_patch',{command:canonicalPatch,input:'*** Begin Patch\n*** Add File: outside.txt\n+hidden\n*** End Patch'}),'deny');
+  assert.equal(policy('apply_patch',{command:{patch:canonicalPatch}}),'deny');
   assert.equal(policy('mcp__files__write',{path:'outside.txt'}),'deny');assert.equal(policy('mcp__files__write',{path:'src/a.txt'}),'ask');
   assert.equal(policy('Bash',{command:'node build.mjs'}),'ask');assert.equal(policy('write_stdin',{chars:'continue\n'}),'ask');
   for(const command of ['git -C . reset --hard','git update-ref HEAD bad','codex exec x','node script.mjs &','nohup node script.mjs','echo x > AGENTS.md','echo x > .git/config'])assert.equal(policy('Bash',{command}),'deny',command);

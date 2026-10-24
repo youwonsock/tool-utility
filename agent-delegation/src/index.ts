@@ -12,6 +12,7 @@ export * from './profiles.js';
 export * from './runtime.js';
 export * from './backends/index.js';
 export * from './backends/policy.js';
+export { codexDynamicTools, readCodexFile, codexCommand } from './backends/codex-tools.js';
 export * from './verification.js';
 export * from './hosts.js';
 export { checkedMutationPath, workerPolicyHash } from './scope.js';

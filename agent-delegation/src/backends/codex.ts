@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { invariant, type InputRequest } from '../types.js';
+import { Fault, invariant, type InputRequest } from '../types.js';
 import { writeJson, digest } from '../io.js';
 import { workerEnvironment } from '../profiles.js';
 import { connection, workerPermissionKey, toolPolicy } from './policy.js';
@@ -8,6 +8,8 @@ import { JsonRpcPeer, type RpcFrame } from './json-rpc.js';
 import type { Answer, BackendContext, Observation, WorkerBackend } from './contract.js';
 import { executableVersion } from './version.js';
 import { assertScopeMonitor, scopeMonitorHealthy } from '../scope.js';
+import { CODEX_COMMAND_TOOL, CODEX_READ_TOOL, codexCommand, codexDynamicTools, readCodexFile } from './codex-tools.js';
+import { runSupervisedCommand } from '../verification.js';
 
 function toml(value:unknown):string {
   if(typeof value==='string')return JSON.stringify(value);
@@ -26,6 +28,10 @@ export class CodexBackend implements WorkerBackend {
   private pending=new Map<string,{frame:RpcFrame;input:InputRequest}>();
   private answered=new Map<string,string>();
   private confirmed=new Set<string>();
+  private dynamicAnswers=new Map<string,string>();
+  private executing=new Set<string>();
+  private cancelled=false;
+  private rolloutReadDeadline=0;
   private accepted=false;
   private complete=false;
   private error?:string;
@@ -36,16 +42,35 @@ export class CodexBackend implements WorkerBackend {
     const {state,save,spec}=this.context;
     this.frames.push(frame);
     const p=frame.params??{};
-    if(p.threadId&&p.threadId!==state.session_id)return;
+    if(p.threadId&&p.threadId!==state.session_id) {
+      if(frame.id!==undefined&&frame.method==='item/tool/call')this.dynamicResult(frame,false,{error:'Dynamic call is not owned by this worker thread.'});
+      return;
+    }
     if(frame.method==='serverRequest/resolved') {
       for(const [key,pending]of this.pending)if(String(pending.frame.id)===String(p.requestId))this.pending.delete(key);
       if(!this.complete){const key=this.answered.get(String(p.requestId));if(key)this.confirmed.add(key);}
     }
-    if(frame.method==='turn/started'){state.turn_id=p.turn?.id;save();}
+    if(frame.method==='item/completed'&&p.item?.type==='dynamicToolCall') {
+      const key=this.dynamicAnswers.get(String(p.item.id));if(key)this.confirmed.add(key);
+    }
+    if(frame.method==='turn/started'){state.turn_id=p.turn?.id;this.accepted=true;save();}
     if(frame.method==='turn/completed'){this.complete=true;this.error=p.turn?.error?.message??(p.turn?.status!=='completed'?`Native turn ${p.turn?.status}.`:undefined);}
     if(frame.method==='item/started'&&p.item?.type==='userMessage'&&p.item.id===state.prompt_id)this.accepted=true;
     if(frame.id===undefined||!frame.method)return;
     const id=`input_${digest({method:frame.method,id:frame.id,session:state.session_id}).slice(0,32)}`;
+    if(frame.method==='item/tool/call') {
+      try {
+        assertScopeMonitor(spec,state);
+        invariant(!this.cancelled&&p.threadId===state.session_id&&p.turnId===state.turn_id&&p.namespace==null
+          &&typeof p.callId==='string'&&p.callId.length>0&&p.callId.length<=4096&&!/[\x00-\x1f\x7f]/.test(p.callId),'MCP_POLICY','Dynamic call is not owned by this worker turn.');
+        if(p.tool===CODEX_READ_TOOL){this.dynamicResult(frame,true,readCodexFile(spec,p.arguments));return;}
+        invariant(p.tool===CODEX_COMMAND_TOOL,'MCP_POLICY','Unknown dynamic worker tool.');
+        const command=codexCommand(spec,p.arguments);
+        const input:InputRequest={id,kind:'permission',details:{tool:p.tool,...command},supported_decisions:['once','always','reject'],grant_key:workerPermissionKey(spec,p.tool,command)};
+        this.pending.set(id,{frame,input});
+      }catch(error){this.dynamicResult(frame,false,{error:(error as Error).message});}
+      return;
+    }
     const question=frame.method==='item/tool/requestUserInput'||frame.method==='mcpServer/elicitation/request';
     const supported=['item/commandExecution/requestApproval','item/fileChange/requestApproval','item/permissions/requestApproval','item/tool/requestUserInput','mcpServer/elicitation/request'];
     if(!supported.includes(frame.method)) {
@@ -65,13 +90,15 @@ export class CodexBackend implements WorkerBackend {
       ...(question?{}:{grant_key:workerPermissionKey(spec,frame.method,logical)})};
     this.pending.set(id,{frame,input});
   }
+  private dynamicResult(frame:RpcFrame,success:boolean,value:unknown) {
+    this.peer!.write({id:frame.id,result:{contentItems:[{type:'inputText',text:JSON.stringify(value)}],success}});
+  }
   private permissionDecision(method:string,params:Record<string,any>) {
     const {spec,state}=this.context;
     if(!scopeMonitorHealthy(spec,state))return 'deny';
     if(method==='item/permissions/requestApproval')return 'deny'; // Native broad grants cannot override the path policy.
     if(method==='item/commandExecution/requestApproval') {
-      if(typeof params.command!=='string'&&!Array.isArray(params.command))return 'deny';
-      return toolPolicy('exec_command',params,spec.directory,spec.context.map(c=>c.path),spec.scope);
+      return 'deny'; // Native hooks cannot implement `ask`; shell uses the owned dynamic gateway.
     }
     if(method==='item/fileChange/requestApproval')return toolPolicy('fileChange',params,spec.directory,spec.context.map(c=>c.path),spec.scope);
     return 'ask';
@@ -103,10 +130,29 @@ export class CodexBackend implements WorkerBackend {
     }
     const cli=spec.host_executable??path.resolve(process.argv[1]!);
     const hookCommand=[process.execPath,cli,'policy-hook',spec.job_dir].map(quote).join(' ');
-    const hooks:Record<string,unknown>=Object.fromEntries(Object.keys(initial.hooks??{}).map(event=>[event,[]]));
+    const hooks:Record<string,unknown>=Object.fromEntries(Object.keys(initial.hooks??{}).filter(event=>event!=='state').map(event=>[event,[]]));
+    hooks.state={};
     hooks.PreToolUse=[{matcher:'.*',hooks:[{type:'command',command:hookCommand,timeout:15}]}];
-    const overrides={features:{...features,hooks:true,default_mode_request_user_input:true},mcp_servers:mcp,hooks,web_search:'disabled',approval_policy:'on-request',approvals_reviewer:'user'};
+    const discovery={features:{...features,hooks:true,default_mode_request_user_input:true},mcp_servers:mcp,hooks,web_search:'disabled',approval_policy:'on-request',approvals_reviewer:'user'};
+    await this.launch(discovery);
+    const inspectHook=async(trusted:boolean,key?:string,hash?:string)=>{
+      const listing=await this.peer!.request('hooks/list',{cwds:[spec.directory]});
+      invariant(Array.isArray(listing?.data)&&listing.data.length===1,'MCP_POLICY','Codex hook inventory is unavailable.');
+      const entry=listing.data[0];
+      invariant(entry.cwd===spec.directory&&Array.isArray(entry.hooks)&&entry.hooks.length===1&&!(entry.errors?.length)&&!(entry.warnings?.length),'MCP_POLICY','Codex hook inventory contains unexpected entries or errors.');
+      const hook=entry.hooks[0];
+      invariant(hook.eventName==='preToolUse'&&hook.source==='sessionFlags'&&hook.handlerType==='command'&&hook.command===hookCommand&&hook.matcher==='.*'
+        &&hook.async===false&&hook.enabled===true&&hook.timeoutSec===15&&typeof hook.key==='string'&&hook.key.length>0&&hook.key.length<=8192&&!/[\x00-\x1f\x7f]/.test(hook.key)
+        &&typeof hook.currentHash==='string'&&/^sha256:[a-f0-9]{64}$/.test(hook.currentHash),'MCP_POLICY','Codex did not retain the exact owned synchronous tool hook.');
+      invariant(!trusted||hook.trustStatus==='trusted'&&hook.key===key&&hook.currentHash===hash,'MCP_POLICY','Codex worker hook is not trusted with the discovered content hash.');
+      return hook;
+    };
+    const discovered=await inspectHook(false);
+    invariant(await stopOwned(this.context),'STOP_UNCERTAIN','Codex hook discovery did not stop.');
+    hooks.state={[discovered.key]:{enabled:true,trusted_hash:discovered.currentHash}};
+    const overrides={...discovery,features:{...discovery.features,code_mode_host:true}};
     await this.launch(overrides);
+    const trusted=await inspectHook(true,discovered.key,discovered.currentHash);
     const effective=(await this.peer!.request('config/read',{cwd:spec.directory,includeLayers:false})).config;
     invariant(effective&&typeof effective==='object','BACKEND_API','Codex config/read API returned an incompatible response.');
     invariant(Object.entries(overrides.features).every(([key,value])=>effective.features?.[key]===value)&&effective.web_search==='disabled','MCP_POLICY','Effective Codex feature policy differs.');
@@ -114,7 +160,7 @@ export class CodexBackend implements WorkerBackend {
     const actualHooks=effective.hooks?.PreToolUse;
     const hookCheck=Array.isArray(actualHooks)&&actualHooks.length===1&&actualHooks[0].matcher==='.*'&&actualHooks[0].hooks?.length===1
       &&actualHooks[0].hooks[0].type==='command'&&actualHooks[0].hooks[0].command===hookCommand&&actualHooks[0].hooks[0].async!==true;
-    writeJson(path.join(spec.job_dir,'hook-policy.json'),{confirmed:hookCheck,groups:Array.isArray(actualHooks)?actualHooks.map((g:any)=>({keys:Object.keys(g),matcher:g.matcher,handlers:g.hooks?.map((h:any)=>({keys:Object.keys(h),type:h.type,command_matches:h.command===hookCommand,async:h.async}))})):null});
+    writeJson(path.join(spec.job_dir,'hook-policy.json'),{confirmed:hookCheck,trusted:trusted.trustStatus==='trusted',key:trusted.key,hash:trusted.currentHash,groups:Array.isArray(actualHooks)?actualHooks.map((g:any)=>({keys:Object.keys(g),matcher:g.matcher,handlers:g.hooks?.map((h:any)=>({keys:Object.keys(h),type:h.type,command_matches:h.command===hookCommand,async:h.async}))})):null});
     invariant(hookCheck,'MCP_POLICY','Effective Codex tool hook differs.');
     const allowed=new Set(spec.resources.map(r=>r.connection.name));
     invariant(Object.entries(effective.mcp_servers??{}).every(([name,cfg])=>(cfg as any).enabled===false||allowed.has(name)),'MCP_POLICY','Undeclared Codex MCP server remains enabled.');
@@ -131,30 +177,61 @@ export class CodexBackend implements WorkerBackend {
     // Durable owned threads support thread/read(includeTurns); ephemeral threads
     // reject that API after an accepted prompt. Never retry a turn to recover it.
     const response=await this.peer!.request('thread/start',{cwd:spec.directory,model:this.model??null,approvalPolicy:'on-request',approvalsReviewer:'user',sandbox:'workspace-write',ephemeral:false,
-      developerInstructions:'Implement only the assigned task. Do not delegate, commit, change branches, or modify protected context files.'});
+      dynamicTools:codexDynamicTools,
+      developerInstructions:'Implement only the assigned task. Do not delegate, commit, change branches, or modify protected context files. Read source and protected context with delegate_read_file. Use delegate_run_command for foreground shell commands; it waits for supervisor approval. Ask questions with request_user_input. Native shell and other native tools are blocked. Edit only scoped files with apply_patch.'});
     invariant(response.thread?.id&&response.approvalPolicy==='on-request'&&response.approvalsReviewer==='user','MCP_POLICY','Native thread did not retain worker approval policy.');
+    invariant(response.sandbox?.type==='workspaceWrite','MCP_POLICY','Native thread did not retain the worker workspace-write sandbox.');
     invariant(typeof response.model==='string'&&response.model.length>0&&(this.model===undefined||response.model===this.model),'MODEL_UNAVAILABLE','Codex did not resolve the requested model. No substitute model will be dispatched.');
     state.session_id=response.thread.id;state.model=response.model;this.thread=response.thread;save();
   }
   async dispatch(prompt:string,requestID:string) {
     const {state,save,spec}=this.context;assertScopeMonitor(spec,state);
+    this.rolloutReadDeadline=Date.now()+30000;
     const response=await this.peer!.request('turn/start',{threadId:state.session_id,clientUserMessageId:requestID,input:[{type:'text',text:prompt,text_elements:[]}]});
     state.turn_id=response.turn?.id;this.accepted=true;save();
   }
   async observe():Promise<Observation> {
+    let materializing=false;
     if(this.context.state.session_id) {
-      const response=await this.peer!.request('thread/read',{threadId:this.context.state.session_id,includeTurns:true});
-      this.thread=response.thread;
+      try {
+        const response=await this.peer!.request('thread/read',{threadId:this.context.state.session_id,includeTurns:true});
+        this.thread=response.thread;
+      }catch(error) {
+        const details=error instanceof Fault&&error.code==='BACKEND_RPC'?error.details as {code?:number;message?:string}:undefined;
+        const match=typeof details?.message==='string'?details.message.match(/^failed to read thread: thread-store internal error: failed to read session metadata (.+): rollout at (.+) is empty$/):null;
+        const filename=match?.[1]?.replaceAll('\\','/').split('/').at(-1);
+        // A just-accepted durable turn can precede its first rollout flush. Only
+        // this exact owned-session read error is transient; never resend a turn.
+        if(!this.cancelled&&this.accepted&&Date.now()<this.rolloutReadDeadline&&details?.code===-32603&&match?.[1]===match?.[2]
+          &&filename?.endsWith(`-${this.context.state.session_id}.jsonl`))materializing=true;
+        else throw error;
+      }
       const turn=this.thread.turns?.find((t:any)=>t.id===this.context.state.turn_id)??this.thread.turns?.at(-1);
       if(turn){this.accepted ||= turn.items?.some((i:any)=>i.type==='userMessage'&&i.id===this.context.state.prompt_id)??false;
         if(['completed','failed','interrupted'].includes(turn.status)){this.complete=true;this.error??=turn.error?.message??(turn.status==='completed'?undefined:`Native turn ${turn.status}.`);}}
     }
     const summary=this.thread?.turns?.flatMap((t:any)=>t.items??[]).filter((i:any)=>i.type==='agentMessage').map((i:any)=>i.text).join('\n');
-    return {accepted:this.accepted,complete:this.complete&&!this.pending.size,inputs:[...this.pending.values()].map(p=>p.input),transcript:{thread:this.thread,events:this.frames},summary,error:this.error,reply_confirmations:[...this.confirmed]};
+    return {accepted:this.accepted,complete:this.complete&&!this.pending.size&&!materializing,inputs:[...this.pending.values()].map(p=>p.input),transcript:{thread:this.thread,events:this.frames},summary,error:this.error,reply_confirmations:[...this.confirmed]};
   }
   async reply(input:InputRequest,answer:Answer):Promise<'uncertain'> {
     const pending=this.pending.get(input.id);invariant(pending,'INPUT','Native request is no longer pending.');
     const {frame}=pending,p=frame.params??{};let result:unknown;
+    if(frame.method==='item/tool/call') {
+      invariant(['once','always','reject'].includes(answer.decision),'INPUT_UNSUPPORTED','Dynamic shell requires a permission decision.');
+      invariant(!this.executing.has(input.id),'INPUT','Dynamic command is already executing and will not be replayed.');
+      invariant(answer.decision==='reject'||!this.cancelled&&p.threadId===this.context.state.session_id&&p.turnId===this.context.state.turn_id
+        &&scopeMonitorHealthy(this.context.spec,this.context.state),'MCP_POLICY','Permission no longer satisfies the hard worker policy.');
+      const command=codexCommand(this.context.spec,p.arguments);
+      this.executing.add(input.id);
+      let value:unknown={error:'Supervisor rejected command.'},success=false;
+      if(answer.decision!=='reject') {
+        value=await runSupervisedCommand(this.context,input.id,command,command.cwd,()=>this.cancelled||!this.pending.has(input.id)||p.turnId!==this.context.state.turn_id
+          ||!scopeMonitorHealthy(this.context.spec,this.context.state));
+        success=(value as {status:string}).status==='passed';
+      }
+      this.answered.set(String(frame.id),input.id);this.dynamicAnswers.set(String(p.callId),input.id);
+      this.dynamicResult(frame,success,value);this.pending.delete(input.id);return 'uncertain';
+    }
     invariant(input.kind==='question'||answer.decision==='reject'||this.permissionDecision(frame.method!,p)!=='deny','MCP_POLICY','Permission no longer satisfies the hard worker policy.');
     if(frame.method==='item/tool/requestUserInput') {
       const questions=p.questions??[];
@@ -178,6 +255,6 @@ export class CodexBackend implements WorkerBackend {
     this.answered.set(String(frame.id),input.id);this.peer!.write({id:frame.id,result});this.pending.delete(input.id);return 'uncertain';
   }
   async reconcile(){return {session_present:!!this.context.state.session_id,prompt_present:this.accepted,turn_id:this.context.state.turn_id,complete:this.complete};}
-  async cancel(){if(this.context.state.session_id&&this.context.state.turn_id)await this.peer?.request('turn/interrupt',{threadId:this.context.state.session_id,turnId:this.context.state.turn_id},5000).catch(()=>undefined);}
+  async cancel(){this.cancelled=true;if(this.context.state.session_id&&this.context.state.turn_id)await this.peer?.request('turn/interrupt',{threadId:this.context.state.session_id,turnId:this.context.state.turn_id},5000).catch(()=>undefined);}
   async confirmStopped(){return stopOwned(this.context);}
 }
