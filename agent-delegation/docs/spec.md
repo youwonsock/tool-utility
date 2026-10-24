@@ -16,7 +16,7 @@ The current conversation owns planning, review, correction instructions and fina
 - Final validation freezes task revision, integration commit, context hash and commands. It runs in a separate worktree. Source changes invalidate it. Final approval must name the validation, commit and revision. Finalize rechecks the original checkout and uses `git merge --ff-only --no-overwrite-ignore`; recovery observes rather than resets user changes.
 - Mutating MCP calls require idempotency IDs. Calls taking longer than one second may return {in_progress:true, operation_id, operation_status:"running", run_id?}; identical retries follow progress or the final result, never duplicate execution. get_run adds operations with id/kind/status/updated. Responses are paginated valid JSON (4 KiB); artifacts use 16 KiB pages. Observed command evidence is distinct from model claims.
 - Submission validates every task/resource/context before preparing owned files and worktrees, then publishes the whole batch with its event in one journal record. Durable preparation manifests permit safe cleanup of unchanged unpublished resources or recovery of committed responses. Uncertain persistence fences dispatch until restart; no implementation request is replayed.
-- Typed lifecycle rules keep existing state names and validate grouped transitions. RPC remains 1; storage and new submission preparations use format 4 and workers use format 2. Stopped format-2/3 storage migrates with a resumable durable backup; other or missing formats are unsupported. Corrections immediately remove the old result from review. Cancellation is one-way and overrides late verification snapshots; termination uncertainty retains leases. Rejections preserve structured reasons, changed files and bounded UTF-8 previews without reading symlink targets or authentication bodies.
+- Typed lifecycle rules keep existing state names and validate grouped transitions. RPC remains 1; storage and new submission preparations use format 4 and workers use format 2. Only these current formats are supported. Old or missing formats are rejected without conversion; an unfinished migration marker blocks startup and installation switching. Corrections immediately remove the old result from review. Cancellation is one-way and overrides late verification snapshots; termination uncertainty retains leases. Rejections preserve structured reasons, changed files and bounded UTF-8 previews without reading symlink targets or authentication bodies.
 - Service and workers survive MCP disconnection. Stop/cancel require confirmed termination. Install/update copies self-contained versioned bundles and a marketplace into user storage, retaining old releases. Host exports do not change global registration. Supervisor conversations are not launched by the service; no authored GUI or public marketplace publishing is included.
 
 ## Platform and recovery contracts
@@ -113,9 +113,8 @@ versions and hashes. Workers compare the submitted identity before startup
 and model dispatch. New correction attempts discover the current compatible
 installation under the frozen configuration/model; existing attempts do not
 reload a different runtime. Missing/changed identity records RUNTIME_CHANGED
-without model replay. Existing format-2/3 terminal records migrate before reading; an
-unfinished attempt without identity must finish/cancel with its old release.
-Missing/other record formats remain unsupported. A live old service or leased
+without model replay. Missing/other record formats remain unsupported. Missing
+process-ledger evidence cannot prove termination and must retain uncertainty and leases. A live old service or leased
 attempt blocks installation switching with UPDATE_PENDING.
 
 The common verifier records its actual shell argv, environment fingerprint,
@@ -148,7 +147,7 @@ The package, plugin and MCP server are agent-delegation. Only delegate-agents is
 
 Runs retain their first terminal ended_at; completed/cancelled runs and done request responses move to checksummed cold files after seven days. Startup/hourly scans perform one move per serialized scheduler tick. Leased/unconfirmed processes and unresolved submission preparations block run archival. Request intents remain hot; archived response hashes and results preserve idempotency. Summaries, resource fingerprints and the global event sequence remain in the hot checkpoint. list_runs includes both stores ordered by created time/ID; get_run/wait_run/artifacts and cleanup retain access. New archived-run mutations return RUN_ARCHIVED, after idempotency lookup. Responses add archived/archived_at/ended_at without new tools or inputs.
 
-Archive files publish before index/removal commits. Uncertain commit/checkpoint delivery fences dispatch; missing/corrupt archives never become fresh requests. New run manifests split task/attempt/history and bounded event chunks, so paged reads do not hydrate the entire archive. Legacy format-3 archive references/checksums remain readable. Artifact reads use requested byte ranges plus UTF-8 boundary lookaround, not full-file reads.
+Archive files publish before index/removal commits. Uncertain commit/checkpoint delivery fences dispatch; missing/corrupt archives never become fresh requests. Run manifests use format 4 and split task/attempt/history and bounded event chunks, so paged reads do not hydrate the entire archive. Monolithic run archives are unsupported. Artifact reads use requested byte ranges plus UTF-8 boundary lookaround, not full-file reads.
 
 Storage format 4 appends typed revision-linked checksummed deltas, atomically combining
 state changes, request results and events. Full snapshots are checkpoints rather
@@ -159,14 +158,18 @@ publication retains concurrent tails; obsolete files retire after read leases.
 Recovery streams journal records. state.json remains the initial format guard;
 backup must include the manifest and its referenced generations, not only that file.
 
-Stopped format 2/3 migration backs state, journal and archives together, persists
-migration.json with a target hash and resumes interrupted publication before
-dispatch. Format 3 ages/IDs/checksums/global sequence/resource hashes survive.
-Only missing legacy terminal/response ages begin at migration time. An old release
-may run only against a consistent restored backup at the original absolute data
-location, retaining referenced jobs, worktrees and context/evidence. Preserve the
-entire current root before removing format 4 manifest/generations or migration
-marker and restoring matched state/journal/archives. A different empty root is
-not a supported path migration; new format 4 runs/preparations cannot be resumed
-by old releases. No reverse conversion exists.
+Only format 4 typed-delta journals and chunked run archives are read. Old storage,
+submission preparations, full-state journal records and migration markers are
+rejected without rewriting or deleting their data. No automatic migration,
+interrupted-migration resumption or reverse conversion is provided. Keep old
+data and its matching release separate; finish/cancel owned work and confirm
+termination with that release. A new empty AGENT_DELEGATION_HOME starts a new
+history under the current release, rather than relocating or resuming old runs.
+Do not copy old records into that root or remove a marker to bypass validation.
+
+Back up the entire stopped current data root, including its manifest, referenced
+checkpoint/journal generations, archives, jobs, worktrees and context/evidence.
+Preserve the current root before restoring a consistent whole backup at its
+original absolute location with a matching release. Data-root relocation and
+mixing snapshots/journals from different generations are unsupported.
 Evidence, logs, worktrees and backups are not automatically removed.

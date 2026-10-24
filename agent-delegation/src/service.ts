@@ -8,10 +8,11 @@ import { Store } from './store.js';
 import { PROTOCOL, STORE_FORMAT, WORKER_FORMAT, platforms, VERSION, Fault, invariant, schemas, type ProcessIdentity, type ToolName } from './types.js';
 import { mkdir, uid, readJson, writeJson, processIdentity, alive, sleep } from './io.js';
 import { holdsResources } from './lifecycle.js';
-import { prepareStorage } from './persistence.js';
+import { loadState } from './persistence.js';
 
 type Descriptor = { protocol: number; version: string; url: string; token: string; owner: ProcessIdentity; executable: string };
 export async function serve(root: string, executableFile: string) {
+  loadState(root); // Reject unsupported storage before publishing startup ownership.
   mkdir(root); const lock = path.join(root, 'service.lock');
   const owner = await processIdentity(process.pid); invariant(owner, 'SERVICE_IDENTITY', 'Cannot verify the service process identity.');
   try { fs.mkdirSync(lock, { mode: 0o700 }); } catch (e) {
@@ -25,7 +26,6 @@ export async function serve(root: string, executableFile: string) {
     } finally { fs.rmSync(reap, { recursive: true }); }
   }
   writeJson(path.join(lock, 'owner.json'), { owner });
-  await prepareStorage(root);
   const store = new Store(root); await store.flushCheckpoint(); const engine = new Engine(store, executableFile);
   await engine.recoverPreparations();
   const token = uid('auth');
@@ -86,6 +86,7 @@ export async function connect(root: string, executableFile: string, start = true
   invariant(start, 'SERVICE_OFFLINE', 'Service is not running.');
   const prior = readJson<Descriptor>(path.join(root, 'service.json'));
   if (!prior || !await alive(prior.owner)) {
+    loadState(root); // Do not create a log or spawn a service for unsupported data.
     const log = fs.openSync(path.join(root, 'service.log'), 'a', 0o600);
     try {
       const child = spawn(process.execPath, [executableFile,'service',root], { detached: true, stdio: ['ignore',log,log], windowsHide: true });

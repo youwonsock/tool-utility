@@ -250,14 +250,14 @@ for(const platform of ['opencode','codex','claude-code','kilo'])test(`${platform
 
 test('a monitor violation kills blocked native observe without losing its original reason or evidence',async t=>{
   const {backend,spec}=await native(t,'codex');await backend.confirmStopped();
-  spec.id=uid('blocked');spec.job_dir=path.join(path.dirname(spec.job_dir),spec.id);fs.mkdirSync(spec.job_dir);
-  spec.goal='FAKE_ACTION:{"block_observe":true,"bypass_hook":true,"files":{"outside.txt":"preserved evidence"}}';
-  fs.writeFileSync(path.join(spec.job_dir,'spec.json'),JSON.stringify(spec));
-  const result=await exec(process.execPath,[cli,'worker',spec.job_dir],{cwd:spec.directory,timeout:15000});assert.equal(result.code,0,result.stderr);
-  const state=JSON.parse(fs.readFileSync(path.join(spec.job_dir,'worker.json')));
+  const id=uid('blocked'),workerSpec={...spec,id,job_dir:path.join(path.dirname(spec.job_dir),id),goal:'FAKE_ACTION:{"block_observe":true,"bypass_hook":true,"files":{"outside.txt":"preserved evidence"}}'};
+  fs.mkdirSync(workerSpec.job_dir);
+  fs.writeFileSync(path.join(workerSpec.job_dir,'spec.json'),JSON.stringify(workerSpec));
+  const result=await exec(process.execPath,[cli,'worker',workerSpec.job_dir],{cwd:spec.directory,timeout:15000});assert.equal(result.code,0,result.stderr);
+  const state=JSON.parse(fs.readFileSync(path.join(workerSpec.job_dir,'worker.json')));
   assert.equal(state.error_code,'SCOPE_VIOLATION');assert.equal(state.phase,'failed');assert.equal(state.stopped,true);
   assert.equal(fs.readFileSync(path.join(spec.directory,'outside.txt'),'utf8'),'preserved evidence');
-  assert.equal(JSON.parse(fs.readFileSync(path.join(spec.job_dir,'scope-violation.json'))).code,'SCOPE_VIOLATION');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(workerSpec.job_dir,'scope-violation.json'))).code,'SCOPE_VIOLATION');
 });
 
 test('Claude rejects an advertised alias resolved to a different model family',async t=>{

@@ -83,7 +83,7 @@ export const runStates = ['active','validating','waiting_final_review','finalizi
 export const taskStates = ['queued','running','needs_input','needs_review','integrated','cancelled'] as const;
 export const attemptStates = ['launching','running','needs_input','resource_wait','delivery_uncertain','cancelling','orphaned','stop_uncertain','failed','cancelled','needs_review','scope_or_context_error','integrating','integrated','integration_conflict','interrupted','verified'] as const;
 export const validationStates = ['running','awaiting_resource','passed','failed','cancelled','invalidated'] as const;
-export const workerPhases = ['doctor','starting','creating_session','implementing','verifying','needs_input','reconciling_delivery','delivery_uncertain','cancelling','cancelled','completed','failed','stop_uncertain'] as const;
+export const workerPhases = ['starting','creating_session','implementing','verifying','needs_input','reconciling_delivery','delivery_uncertain','cancelling','cancelled','completed','failed','stop_uncertain'] as const;
 export type RunState = typeof runStates[number];
 export type TaskState = typeof taskStates[number];
 export type AttemptState = typeof attemptStates[number];
@@ -107,7 +107,7 @@ export type WorkerSpec = {
   verification: Command[]; resources: Resource[]; context: ContextFile[];
   scope: string[]; model?: WorkerModel; timeout_ms: number; validation: boolean;
   executable: string; executable_args: string[]; password: string;
-  protocol:number; worker:WorkerConfig; host_executable?:string; diagnostic?:boolean;
+  protocol:number; worker:WorkerConfig; host_executable:string; diagnostic?:boolean;
 };
 export type Attempt = {
   id: string; number: number; base: string; directory: string; job_dir: string;
@@ -143,7 +143,6 @@ export type DurableOperation = {
 export type RunEvent = { seq: number; run_id: string; type: string; data: unknown };
 export type ArchiveRef = { file: string; hash: string; archived_at: number };
 export type RunSummary = { run_id: string; repo: string; branch: string; state: RunState; revision: number; tasks: number; created: number; ended_at?: number; event_cursor: number };
-export type RunArchive = { protocol: number; run: Run; events: RunEvent[] };
 export type State = {
   operations: Record<string, DurableOperation>;
   protocol: number; revision: number; runs: Run[]; requests: Record<string, RequestRecord>; events: RunEvent[];

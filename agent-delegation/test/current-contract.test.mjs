@@ -29,6 +29,7 @@ test('model selection uses worker.model exclusively', () => {
 test('only current worker records are accepted', () => {
   for (const protocol of [undefined, 1, 99]) assert.throws(() => validateWorkerState({ protocol, phase: 'starting' }), error => error.code === 'STATE_CORRUPT');
   assert.doesNotThrow(() => validateWorkerState({ protocol: 2, phase: 'starting' }));
+  assert.throws(() => validateWorkerState({ protocol: 2, phase: 'doctor' }), error => error.code === 'STATE_CORRUPT');
 });
 
 test('new environment settings select data and each native executable', () => {
@@ -69,6 +70,28 @@ test('invalid worker specifications are rejected before recording a launch', asy
     assert.match(result.stderr, /specification/);
     assert.equal(fs.existsSync(path.join(directory, 'started.json')), false);
   }
+});
+
+test('worker specifications must identify the current absolute host CLI before any launch record', async () => {
+  for (const host_executable of [undefined, 'cli.mjs', process.execPath]) {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'worker-host-'));
+    fs.writeFileSync(path.join(directory, 'spec.json'), JSON.stringify({ protocol: 2, job_dir: directory, worker: {platform: 'codex'}, host_executable }));
+    const result = await exec(process.execPath, [cli, 'worker', directory], { timeout: 10000 });
+    assert.notEqual(result.code, 0);assert.match(result.stderr, /host_executable/);
+    for(const file of ['started.json', 'worker.json', 'process-intents'])assert.equal(fs.existsSync(path.join(directory, file)), false);
+    fs.rmSync(directory, {recursive: true, force: true});
+  }
+});
+
+test('worker host identity accepts an alias of the same current CLI', async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'worker-host-alias-')), alias = path.join(directory, 'runtime');
+  try {
+    fs.symlinkSync(path.dirname(cli), alias, process.platform === 'win32' ? 'junction' : 'dir');
+    fs.writeFileSync(path.join(directory, 'spec.json'), JSON.stringify({ protocol: 2, job_dir: directory, host_executable: path.join(alias, path.basename(cli)), worker: {platform: 'unknown'} }));
+    const result = await exec(process.execPath, [cli, 'worker', directory], { timeout: 10000 });
+    assert.notEqual(result.code, 0);assert.match(result.stderr, /missing or unknown worker selection/);assert.doesNotMatch(result.stderr, /host_executable/);
+    assert.equal(fs.existsSync(path.join(directory, 'started.json')), false);
+  } finally { fs.rmSync(directory, {recursive: true, force: true}); }
 });
 
 test('standalone skills contain the current tool contract without aliases', () => {

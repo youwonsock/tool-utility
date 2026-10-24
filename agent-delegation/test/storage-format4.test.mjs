@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { Store, emptyState, loadState, prepareStorage, writeJson, digest, journalRecord, deltaRecord, ARCHIVE_AGE } from '../dist/index.mjs';
+import { Store, emptyState, loadState, writeJson, digest, hash, deltaRecord, ARCHIVE_AGE } from '../dist/index.mjs';
+import * as api from '../dist/index.mjs';
+import { storageTree } from './storage-preservation.mjs';
 
 const now=1_800_000_000_000;
 const worker={platform:'codex',profile:'codex-default',executable:process.execPath,executable_args:[],baseline:'test',config_hash:'test'};
@@ -66,13 +68,30 @@ test('chunked archive pages skip historical attempts and earlier event chunks, y
   await store.close();
 });
 
-test('format-3 migration resumes at manifest publication and preserves legacy archive IDs, hashes and ages',async t=>{
-  const dir=root(t),r=run(dir,'legacy'),value={protocol:3,run:r,events:[{seq:20,run_id:r.id,type:'finished',data:{}}]},hash=digest(value),file=`archives/runs/${digest(r.id)}/${hash}.json`;writeJson(path.join(dir,file),value);
-  const state={...emptyState(),protocol:3,revision:10,event_seq:33,runs:[run(dir,'hot')],archived_runs:{legacy:{file,hash,archived_at:now-20,summary:{run_id:r.id,repo:r.repo,branch:r.branch,state:r.state,revision:r.revision,tasks:0,created:r.created,ended_at:r.ended_at,event_cursor:20}}},requests:{one:{hash:digest({id:1}),status:'done',completed_at:now-10,result:{ok:1}}}};delete state.operations;writeJson(path.join(dir,'state.json'),state);fs.writeFileSync(path.join(dir,'journal.jsonl'),journalRecord(state));const original=fs.readFileSync(path.join(dir,'state.json'));
-  const rename=fs.renameSync;const mock=t.mock.method(fs,'renameSync',(from,to)=>{if(to===path.join(dir,'checkpoint.json'))throw new Error('migration interruption');return rename(from,to);});
-  await assert.rejects(prepareStorage(dir,now),/migration interruption/);assert.throws(()=>new Store(dir),e=>e.code==='UPDATE_PENDING');mock.mock.restore();await prepareStorage(dir,now+1);
-  const migrated=new Store(dir);assert.equal(migrated.state.protocol,4);assert.equal(migrated.state.event_seq,33);assert.equal(migrated.state.archived_runs.legacy.hash,hash);assert.equal(migrated.state.archived_runs.legacy.archived_at,now-20);assert.equal(migrated.run('hot').ended_at,now-ARCHIVE_AGE);assert.equal(migrated.request('one').completed_at,now-10);assert.equal((await migrated.runAsync('legacy')).id,'legacy');assert.deepEqual(await migrated.mutation('one',{id:1},()=>assert.fail('must not replay')),{ok:1});
-  const backup=path.join(dir,'backups',fs.readdirSync(path.join(dir,'backups'))[0]);assert.deepEqual(fs.readFileSync(path.join(backup,'state.json')),original);assert.deepEqual(fs.readFileSync(path.join(backup,file)),fs.readFileSync(path.join(dir,file)));
+test('only current typed storage entry points are exported',()=>{
+  assert.equal(Object.hasOwn(api,'prepareStorage'),false);assert.equal(Object.hasOwn(api,'journalRecord'),false);
+  assert.equal(typeof loadState,'function');assert.equal(typeof deltaRecord,'function');
+});
+
+for(const format of [2,3,4,99])test(`full-state journal format ${format} is rejected with all original bytes preserved`,t=>{
+  const dir=root(t),store=new Store(dir);store.event('r','acknowledged',{});
+  const state={...emptyState(),protocol:format,revision:100},record=JSON.stringify({hash:digest(state),state});
+  fs.appendFileSync(activeJournal(dir),record+'\n'+ '{"torn":');const before=storageTree(dir);
+  assert.throws(()=>loadState(dir),e=>e.code==='UPDATE_PENDING');assert.throws(()=>new Store(dir),e=>e.code==='UPDATE_PENDING');assert.deepEqual(storageTree(dir),before);
+});
+for(const format of [2,3,99,undefined])test(`typed transaction with unsupported protocol ${format} is rejected without writes`,t=>{
+  const dir=root(t),store=new Store(dir),file=activeJournal(dir);
+  fs.appendFileSync(file,deltaRecord({protocol:format,previous:0,revision:1,changes:[]}));const before=storageTree(dir);
+  assert.throws(()=>loadState(dir),e=>e.code==='UPDATE_PENDING');assert.throws(()=>new Store(dir),e=>e.code==='UPDATE_PENDING');assert.deepEqual(storageTree(dir),before);
+});
+for(const value of [null,false,0,'text',[]])test(`non-object transaction ${JSON.stringify(value)} fails with a typed corruption error`,t=>{
+  const dir=root(t),store=new Store(dir),payload=JSON.stringify(value);
+  fs.appendFileSync(activeJournal(dir),JSON.stringify({hash:hash(payload),payload})+'\n');const before=storageTree(dir);
+  assert.throws(()=>new Store(dir),e=>e.code==='JOURNAL_CORRUPT');assert.deepEqual(storageTree(dir),before);
+});
+for(const value of [null,false,0,[],{}, {protocol:3}, {protocol:99}])test(`unsupported checkpoint ${JSON.stringify(value)} cannot be treated as a fresh store`,t=>{
+  const dir=root(t);new Store(dir);writeJson(path.join(dir,'checkpoint.json'),value);const before=storageTree(dir);
+  assert.throws(()=>loadState(dir),e=>e.code==='UPDATE_PENDING');assert.throws(()=>new Store(dir),e=>e.code==='UPDATE_PENDING');assert.deepEqual(storageTree(dir),before);
 });
 
 test('artifact byte range reads stay bounded for a sparse large file, support short reads and detect truncation',t=>{
@@ -129,11 +148,8 @@ test('covered prefixes must be unique and contiguous even when the snapshot alre
   for(const records of [[lines[0],lines[0],lines[1]],[lines[1],lines[0]],[lines[0],lines[2]]]){fs.writeFileSync(file,records.join('\n')+'\n');assert.throws(()=>new Store(dir),e=>e.code==='JOURNAL_CORRUPT');}
 });
 
-test('a resurfaced migration marker cannot overwrite newer acknowledged format-4 history',async t=>{
-  const dir=root(t),legacy={...emptyState(),protocol:3,revision:7,runs:[run(dir)]};delete legacy.operations;writeJson(path.join(dir,'state.json'),legacy);fs.writeFileSync(path.join(dir,'journal.jsonl'),journalRecord(legacy));
-  const unlink=fs.unlinkSync;const failure=t.mock.method(fs,'unlinkSync',file=>{if(file===path.join(dir,'migration.json'))throw new Error('marker removal interrupted');return unlink(file);});await assert.rejects(prepareStorage(dir,now),/marker removal interrupted/);failure.mock.restore();const marker=JSON.parse(fs.readFileSync(path.join(dir,'migration.json'),'utf8'));
-  const published=fs.readFileSync(path.join(dir,'checkpoint.json'));await prepareStorage(dir,now+1);assert.deepEqual(fs.readFileSync(path.join(dir,'checkpoint.json')),published,'resuming a completed migration only removes its marker');
-  const store=new Store(dir);await store.mutation('after-migration',{value:1},async()=>({acknowledged:true}));const journal=activeJournal(dir),before=fs.readFileSync(journal);writeJson(path.join(dir,'migration.json'),marker);
-  await assert.rejects(prepareStorage(dir,now+2),e=>e.code==='STATE_CORRUPT');assert.deepEqual(fs.readFileSync(journal),before);assert.deepEqual(fs.readFileSync(path.join(dir,'checkpoint.json')),published);fs.unlinkSync(path.join(dir,'migration.json'));
-  const reopened=new Store(dir);assert.deepEqual(await reopened.mutation('after-migration',{value:1},()=>assert.fail('acknowledged request must not replay')),{acknowledged:true});
+for(const marker of ['{"from":3,"to":4,"backup":"backups/old"}', 'null', 'unfinished marker'])test(`an incomplete storage marker is preserved without resuming it: ${marker}`,async t=>{
+  const dir=root(t),store=new Store(dir);await store.mutation('acknowledged',{value:1},async()=>({acknowledged:true}));await store.close();
+  fs.writeFileSync(path.join(dir,'migration.json'),marker);writeJson(path.join(dir,'backups','old','target.json'),{protocol:3,revision:1});const before=storageTree(dir);
+  assert.throws(()=>loadState(dir),e=>e.code==='UPDATE_PENDING');assert.throws(()=>new Store(dir),e=>e.code==='UPDATE_PENDING');assert.deepEqual(storageTree(dir),before);
 });

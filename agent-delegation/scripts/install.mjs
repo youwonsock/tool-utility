@@ -1,11 +1,28 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
 import crypto from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 const source = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const { dataRoot, exec, PROTOCOL, STORE_FORMAT, exportHost, platforms, alive, loadState, attemptsStopped } = await import(pathToFileURL(path.join(source, 'dist', 'index.mjs')).href);
+const { dataRoot, exec, PROTOCOL, STORE_FORMAT, exportHost, platforms, alive, loadState, attemptsStopped, validateStoredState } = await import(pathToFileURL(path.join(source, 'dist', 'index.mjs')).href);
 const root = process.env.AGENT_DELEGATION_INSTALL_ROOT || path.join(dataRoot(), 'install');
+function pending(reason) {
+  console.log(JSON.stringify({update_pending:true,code:'UPDATE_PENDING',reason},null,2));process.exit(0);
+}
+// Verify current storage before creating a release or changing registration.
+// Unsupported data is neither converted nor repaired by installation.
+try {
+  for(const [file,protocol] of [['service.json',PROTOCOL],['state.json',STORE_FORMAT]]) {
+    const location=path.join(dataRoot(),file);
+    if(fs.existsSync(location)&&JSON.parse(fs.readFileSync(location)).protocol!==protocol)pending('Protocol/storage version differs. Existing files and registration were preserved.');
+  }
+  const snapshot=loadState(dataRoot()).state;
+  if(snapshot)validateStoredState(snapshot);
+  const descriptorFile=path.join(dataRoot(),'service.json'),descriptor=fs.existsSync(descriptorFile)?JSON.parse(fs.readFileSync(descriptorFile)):undefined;
+  const stopped=!snapshot||(await Promise.all(snapshot.runs.map(attemptsStopped))).every(Boolean);
+  if(!stopped||descriptor?.owner&&await alive(descriptor.owner))pending('Finish/cancel owned attempts and stop the current service before switching. Runtime termination must be confirmed; records and registration were preserved.');
+} catch(error) {
+  pending(error.code==='UPDATE_PENDING'?error.message:'Current storage could not be verified. Existing files and registration were preserved.');
+}
 const bundle = fs.readFileSync(path.join(source, 'dist', 'cli.mjs'));
 const version = JSON.parse(fs.readFileSync(path.join(source,'package.json'))).version;
 const checksum = crypto.createHash('sha256').update(bundle);
@@ -49,21 +66,6 @@ if (!fs.existsSync(release)) fs.renameSync(staging, release); else fs.rmSync(sta
 } catch(error) { fs.rmSync(staging,{recursive:true,force:true}); throw error; }
 }
 const noRegister = process.argv.includes('--no-register');
-for(const file of ['service.json','state.json']) {
-  const location=path.join(dataRoot(),file);
-  if(fs.existsSync(location)&&!(file==='state.json'?[2,3,STORE_FORMAT]:[PROTOCOL]).includes(JSON.parse(fs.readFileSync(location)).protocol)) {
-    console.log(JSON.stringify({staged:release,update_pending:true,reason:'Protocol/storage version differs. Finish existing work with the previous release; it was preserved.'},null,2));
-    process.exit(0);
-  }
-}
-const descriptorFile=path.join(dataRoot(),'service.json'),stateFile=path.join(dataRoot(),'state.json');
-const descriptor=fs.existsSync(descriptorFile)?JSON.parse(fs.readFileSync(descriptorFile)):undefined;
-const snapshot=fs.existsSync(stateFile)||fs.existsSync(path.join(dataRoot(),'journal.jsonl'))?loadState(dataRoot()).state:undefined;
-const stopped = !snapshot || (await Promise.all(snapshot.runs.map(attemptsStopped))).every(Boolean);
-if(!stopped||descriptor?.owner&&await alive(descriptor.owner)) {
-  console.log(JSON.stringify({staged:release,update_pending:true,code:'UPDATE_PENDING',reason:'Finish/cancel owned attempts and stop the previous service with the previous release before switching. Runtime termination must be confirmed; records and registration were preserved.'},null,2));
-  process.exit(0);
-}
 if (!noRegister) {
   const codex = process.env.AGENT_DELEGATION_CODEX_EXECUTABLE || 'codex';
   const run = async args => { const r = await exec(codex,args,{timeout:120000}); process.stdout.write(r.stdout); process.stderr.write(r.stderr); if(r.code!==0)throw new Error(`codex ${args.join(' ')} failed (${r.code})`); };

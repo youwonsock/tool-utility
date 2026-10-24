@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { WORKER_FORMAT, workerSchema, Fault, invariant, type WorkerSpec, type WorkerState, type WorkerPhase } from './types.js';
-import { uid, writeJson, readJson, durableWrite, exclusiveJson, processIdentity, sleep } from './io.js';
+import { uid, writeJson, readJson, durableWrite, exclusiveJson, processIdentity, sleep, samePath } from './io.js';
 import { moveWorker, workerTerminal } from './lifecycle.js';
 import { createBackend, type WorkerBackend, type Answer } from './backends/index.js';
 import { stopOwned } from './backends/process.js';
@@ -13,6 +13,7 @@ export async function worker(jobDir:string) {
   const spec=readJson<WorkerSpec>(path.join(jobDir,'spec.json'))!;
   invariant(spec&&spec.job_dir===jobDir,'WORKER_SPEC','Invalid worker specification.');
   invariant(spec.protocol===WORKER_FORMAT,'UPDATE_PENDING','Worker specification format differs.');
+  invariant(typeof spec.host_executable==='string'&&path.isAbsolute(spec.host_executable)&&process.argv[1]&&samePath(spec.host_executable,process.argv[1]),'WORKER_SPEC','Invalid worker specification: host_executable must identify the current absolute CLI path.');
   invariant(spec.worker&&workerSchema.safeParse({platform:spec.worker.platform,model:spec.worker.model,profile:spec.worker.profile}).success,'WORKER_SPEC','Invalid worker specification: missing or unknown worker selection.');
   const host=await processIdentity(process.pid);
   exclusiveJson(path.join(jobDir,'started.json'),{host,at:Date.now()});
