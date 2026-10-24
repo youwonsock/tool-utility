@@ -6,13 +6,13 @@ import { invariant, type ProcessIdentity } from '../types.js';
 import { writeJson, readJson, uid, processIdentity, terminate, treeAlive } from '../io.js';
 import type { BackendContext } from './contract.js';
 
-export function beginProcess(context:BackendContext) {
+export function beginProcess(context:BackendContext,primary=true) {
   const id=uid('process');
   writeJson(path.join(context.spec.job_dir,'process-intents',`${id}.json`),{id,at:Date.now()});
-  writeJson(path.join(context.spec.job_dir,'server-intent.json'),{id,at:Date.now(),backend:context.spec.worker?.platform});
+  if(primary)writeJson(path.join(context.spec.job_dir,'server-intent.json'),{id,at:Date.now(),backend:context.spec.worker?.platform});
   return id;
 }
-export async function registerProcess(context:BackendContext,child:ChildProcess,intentID?:string) {
+export async function registerProcess(context:BackendContext,child:ChildProcess,intentID?:string,primary=true) {
   await new Promise<void>((resolve,reject)=>{
     const onError=(error:Error)=>{
       if(intentID)writeJson(path.join(context.spec.job_dir,'process-records',`${intentID}.json`),{failed:true,stopped:true});
@@ -24,21 +24,36 @@ export async function registerProcess(context:BackendContext,child:ChildProcess,
   const identity=await processIdentity(child.pid);
   invariant(identity,'PROCESS_IDENTITY','Native runtime identity could not be verified.');
   if(intentID)writeJson(path.join(context.spec.job_dir,'process-records',`${intentID}.json`),{identity,stopped:false});
-  context.state.server=identity;
+  if(primary)context.state.server=identity;
   (context.state.processes??=[]).push(identity);context.save();
   return identity;
 }
-export async function spawnRuntime(context:BackendContext,executable:string,args:string[],env:NodeJS.ProcessEnv) {
-  const intent=beginProcess(context);
+export async function spawnRuntime(context:BackendContext,executable:string,args:string[],env:NodeJS.ProcessEnv,options:{primary?:boolean}={}) {
+  const primary=options.primary!==false,intent=beginProcess(context,primary);
   const child=spawn(executable,args,{cwd:context.spec.directory,env,detached:process.platform!=='win32',windowsHide:true,stdio:['pipe','pipe','pipe']});
   child.on('error',error=>{context.state.error=error.message;context.save();});
-  await registerProcess(context,child,intent);
+  const identity=await registerProcess(context,child,intent,primary);
   const log=fs.createWriteStream(path.join(context.spec.job_dir,'server.log'),{flags:'a',mode:0o600});
   child.stderr!.on('data',data=>log.write(data));
   child.once('close',()=>log.end());
-  return {child,log};
+  return {child,log,identity,intent};
 }
 const stopping=new Map<string,Promise<boolean>>();
+export function stopRuntimeIntent(context:BackendContext,intent:string):Promise<boolean> {
+  invariant(/^process_[a-f0-9]{32}$/.test(intent),'PROCESS_IDENTITY','Invalid owned process intent.');
+  const key=`${path.resolve(context.spec.job_dir)}:${intent}`,active=stopping.get(key);if(active)return active;
+  const operation=(async()=>{
+    const file=path.join(context.spec.job_dir,'process-records',`${intent}.json`);
+    const record=readJson<{identity?:ProcessIdentity;stopped:boolean;failed?:boolean}>(file);
+    if(record?.failed&&record.stopped)return true;
+    if(!record?.identity)return false;
+    if(record.stopped)return true;
+    const confirmed=await terminate(record.identity,true);
+    if(confirmed)writeJson(file,{...record,stopped:true});
+    return confirmed;
+  })().finally(()=>{if(stopping.get(key)===operation)stopping.delete(key);});
+  stopping.set(key,operation);return operation;
+}
 export function stopOwned(context:BackendContext):Promise<boolean> {
   const key=path.resolve(context.spec.job_dir),active=stopping.get(key);if(active)return active;
   const operation=stopOwnedProcesses(context).finally(()=>{if(stopping.get(key)===operation)stopping.delete(key);});
@@ -49,14 +64,7 @@ async function stopOwnedProcesses(context:BackendContext):Promise<boolean> {
   if(fs.existsSync(intents)) {
     let stopped=true;
     for(const name of fs.readdirSync(intents).filter(n=>/^process_[a-f0-9]{32}\.json$/.test(n))) {
-      const file=path.join(context.spec.job_dir,'process-records',name);
-      const record=readJson<{identity?:ProcessIdentity;stopped:boolean;failed?:boolean}>(file);
-      if(record?.failed&&record.stopped)continue;
-      if(!record?.identity){stopped=false;continue;}
-      if(record.stopped)continue;
-      const confirmed=await terminate(record.identity,true);
-      if(confirmed)writeJson(file,{...record,stopped:true});
-      stopped=confirmed&&stopped;
+      stopped=await stopRuntimeIntent(context,name.slice(0,-5))&&stopped;
     }
     return stopped;
   }

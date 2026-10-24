@@ -17,9 +17,17 @@ export function sanitize(text,environment=process.env) {
 }
 
 export async function runCheck(phase,diagnostics,nativePrefix) {
-  if(!['regression','prepare','native'].includes(phase)||!path.isAbsolute(diagnostics)||phase!=='regression'&&(!nativePrefix||!path.isAbsolute(nativePrefix)))throw new Error('Use regression|prepare|native and absolute owned diagnostics/native test directories.');
+  if(!['regression','prepare','native','windows-focus'].includes(phase)||!path.isAbsolute(diagnostics)||['prepare','native'].includes(phase)&&(!nativePrefix||!path.isAbsolute(nativePrefix)))throw new Error('Use regression|prepare|native|windows-focus and absolute owned diagnostics/native test directories.');
   fs.mkdirSync(diagnostics,{recursive:true});
-  const command=phase==='regression'?['npm',['run','check']]:[process.execPath,[phase==='prepare'?'scripts/prepare-connections.mjs':'scripts/connection-check.mjs',nativePrefix]];
+  if(phase==='regression'&&process.platform==='win32') {
+    const built=await captureCheck('windows-focus-build',diagnostics,['npm',['run','build']]);if(built!==0)return built;
+    const focused=await runCheck('windows-focus',diagnostics);if(focused!==0)return focused;
+  }
+  const command=phase==='regression'?['npm',['run','check']]:phase==='windows-focus'?[process.execPath,['--test','--test-concurrency=1','--test-timeout=120000','--test-name-pattern=Codex TOML|Windows .*cmd|stdin|native write failure','test/codex-toml.test.mjs','test/json-rpc.test.mjs','test/local-runtime.test.mjs']]
+    :[process.execPath,[phase==='prepare'?'scripts/prepare-connections.mjs':'scripts/connection-check.mjs',nativePrefix]];
+  return captureCheck(phase,diagnostics,command);
+}
+async function captureCheck(phase,diagnostics,command) {
   const started=Date.now(),child=spawn(command[0],command[1],{cwd:path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'),env:process.env,stdio:['ignore','pipe','pipe'],windowsHide:true});
   const capture={prefix:'',tail:'',bytes:0};
   const collect=data=>{

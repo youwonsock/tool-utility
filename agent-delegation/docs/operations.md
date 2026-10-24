@@ -106,15 +106,23 @@ OpenCode·Kilo·Claude는 사용자 설치 CLI와 해당 플랫폼 SDK가 필요
 
 이전된 종료 기록과 워커 형식 2 기록은 SDK 없이 조회할 수 있습니다. 실행 식별 정보가 없는 이전 진행 시도는 이전 배포물에서 완료/취소한 뒤 전환합니다. 최종 검증은 플랫폼 SDK 없이 공통 명령 실행기를 사용합니다.
 
-Codex 워커는 `on-request` 승인 정책과 `workspace-write` 샌드박스를 사용합니다. 필수 `PreToolUse` 훅이 재위임·백그라운드 실행·보호된 문맥 수정 등을 검사하며, 승인 요청은 지시자에게 전달합니다. 적용된 정책·훅·MCP 설정이 다르면 실행을 거절합니다.
+Codex 워커는 `on-request` 승인 정책과 `workspace-write` 샌드박스를 사용하며 검증 기준 CLI는 0.162.1입니다. 모델 호출 없이 초기 설정을 검사하고, 상속된 훅·신뢰 상태를 제외한 소유 `PreToolUse` 훅 하나를 `hooks/list`로 찾습니다. 해당 key와 currentHash만 실행 인자의 `hooks.state`에 등록해 다시 시작한 뒤, 같은 명령·동기 실행·matcher와 `trusted` 상태를 확인합니다. 전역 설정의 훅 신뢰는 바꾸지 않습니다. `code_mode_host`를 활성화한 실행 서버에서 이 훅·feature·승인 설정·샌드박스·MCP 설정이 확인되기 전에는 모델 요청을 보내지 않습니다. 확인한 key·해시는 `jobs/<attempt>/hook-policy.json`에 남습니다. 필수 동기·신뢰 정보를 제공하지 않는 구형 CLI는 모델 호출 전에 거절하며, 사용자 CLI를 자동 업데이트하지 않습니다.
 
-Codex 세션은 소유한 비임시 thread입니다. 임시 thread가 모델 요청 수락 후 `thread/read(includeTurns:true)`를 거절하는 API 조합을 피하고, 같은 세션의 실제 턴으로 전달 여부를 확인합니다. 세션 생성·요청 의도와 소유권을 유지하며 관찰 실패를 이유로 모델 요청을 다시 보내지 않습니다.
+Windows에서 구현을 선택하지 않으면 Codex가 요청한 `workspace-write`를 `read-only`로 바꾸므로, 워커는 소유한 실행 인자에서만 `windows.sandbox=unelevated`를 기본 선택합니다. 명시적인 `mxc`·`elevated`·`unelevated`와 기존 elevated 설정은 유지합니다. 관리자 설정 절차나 전역 설정 쓰기는 실행하지 않습니다. 적용된 Windows 구현과 thread 응답의 `workspaceWrite`를 모두 확인하며, 읽기 전용·전체 접근·외부 또는 불명확한 응답으로 검사를 완화하지 않습니다. 불일치 진단에는 요청·관찰한 정책 종류만 남깁니다.
+
+사용자 `.cmd` 래퍼가 인자를 다시 해석할 때 설정 값·사전 키가 환경 변수나 리디렉션으로 실행되지 않도록, Codex 설정 문자열의 CMD 연산 문자는 TOML Unicode escape로 전달합니다. Codex가 해석한 원래 값과 `<session-flags>` 훅 키·신뢰 해시는 유지하며, 종료를 확인할 수 없는 실행은 계속 실패로 처리합니다.
+
+Codex의 네이티브 셸·exec·write_stdin은 명시적으로 거절합니다. 파일·문맥은 `delegate_read_file`로 범위 안의 일반 UTF-8 파일을 한 번에 최대 64 KiB씩 읽고, 심볼릭 링크·Git 메타데이터·외부 경로는 거절합니다. 직접 수정은 `apply_patch`의 `tool_input.command`에 담긴 모든 변경·이동 경로를 검사합니다. 셸 작업은 `delegate_run_command`의 소유한 app-server 요청을 대기시킨 채 기존 `respond_to_request`의 `once`·`always`·`reject`로 결정하며, 실행 직전 범위·문맥·감시 상태를 다시 검사합니다. 별도 command-host가 의도·종료 코드·로그와 `supervised-<id>-result.json`을 기록하고 해당 명령의 프로세스 트리만 종료하므로 Codex 서버의 소유권은 유지됩니다. 취소는 대기 작업을 새로 실행하지 않고 실행 중 명령도 소유 기록으로 종료합니다.
+
+현재 Codex `PreToolUse`의 `ask`는 파싱되지만 지원되지 않아 훅 오류 뒤 도구가 계속 실행될 수 있습니다. 따라서 소유 훅은 `allow`·`deny`만 출력하며, 두 동적 도구·범위가 확인된 `apply_patch`·기존 질문 응답으로 연결되는 `request_user_input`만 허용합니다. 나머지 네이티브 도구는 거절합니다. 선언된 MCP 도구도 네이티브 승인이 필요한 호출은 거절되며, 이 게이트웨이는 MCP 도구 승인을 아직 제공하지 않습니다. 자원 연결 진단 성공이 Codex에서 해당 도구를 실행할 수 있다는 뜻은 아닙니다. 서비스의 기존 MCP 도구 12개와 입력 형식은 유지합니다.
+
+Codex 세션은 소유한 비임시 thread입니다. 임시 thread가 모델 요청 수락 후 `thread/read(includeTurns:true)`를 거절하는 API 조합을 피하고, 같은 세션의 실제 턴으로 전달 여부를 확인합니다. 수락 직후 rollout 파일이 아직 비어 있는 정확한 메타데이터 오류만 전송 후 최대 30초 동안 같은 세션의 다음 관찰에서 다시 읽습니다. 오류의 두 경로가 같고 해당 세션 ID의 rollout 파일이어야 하며, 다른 오류·기한 초과는 실패로 유지합니다. 이 읽기 관찰은 취소를 지연하지 않습니다. 세션 생성·요청 의도와 소유권을 유지하며 관찰 실패를 이유로 모델 요청을 다시 보내지 않습니다.
 
 ## 실행 중 범위 보호
 
 공통 경로 규칙은 정확한 파일, 끝이 `/` 또는 `/**`인 디렉터리, `**`를 지원합니다. 직접 편집·삭제·이름 변경·다중 파일 패치는 모든 경로와 이름 변경 전후 경로를 검사합니다. 보호 문맥의 부모 디렉터리 삭제, `.git` 및 공유 Git 메타데이터, traversal·대소문자·Windows short-name 별칭과 ADS·끝점/공백, symlink/junction 우회를 거절합니다. 새 파일도 존재하는 부모의 native realpath를 확인합니다. 알 수 없는 네이티브 변경 경로나 wildcard 승인 payload는 실패로 닫습니다.
 
-OpenCode·Kilo는 유효한 edit/bash ask 정책과 필수 permission API, Codex는 유효한 훅·feature·승인 설정, Claude는 훅 등록과 SDK callback을 모델 전달 전에 확인합니다. 일반 셸·exec·write_stdin은 승인 대기이며 재위임·백그라운드 실행·소유권을 바꾸는 Git 명령은 거절합니다. 직접 보호 경로나 문맥을 참조하는 명령도 권한 승인으로 해제하지 않습니다. grant는 정확한 요청·명령·cwd·시도와 범위/문맥 해시에 묶고, 늦은 응답은 현재 pending 요청과 정책을 다시 확인합니다. `always`는 현재 시도 안에서만 사용하며 전역 설정에 저장하지 않습니다.
+OpenCode·Kilo는 유효한 edit/bash ask 정책과 필수 permission API, Codex는 신뢰 해시가 확인된 훅·feature·승인 설정과 동적 명령 게이트웨이, Claude는 훅 등록과 SDK callback을 모델 전달 전에 확인합니다. 일반 셸·exec·write_stdin은 승인 대기이며 Codex에서는 위 동적 게이트웨이를 사용합니다. 재위임·백그라운드 실행·소유권을 바꾸는 Git 명령은 거절합니다. 직접 보호 경로나 문맥을 참조하는 명령도 권한 승인으로 해제하지 않습니다. grant는 정확한 요청·명령·cwd·시도와 범위/문맥 해시에 묶고, 늦은 응답은 현재 pending 요청과 정책을 다시 확인합니다. Codex 동적 요청은 소유 thread·turn·call ID와 도구 이름도 확인합니다. `always`는 현재 시도 안에서만 사용하며 전역 설정에 저장하지 않습니다.
 
 워커가 소유하는 파일 알림과 주기적인 Git·HEAD/브랜치·문맥 검사는 MCP·서비스 연결이 끊겨도 유지됩니다. 선언된 검증 시작 때 소스를 고정하고 검증 중 변경도 실패 처리합니다. 보호 문맥을 제외한 ignored 빌드 출력은 허용합니다. 감시 누락·오류·오래된 health는 실패로 닫고, 재시작 후 새 워커로 기존 모델 요청을 반복하지 않습니다.
 
