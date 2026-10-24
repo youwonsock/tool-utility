@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { Worker } from 'node:worker_threads';
-import { STORE_FORMAT, Fault, invariant, type State, type Run, type ArchiveRef, type RequestRecord, type RunSummary, type RunEvent } from './types.js';
+import { Fault, invariant, type State, type Run, type ArchiveRef, type RequestRecord, type RunSummary, type RunEvent } from './types.js';
 import { digest, mkdir, readJson, writeJson, durableWrite, uid, inside } from './io.js';
 import { validateStoredState, validateStoredRun } from './lifecycle.js';
 import { ARCHIVE_AGE, emptyState, deltaRecord, loadState, attemptsStopped, type StorageManifest } from './persistence.js';
@@ -36,10 +36,9 @@ export class Store {
   // Operational counters: measure bytes actually issued, independent of synthetic wall-clock speed.
   readonly io={journal_bytes:0,artifact_read_bytes:0,checkpoints:0,helper_peak:0};
   constructor(public root:string,public clock:()=>number=Date.now){
-    mkdir(root);invariant(!fs.existsSync(path.join(root,'migration.json')),'UPDATE_PENDING','Resume storage migration before opening the store.');
     const loaded=loadState(root);const raw=loaded.state??emptyState();
-    invariant(raw.protocol===STORE_FORMAT,'UPDATE_PENDING','Storage migration is required; stop the previous release and start the new service.');
     validateStoredState(raw);
+    mkdir(root);
     for(const key of ['requests','archived_runs','archived_requests','resource_hashes','operations']as const)raw[key]=Object.assign(Object.create(null),raw[key]);
     if(loaded.bytes!==loaded.completeBytes){const tail=loaded.files.at(-1)!;const fd=fs.openSync(inside(root,tail.file),'r+');try{fs.ftruncateSync(fd,tail.completeBytes);fs.fsyncSync(fd);}finally{fs.closeSync(fd);}}
     this.tracker=new StateTracker(raw);this.state=this.tracker.state;

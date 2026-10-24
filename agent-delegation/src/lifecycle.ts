@@ -34,7 +34,7 @@ const validationGraph: Graph<ValidationState> = {
   passed: ['invalidated'], failed: ['invalidated'], cancelled: ['invalidated'], invalidated: [],
 };
 const workerGraph: Graph<WorkerPhase> = {
-  doctor: [], starting: ['creating_session','cancelling','failed','cancelled'],
+  starting: ['creating_session','cancelling','failed','cancelled'],
   creating_session: ['implementing','verifying','cancelling','failed','cancelled'],
   implementing: ['needs_input','reconciling_delivery','delivery_uncertain','verifying','cancelling','failed','cancelled'],
   reconciling_delivery: ['needs_input','delivery_uncertain','verifying','cancelling','failed','cancelled'],
