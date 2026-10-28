@@ -16,9 +16,5 @@
       "metadata_sha256": "5806ddb9d95d73796c87e1aeb45bf7ec984d08ae9eb94f9020436052b32ce498",
       "archive_url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261013/cpython-3.14.8+20261013-aarch64-apple-darwin-install_only_stripped.tar.gz"
     }
-  },
-  "ffmpeg_license": {
-    "url": "https://raw.githubusercontent.com/FFmpeg/FFmpeg/n7.1/COPYING.GPLv2",
-    "sha256": "8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643"
   }
 }
