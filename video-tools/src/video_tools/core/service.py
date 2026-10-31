@@ -3,11 +3,12 @@ from pathlib import Path
 from typing import Callable
 import threading
 
-from video_tools.core.backend import encode_preview_jpeg, find_ffmpeg, probe_image, probe_video, terminate_all_processes
 from video_tools.core.edit import EditRequest, edit_video
 from video_tools.core.jobs import JobManager
 from video_tools.core.limits import MAX_ACTIVE_JOBS
 from video_tools.core.extraction import ExtractionRequest, extract_images
+from video_tools.core.probe import encode_preview_jpeg, probe_image, probe_video
+from video_tools.core.process import find_ffmpeg, terminate_all_processes
 
 
 class VideoService:

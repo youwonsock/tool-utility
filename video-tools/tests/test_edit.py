@@ -3,8 +3,8 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 
-from video_tools.core.backend import VideoInfo
 from video_tools.core.edit import EditRequest, _tempo_chain, build_edit_command, validate_edit
+from video_tools.core.probe import VideoInfo
 
 
 class EditTest(unittest.TestCase):

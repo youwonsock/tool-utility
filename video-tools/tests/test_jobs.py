@@ -1,8 +1,8 @@
 import threading
 import unittest
 
-from video_tools.core.backend import OperationCancelled
 from video_tools.core.jobs import JobManager
+from video_tools.core.process import OperationCancelled
 
 
 class JobManagerTest(unittest.TestCase):
