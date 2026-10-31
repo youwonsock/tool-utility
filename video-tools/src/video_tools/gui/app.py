@@ -20,7 +20,7 @@ from video_tools.core.limits import DURATION_TOLERANCE, VIDEO_EXTENSIONS
 from video_tools.core.service import VideoService
 from video_tools.gui.editor import EditingControls
 from video_tools.gui.mcp_dialog import show_mcp_configuration
-from video_tools.gui.options import APP_TITLE, CELL_SIZE_PRESETS, CUSTOM_SIZE_LABEL, DEFAULT_CELL_SIZE, DEFAULT_FINAL_SIZE, FINAL_SIZE_PRESETS, GRID_SIZE_PRESETS, OUTPUT_MODE_GRID, OUTPUT_MODE_LABELS, PREVIEW_CANVAS_HEIGHT, SIZE_MODE_LABELS, format_time, mode_for_label, parse_grid_layout, parse_positive_float, parse_positive_int, parse_time, resolve_preview_plan
+from video_tools.gui.options import APP_TITLE, CELL_SIZE_PRESETS, DEFAULT_CELL_SIZE, DEFAULT_FINAL_SIZE, FINAL_SIZE_PRESETS, GRID_SIZE_PRESETS, OUTPUT_MODE_GRID, OUTPUT_MODE_LABELS, PREVIEW_CANVAS_HEIGHT, PRESET_CUSTOM, PRESET_LABELS, SIZE_MODE_LABELS, format_time, mode_for_label, preset_label, parse_grid_layout, parse_positive_float, parse_positive_int, parse_time, resolve_preview_plan
 from video_tools.gui.preview import PreviewCanvasRenderer
 from video_tools.gui.settings import AppSettings, load_settings, save_settings
 from video_tools.platforms import current
@@ -412,9 +412,8 @@ class VideoToolsApp(tk.Tk):
         self._sync_output_controls()
 
     def _on_size_mode_changed(self, _event: object = None) -> None:
-        available = self._available_size_presets()
-        if self.size_preset_var.get() not in available:
-            self.size_preset_var.set(self._default_size_preset())
+        if self._size_preset() not in self._available_size_presets():
+            self.size_preset_var.set(preset_label(self._default_size_preset()))
         self._sync_size_controls()
 
     def _on_size_preset_changed(self, _event: object = None) -> None:
@@ -430,10 +429,13 @@ class VideoToolsApp(tk.Tk):
     def _size_mode(self) -> str:
         return mode_for_label(SIZE_MODE_LABELS, self.size_mode_var.get(), SIZE_MODE_FINAL)
 
+    def _size_preset(self) -> str:
+        return mode_for_label(PRESET_LABELS, self.size_preset_var.get(), self.size_preset_var.get())
+
     def _available_size_presets(self) -> dict[str, Optional[tuple[int, int]]]:
         if self._size_mode() == SIZE_MODE_FINAL:
-            return {**FINAL_SIZE_PRESETS, CUSTOM_SIZE_LABEL: None}
-        return {**CELL_SIZE_PRESETS, CUSTOM_SIZE_LABEL: None}
+            return {**FINAL_SIZE_PRESETS, PRESET_CUSTOM: None}
+        return {**CELL_SIZE_PRESETS, PRESET_CUSTOM: None}
 
     def _default_size_preset(self) -> str:
         return DEFAULT_FINAL_SIZE if self._size_mode() == SIZE_MODE_FINAL else DEFAULT_CELL_SIZE
@@ -451,14 +453,14 @@ class VideoToolsApp(tk.Tk):
         if self.size_mode_var.get() not in SIZE_MODE_LABELS.values():
             self.size_mode_var.set(SIZE_MODE_LABELS[SIZE_MODE_FINAL])
         available = self._available_size_presets()
-        self.size_preset_combo.configure(values=tuple(available.keys()), state="readonly")
-        preset = self.size_preset_var.get()
+        self.size_preset_combo.configure(values=tuple(map(preset_label, available)), state="readonly")
+        preset = self._size_preset()
         if preset not in available:
             preset = self._default_size_preset()
-            self.size_preset_var.set(preset)
+            self.size_preset_var.set(preset_label(preset))
 
         selected_size = available[preset]
-        if preset == CUSTOM_SIZE_LABEL:
+        if preset == PRESET_CUSTOM:
             self.size_width_entry.configure(state="normal")
             self.size_height_entry.configure(state="normal")
             self.update_output_summary()
@@ -476,11 +478,11 @@ class VideoToolsApp(tk.Tk):
         self.update_output_summary()
 
     def _read_requested_size(self) -> Optional[tuple[int, int]]:
-        preset = self.size_preset_var.get()
+        preset = self._size_preset()
         available = self._available_size_presets()
         if preset not in available:
             raise ValueError("크기 프리셋을 선택해 주세요.")
-        if preset == CUSTOM_SIZE_LABEL:
+        if preset == PRESET_CUSTOM:
             return (
                 parse_positive_int(self.size_width_var.get(), "너비"),
                 parse_positive_int(self.size_height_var.get(), "높이"),
@@ -812,7 +814,7 @@ class VideoToolsApp(tk.Tk):
             (self.output_mode_var, OUTPUT_MODE_LABELS[settings.output_mode]),
             (self.grid_size_var, settings.grid_size),
             (self.size_mode_var, SIZE_MODE_LABELS[settings.size_mode]),
-            (self.size_preset_var, settings.size_preset),
+            (self.size_preset_var, preset_label(settings.size_preset)),
             (self.size_width_var, settings.size_width),
             (self.size_height_var, settings.size_height),
         ):
@@ -834,7 +836,7 @@ class VideoToolsApp(tk.Tk):
                 output_mode=self._output_mode(),
                 grid_size=self.grid_size_var.get(),
                 size_mode=self._size_mode(),
-                size_preset=self.size_preset_var.get(),
+                size_preset=self._size_preset(),
                 size_width=self.size_width_var.get(),
                 size_height=self.size_height_var.get(),
                 overwrite=self.overwrite_var.get(),
