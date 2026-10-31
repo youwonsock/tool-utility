@@ -16,7 +16,7 @@ sys.dont_write_bytecode = True
 for name in ("TCL_LIBRARY", "TK_LIBRARY"):
     os.environ.pop(name, None)
 
-from video_tools.core.backend import probe_image, probe_video
+from video_tools.core.probe import probe_image, probe_video
 from video_tools.gui import app as gui
 from video_tools.gui import mcp_dialog
 from video_tools.runtime import bundled_ffmpeg, require_runtime

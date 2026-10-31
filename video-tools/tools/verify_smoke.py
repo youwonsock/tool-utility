@@ -25,7 +25,7 @@ def cancellation_server(workspace: Path):
     # Test-process adapter: occupy the single worker until cancel_job releases it.
     # The production MCP protocol and cancellation implementation remain unchanged.
     from video_tools.core.service import VideoService
-    from video_tools.core.backend import OperationCancelled
+    from video_tools.core.process import OperationCancelled
     import video_tools.mcp.server as server_module
 
     class GatedService(VideoService):
@@ -61,7 +61,7 @@ def cancellation_server(workspace: Path):
 
 def decoded_rgb(ffmpeg: str, path: Path) -> tuple[tuple[int, int], str]:
     """Decode an image with the checked FFmpeg; return its size and RGB24 hash."""
-    from video_tools.core.backend import probe_image
+    from video_tools.core.probe import probe_image
     size = probe_image(ffmpeg, path)
     result = subprocess.run([ffmpeg, '-hide_banner', '-loglevel', 'error', '-nostdin', '-i', str(path),
                              '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'],
@@ -194,7 +194,7 @@ async def verify(report: dict, workspace: Path, ffmpeg: str):
 
 def codec_matrix(report: dict, samples: Path, workspace: Path, ffmpeg: str):
     """Probe, extract and re-encode every sample file with the given FFmpeg."""
-    from video_tools.core.backend import probe_video
+    from video_tools.core.probe import probe_video
     from video_tools.core.domain import SizePlan
     from video_tools.core.edit import EditRequest, edit_video
     from video_tools.core.limits import VIDEO_EXTENSIONS

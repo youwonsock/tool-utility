@@ -5,7 +5,7 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 
-from video_tools.core.backend import publish_file
+from video_tools.core.files import publish_file
 from video_tools.core.domain import SIZE_MODES
 from video_tools.gui.options import OUTPUT_MODE_LABELS, OUTPUT_MODES, SIZE_MODE_LABELS, mode_for_label, preset_label
 from video_tools.gui.settings import AppSettings, EditingSettings, load_settings, save_settings, settings_from_dict
