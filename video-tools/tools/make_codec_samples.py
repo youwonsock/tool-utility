@@ -19,9 +19,11 @@ SAMPLES = {
     "vp8_vorbis.webm": ["-c:v", "libvpx", "-c:a", "libvorbis"],
     "av1_opus.mkv": ["-c:v", "libaom-av1", "-cpu-used", "8", "-c:a", "libopus"],
     "prores_pcm.mov": ["-c:v", "prores_ks", "-c:a", "pcm_s16le"],
+    "prores_pcm24be.mov": ["-c:v", "prores_ks", "-c:a", "pcm_s24be"],
     "mjpeg_pcm.avi": ["-c:v", "mjpeg", "-q:v", "3", "-c:a", "pcm_s16le"],
     "mpeg4_mp3.avi": ["-c:v", "mpeg4", "-c:a", "libmp3lame"],
     "mpeg2_eac3.mkv": ["-c:v", "mpeg2video", "-c:a", "eac3"],
+    "mpeg2_mp2.mkv": ["-c:v", "mpeg2video", "-c:a", "mp2"],
     "h264_flac.mkv": ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "flac"],
     "h264_alac.m4v": ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "alac"],
 }
