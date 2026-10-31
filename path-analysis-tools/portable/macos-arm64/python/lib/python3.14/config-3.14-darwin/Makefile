@@ -31,14 +31,14 @@ MODLIBS=           $(LOCALMODLIBS) $(BASEMODLIBS)
 VERSION=	3.14
 srcdir=		.
 
-abs_srcdir=	/private/tmp/tmpnr559tf9/Python-3.14.8
-abs_builddir=	/private/tmp/tmpnr559tf9/Python-3.14.8
+abs_srcdir=	/private/tmp/tmpxt6xb8a8/Python-3.14.10
+abs_builddir=	/private/tmp/tmpxt6xb8a8/Python-3.14.10
 
 
 CC=		clang
 CXX=		clang++
 LINKCC=		$(PURIFY) $(CC)
-AR=		/tmp/tmpnr559tf9/tools/llvm/bin/llvm-ar
+AR=		/tmp/tmpxt6xb8a8/tools/llvm/bin/llvm-ar
 READELF=	@READELF@
 SOABI=		cpython-314-darwin
 ABIFLAGS=	
@@ -50,8 +50,8 @@ GITTAG=
 GITBRANCH=	
 PGO_PROF_GEN_FLAG=-fprofile-instr-generate
 PGO_PROF_USE_FLAG=-fprofile-instr-use="$(shell pwd)/code.profclangd"
-LLVM_PROFDATA=/tmp/tmpnr559tf9/tools/llvm/bin/llvm-profdata
-LLVM_PROF_MERGER= /tmp/tmpnr559tf9/tools/llvm/bin/llvm-profdata merge -output="$(shell pwd)/code.profclangd" "$(shell pwd)"/*.profclangr 
+LLVM_PROFDATA=/tmp/tmpxt6xb8a8/tools/llvm/bin/llvm-profdata
+LLVM_PROF_MERGER= /tmp/tmpxt6xb8a8/tools/llvm/bin/llvm-profdata merge -output="$(shell pwd)/code.profclangd" "$(shell pwd)"/*.profclangr 
 LLVM_PROF_FILE=LLVM_PROFILE_FILE="$(shell pwd)/code-%128m.profclangr"
 LLVM_PROF_ERR=no
 LLVM_MERGED_DATA_FILE=$(shell pwd)/code.profclangd
@@ -224,7 +224,7 @@ LIPO_32BIT_FLAGS=
 LIPO_INTEL64_FLAGS=
 
 # Environment to run shared python without installed libraries
-RUNSHARED=       DYLD_LIBRARY_PATH=/private/tmp/tmpnr559tf9/Python-3.14.8
+RUNSHARED=       DYLD_LIBRARY_PATH=/private/tmp/tmpxt6xb8a8/Python-3.14.10
 
 # ensurepip options
 ENSUREPIP=      no
@@ -411,7 +411,7 @@ EXEMODE=	755
 FILEMODE=	644
 
 # configure script arguments
-CONFIG_ARGS=	 '--build=aarch64-apple-darwin' '--host=aarch64-apple-darwin' '--prefix=/install' '--with-openssl=/tmp/tmpnr559tf9/tools/deps' '--with-system-expat' '--without-ensurepip' '--with-tail-call-interp' '--with-system-libmpdec' 'MODULE_BUILDTYPE=static' '--enable-loadable-sqlite-extensions' '--enable-static-libpython-for-interpreter' '--enable-shared' '--with-mimalloc' '--enable-optimizations' '--enable-experimental-jit=yes-off' '--with-lto=full' '--with-build-python=/tmp/tmpnr559tf9/tools/host/bin/python3.14' 'ac_cv_lib_intl_textdomain=no' 'ac_cv_func_ptsname_r=no' 'ac_cv_func_explicit_bzero=no' '--with-dbmliborder=ndbm' 'build_alias=aarch64-apple-darwin' 'host_alias=aarch64-apple-darwin' 'PKG_CONFIG=pkg-config --static --define-prefix' 'PKG_CONFIG_PATH=/tmp/tmpnr559tf9/tools/deps/share/pkgconfig:/tmp/tmpnr559tf9/tools/deps/lib/pkgconfig' 'CC=clang' 'CFLAGS=-O3 -arch arm64 -mmacosx-version-min=11.0 -Wno-nullability-completeness -Wno-expansion-to-defined -Wno-undef-prefix   -fPIC    -Werror=unguarded-availability-new' 'LDFLAGS=-arch arm64 -mmacosx-version-min=11.0   -Wl,-headerpad,40' 'CPPFLAGS=-O3 -arch arm64 -mmacosx-version-min=11.0 -Wno-nullability-completeness -Wno-expansion-to-defined -Wno-undef-prefix   -fPIC    -Werror=unguarded-availability-new' 'PROFILE_TASK=-m test --pgo -j 12' 'BOLT_COMMON_FLAGS=' 'BOLT_APPLY_FLAGS='
+CONFIG_ARGS=	 '--build=aarch64-apple-darwin' '--host=aarch64-apple-darwin' '--prefix=/install' '--with-openssl=/tmp/tmpxt6xb8a8/tools/deps' '--with-system-expat' '--without-ensurepip' '--with-tail-call-interp' '--with-system-libmpdec' 'MODULE_BUILDTYPE=static' '--enable-loadable-sqlite-extensions' '--enable-static-libpython-for-interpreter' '--enable-shared' '--with-mimalloc' '--enable-optimizations' '--enable-experimental-jit=yes-off' '--with-lto=full' '--with-build-python=/tmp/tmpxt6xb8a8/tools/host/bin/python3.14' 'ac_cv_lib_intl_textdomain=no' 'ac_cv_func_ptsname_r=no' 'ac_cv_func_explicit_bzero=no' '--with-dbmliborder=ndbm' 'build_alias=aarch64-apple-darwin' 'host_alias=aarch64-apple-darwin' 'PKG_CONFIG=pkg-config --static --define-prefix' 'PKG_CONFIG_PATH=/tmp/tmpxt6xb8a8/tools/deps/share/pkgconfig:/tmp/tmpxt6xb8a8/tools/deps/lib/pkgconfig' 'CC=clang' 'CFLAGS=-O3 -arch arm64 -mmacosx-version-min=11.0 -Wno-nullability-completeness -Wno-expansion-to-defined -Wno-undef-prefix   -fPIC    -Werror=unguarded-availability-new' 'LDFLAGS=-arch arm64 -mmacosx-version-min=11.0   -Wl,-headerpad,40' 'CPPFLAGS=-O3 -arch arm64 -mmacosx-version-min=11.0 -Wno-nullability-completeness -Wno-expansion-to-defined -Wno-undef-prefix   -fPIC    -Werror=unguarded-availability-new' 'PROFILE_TASK=-m test --pgo -j 12' 'BOLT_COMMON_FLAGS=' 'BOLT_APPLY_FLAGS='
 
 
 # Subdirectories with code
@@ -458,9 +458,9 @@ BUILDPYTHON=	python$(BUILDEXE)
 
 HOSTRUNNER= 
 
-PYTHON_FOR_REGEN?=/tmp/tmpnr559tf9/tools/host/bin/python3.14
+PYTHON_FOR_REGEN?=/tmp/tmpxt6xb8a8/tools/host/bin/python3.14
 UPDATE_FILE=$(PYTHON_FOR_REGEN) $(srcdir)/Tools/build/update_file.py
-PYTHON_FOR_BUILD=_PYTHON_PROJECT_BASE=$(abs_builddir) _PYTHON_HOST_PLATFORM=$(_PYTHON_HOST_PLATFORM) PYTHONPATH=$(srcdir)/Lib _PYTHON_SYSCONFIGDATA_NAME=_sysconfigdata_$(ABIFLAGS)_$(MACHDEP)_$(MULTIARCH) _PYTHON_SYSCONFIGDATA_PATH=$(shell test -f pybuilddir.txt && echo $(abs_builddir)/`cat pybuilddir.txt`) /tmp/tmpnr559tf9/tools/host/bin/python3.14
+PYTHON_FOR_BUILD=_PYTHON_PROJECT_BASE=$(abs_builddir) _PYTHON_HOST_PLATFORM=$(_PYTHON_HOST_PLATFORM) PYTHONPATH=$(srcdir)/Lib _PYTHON_SYSCONFIGDATA_NAME=_sysconfigdata_$(ABIFLAGS)_$(MACHDEP)_$(MULTIARCH) _PYTHON_SYSCONFIGDATA_PATH=$(shell test -f pybuilddir.txt && echo $(abs_builddir)/`cat pybuilddir.txt`) /tmp/tmpxt6xb8a8/tools/host/bin/python3.14
 # Single-platform builds depend on $(BUILDPYTHON). Cross builds use an
 # external "build Python" and have an empty PYTHON_FOR_BUILD_DEPS.
 PYTHON_FOR_BUILD_DEPS=
@@ -468,7 +468,7 @@ PYTHON_FOR_BUILD_DEPS=
 # Single-platform builds use Programs/_freeze_module.c for bootstrapping and
 # ./_bootstrap_python Programs/_freeze_module.py for remaining modules
 # Cross builds use an external "build Python" for all modules.
-PYTHON_FOR_FREEZE=/tmp/tmpnr559tf9/tools/host/bin/python3.14
+PYTHON_FOR_FREEZE=/tmp/tmpxt6xb8a8/tools/host/bin/python3.14
 FREEZE_MODULE_BOOTSTRAP=$(PYTHON_FOR_FREEZE) $(srcdir)/Programs/_freeze_module.py
 FREEZE_MODULE_BOOTSTRAP_DEPS=$(srcdir)/Programs/_freeze_module.py
 FREEZE_MODULE=$(FREEZE_MODULE_BOOTSTRAP)
@@ -532,6 +532,7 @@ IO_OBJS=	\
 MIMALLOC_HEADERS= \
 	$(srcdir)/Include/internal/pycore_mimalloc.h \
 	$(srcdir)/Include/internal/mimalloc/mimalloc.h \
+	$(srcdir)/Include/internal/mimalloc/mimalloc-stats.h \
 	$(srcdir)/Include/internal/mimalloc/mimalloc/atomic.h \
 	$(srcdir)/Include/internal/mimalloc/mimalloc/internal.h \
 	$(srcdir)/Include/internal/mimalloc/mimalloc/prim.h \
@@ -798,6 +799,7 @@ LIBMPDEC_HEADERS= \
 # pyexpat's expat library
 
 LIBEXPAT_OBJS= \
+		Modules/expat/xcs.o \
 		Modules/expat/xmlparse.o \
 		Modules/expat/xmlrole.o \
 		Modules/expat/xmltok.o
@@ -818,7 +820,7 @@ LIBEXPAT_HEADERS= \
 		Modules/expat/pyexpatns.h \
 		Modules/expat/siphash.h \
 		Modules/expat/utf8tab.h \
-		Modules/expat/xcsinc.c \
+		Modules/expat/xcs.h \
 		Modules/expat/xmlrole.h \
 		Modules/expat/xmltok.h \
 		Modules/expat/xmltok_impl.h \
@@ -1232,7 +1234,7 @@ $(PYTHONFRAMEWORKDIR)/Versions/$(VERSION)/$(PYTHONFRAMEWORK): \
 		-install_name $(PYTHONFRAMEWORKINSTALLNAMEPREFIX)/$(PYTHONFRAMEWORK) \
 		-compatibility_version $(VERSION) \
 		-current_version $(VERSION) \
-		-framework CoreFoundation $(LIBS);
+		-framework CoreFoundation $(MODLIBS) $(LIBS);
 	$(INSTALL) -d -m $(DIRMODE)  \
 		$(PYTHONFRAMEWORKDIR)/Versions/$(VERSION)/Resources/English.lproj
 	$(INSTALL_DATA) $(RESSRCDIR)/Info.plist \
@@ -1253,7 +1255,7 @@ $(PYTHONFRAMEWORKDIR)/$(PYTHONFRAMEWORK): \
 		-install_name $(PYTHONFRAMEWORKINSTALLNAMEPREFIX)/$(PYTHONFRAMEWORK) \
 		-compatibility_version $(VERSION) \
 		-current_version $(VERSION) \
-		-framework CoreFoundation $(LIBS);
+		-framework CoreFoundation $(MODLIBS) $(LIBS);
 	$(INSTALL_DATA) $(RESSRCDIR)/Info.plist $(PYTHONFRAMEWORKDIR)/Info.plist
 
 # This rule builds the Cygwin Python DLL and import library if configured
@@ -1673,6 +1675,9 @@ $(LIBMPDEC_A): $(LIBMPDEC_OBJS)
 ##########################################################################
 # Build static libexpat.a
 LIBEXPAT_CFLAGS= $(PY_STDMODULE_CFLAGS) $(CCSHARED)
+
+Modules/expat/xcs.o: $(srcdir)/Modules/expat/xcs.c $(LIBEXPAT_HEADERS) $(PYTHON_HEADERS)
+	$(CC) -c $(LIBEXPAT_CFLAGS) -o $@ $(srcdir)/Modules/expat/xcs.c
 
 Modules/expat/xmlparse.o: $(srcdir)/Modules/expat/xmlparse.c $(LIBEXPAT_HEADERS) $(PYTHON_HEADERS)
 	$(CC) -c $(LIBEXPAT_CFLAGS) -o $@ $(srcdir)/Modules/expat/xmlparse.c
@@ -2287,9 +2292,12 @@ Objects/obmalloc.o: $(srcdir)/Objects/mimalloc/alloc.c \
 		$(srcdir)/Objects/mimalloc/alloc-aligned.c \
 		$(srcdir)/Objects/mimalloc/alloc-posix.c \
 		$(srcdir)/Objects/mimalloc/arena.c \
+		$(srcdir)/Objects/mimalloc/arena-abandon.c \
 		$(srcdir)/Objects/mimalloc/bitmap.c \
+		$(srcdir)/Objects/mimalloc/free.c \
 		$(srcdir)/Objects/mimalloc/heap.c \
 		$(srcdir)/Objects/mimalloc/init.c \
+		$(srcdir)/Objects/mimalloc/libc.c \
 		$(srcdir)/Objects/mimalloc/options.c \
 		$(srcdir)/Objects/mimalloc/os.c \
 		$(srcdir)/Objects/mimalloc/page.c \
@@ -2298,6 +2306,7 @@ Objects/obmalloc.o: $(srcdir)/Objects/mimalloc/alloc.c \
 		$(srcdir)/Objects/mimalloc/segment-map.c \
 		$(srcdir)/Objects/mimalloc/stats.c \
 		$(srcdir)/Objects/mimalloc/prim/prim.c \
+		$(srcdir)/Objects/mimalloc/prim/emscripten/prim.c \
 		$(srcdir)/Objects/mimalloc/prim/osx/prim.c \
 		$(srcdir)/Objects/mimalloc/prim/unix/prim.c \
 		$(srcdir)/Objects/mimalloc/prim/wasi/prim.c
@@ -2785,7 +2794,6 @@ TESTSUBDIRS=	idlelib/idle_test \
 		test/test_capi \
 		test/test_cext \
 		test/test_concurrent_futures \
-		test/test_cppext \
 		test/test_ctypes \
 		test/test_dataclasses \
 		test/test_doctest \
@@ -3075,8 +3083,11 @@ inclinstall:
 		$(INSTALL_DATA) $$i $(DESTDIR)$(INCLUDEPY)/internal; \
 	done
 	@if test "$(INSTALL_MIMALLOC)" = "yes"; then \
-		echo $(INSTALL_DATA) $(srcdir)/Include/internal/mimalloc/mimalloc.h $(DESTDIR)$(INCLUDEPY)/internal/mimalloc/mimalloc.h; \
-		$(INSTALL_DATA) $(srcdir)/Include/internal/mimalloc/mimalloc.h $(DESTDIR)$(INCLUDEPY)/internal/mimalloc/mimalloc.h; \
+		for i in $(srcdir)/Include/internal/mimalloc/*.h; \
+		do \
+			echo $(INSTALL_DATA) $$i $(INCLUDEPY)/internal/mimalloc; \
+			$(INSTALL_DATA) $$i $(DESTDIR)$(INCLUDEPY)/internal/mimalloc; \
+		done; \
 		for i in $(srcdir)/Include/internal/mimalloc/mimalloc/*.h; \
 		do \
 			echo $(INSTALL_DATA) $$i $(INCLUDEPY)/internal/mimalloc/mimalloc; \
@@ -3578,7 +3589,7 @@ MODULE__HMAC_DEPS=$(srcdir)/Modules/hashlib.h $(LIBHACL_HMAC_HEADERS) $(LIBHACL_
 MODULE__HMAC_LDEPS=$(LIBHACL_HMAC_LIB_STATIC)
 
 MODULE__SOCKET_DEPS=$(srcdir)/Modules/socketmodule.h $(srcdir)/Modules/addrinfo.h $(srcdir)/Modules/getaddrinfo.c $(srcdir)/Modules/getnameinfo.c
-MODULE__SSL_DEPS=$(srcdir)/Modules/_ssl.h $(srcdir)/Modules/_ssl/cert.c $(srcdir)/Modules/_ssl/debughelpers.c $(srcdir)/Modules/_ssl/misc.c $(srcdir)/Modules/_ssl_data_111.h $(srcdir)/Modules/_ssl_data_300.h $(srcdir)/Modules/socketmodule.h
+MODULE__SSL_DEPS=$(srcdir)/Modules/_ssl.h $(srcdir)/Modules/_ssl/cert.c $(srcdir)/Modules/_ssl/debughelpers.c $(srcdir)/Modules/_ssl/misc.c $(srcdir)/Modules/_ssl/distrusted_spki.h $(srcdir)/Modules/_ssl_data_111.h $(srcdir)/Modules/_ssl_data_300.h $(srcdir)/Modules/socketmodule.h
 MODULE__TESTCAPI_DEPS=$(srcdir)/Modules/_testcapi/parts.h $(srcdir)/Modules/_testcapi/util.h
 MODULE__TESTLIMITEDCAPI_DEPS=$(srcdir)/Modules/_testlimitedcapi/testcapi_long.h $(srcdir)/Modules/_testlimitedcapi/parts.h $(srcdir)/Modules/_testlimitedcapi/util.h
 MODULE__TESTINTERNALCAPI_DEPS=$(srcdir)/Modules/_testinternalcapi/parts.h
@@ -3671,7 +3682,9 @@ Modules/_testlimitedcapi/version.o: $(srcdir)/Modules/_testlimitedcapi/version.c
 Modules/_testlimitedcapi/file.o: $(srcdir)/Modules/_testlimitedcapi/file.c $(MODULE__TESTLIMITEDCAPI_DEPS) $(MODULE_DEPS_SHARED) $(PYTHON_HEADERS); $(CC) $(MODULE__TESTLIMITEDCAPI_CFLAGS) $(PY_STDMODULE_CFLAGS) $(CCSHARED) -c $(srcdir)/Modules/_testlimitedcapi/file.c -o Modules/_testlimitedcapi/file.o
 Modules/_testlimitedcapi/weakref.o: $(srcdir)/Modules/_testlimitedcapi/weakref.c $(MODULE__TESTLIMITEDCAPI_DEPS) $(MODULE_DEPS_SHARED) $(PYTHON_HEADERS); $(CC) $(MODULE__TESTLIMITEDCAPI_CFLAGS) $(PY_STDMODULE_CFLAGS) $(CCSHARED) -c $(srcdir)/Modules/_testlimitedcapi/weakref.c -o Modules/_testlimitedcapi/weakref.o
 Modules/_testlimitedcapi/run.o: $(srcdir)/Modules/_testlimitedcapi/run.c $(MODULE__TESTLIMITEDCAPI_DEPS) $(MODULE_DEPS_SHARED) $(PYTHON_HEADERS); $(CC) $(MODULE__TESTLIMITEDCAPI_CFLAGS) $(PY_STDMODULE_CFLAGS) $(CCSHARED) -c $(srcdir)/Modules/_testlimitedcapi/run.c -o Modules/_testlimitedcapi/run.o
-Modules/_testlimitedcapi$(EXT_SUFFIX):  Modules/_testlimitedcapi.o Modules/_testlimitedcapi/abstract.o Modules/_testlimitedcapi/bytearray.o Modules/_testlimitedcapi/bytes.o Modules/_testlimitedcapi/capsule.o Modules/_testlimitedcapi/codec.o Modules/_testlimitedcapi/complex.o Modules/_testlimitedcapi/dict.o Modules/_testlimitedcapi/eval.o Modules/_testlimitedcapi/float.o Modules/_testlimitedcapi/heaptype_relative.o Modules/_testlimitedcapi/import.o Modules/_testlimitedcapi/list.o Modules/_testlimitedcapi/long.o Modules/_testlimitedcapi/object.o Modules/_testlimitedcapi/pyos.o Modules/_testlimitedcapi/set.o Modules/_testlimitedcapi/slice.o Modules/_testlimitedcapi/sys.o Modules/_testlimitedcapi/tuple.o Modules/_testlimitedcapi/unicode.o Modules/_testlimitedcapi/vectorcall_limited.o Modules/_testlimitedcapi/version.o Modules/_testlimitedcapi/file.o Modules/_testlimitedcapi/weakref.o Modules/_testlimitedcapi/run.o $(MODULE__TESTLIMITEDCAPI_LDEPS); $(BLDSHARED)  Modules/_testlimitedcapi.o Modules/_testlimitedcapi/abstract.o Modules/_testlimitedcapi/bytearray.o Modules/_testlimitedcapi/bytes.o Modules/_testlimitedcapi/capsule.o Modules/_testlimitedcapi/codec.o Modules/_testlimitedcapi/complex.o Modules/_testlimitedcapi/dict.o Modules/_testlimitedcapi/eval.o Modules/_testlimitedcapi/float.o Modules/_testlimitedcapi/heaptype_relative.o Modules/_testlimitedcapi/import.o Modules/_testlimitedcapi/list.o Modules/_testlimitedcapi/long.o Modules/_testlimitedcapi/object.o Modules/_testlimitedcapi/pyos.o Modules/_testlimitedcapi/set.o Modules/_testlimitedcapi/slice.o Modules/_testlimitedcapi/sys.o Modules/_testlimitedcapi/tuple.o Modules/_testlimitedcapi/unicode.o Modules/_testlimitedcapi/vectorcall_limited.o Modules/_testlimitedcapi/version.o Modules/_testlimitedcapi/file.o Modules/_testlimitedcapi/weakref.o Modules/_testlimitedcapi/run.o $(MODULE__TESTLIMITEDCAPI_LDFLAGS) $(MODULE_LDFLAGS_SHARED) -o Modules/_testlimitedcapi$(EXT_SUFFIX)
+Modules/_testlimitedcapi/type.o: $(srcdir)/Modules/_testlimitedcapi/type.c $(MODULE__TESTLIMITEDCAPI_DEPS) $(MODULE_DEPS_SHARED) $(PYTHON_HEADERS); $(CC) $(MODULE__TESTLIMITEDCAPI_CFLAGS) $(PY_STDMODULE_CFLAGS) $(CCSHARED) -c $(srcdir)/Modules/_testlimitedcapi/type.c -o Modules/_testlimitedcapi/type.o
+Modules/_testlimitedcapi/build.o: $(srcdir)/Modules/_testlimitedcapi/build.c $(MODULE__TESTLIMITEDCAPI_DEPS) $(MODULE_DEPS_SHARED) $(PYTHON_HEADERS); $(CC) $(MODULE__TESTLIMITEDCAPI_CFLAGS) $(PY_STDMODULE_CFLAGS) $(CCSHARED) -c $(srcdir)/Modules/_testlimitedcapi/build.c -o Modules/_testlimitedcapi/build.o
+Modules/_testlimitedcapi$(EXT_SUFFIX):  Modules/_testlimitedcapi.o Modules/_testlimitedcapi/abstract.o Modules/_testlimitedcapi/bytearray.o Modules/_testlimitedcapi/bytes.o Modules/_testlimitedcapi/capsule.o Modules/_testlimitedcapi/codec.o Modules/_testlimitedcapi/complex.o Modules/_testlimitedcapi/dict.o Modules/_testlimitedcapi/eval.o Modules/_testlimitedcapi/float.o Modules/_testlimitedcapi/heaptype_relative.o Modules/_testlimitedcapi/import.o Modules/_testlimitedcapi/list.o Modules/_testlimitedcapi/long.o Modules/_testlimitedcapi/object.o Modules/_testlimitedcapi/pyos.o Modules/_testlimitedcapi/set.o Modules/_testlimitedcapi/slice.o Modules/_testlimitedcapi/sys.o Modules/_testlimitedcapi/tuple.o Modules/_testlimitedcapi/unicode.o Modules/_testlimitedcapi/vectorcall_limited.o Modules/_testlimitedcapi/version.o Modules/_testlimitedcapi/file.o Modules/_testlimitedcapi/weakref.o Modules/_testlimitedcapi/run.o Modules/_testlimitedcapi/type.o Modules/_testlimitedcapi/build.o $(MODULE__TESTLIMITEDCAPI_LDEPS); $(BLDSHARED)  Modules/_testlimitedcapi.o Modules/_testlimitedcapi/abstract.o Modules/_testlimitedcapi/bytearray.o Modules/_testlimitedcapi/bytes.o Modules/_testlimitedcapi/capsule.o Modules/_testlimitedcapi/codec.o Modules/_testlimitedcapi/complex.o Modules/_testlimitedcapi/dict.o Modules/_testlimitedcapi/eval.o Modules/_testlimitedcapi/float.o Modules/_testlimitedcapi/heaptype_relative.o Modules/_testlimitedcapi/import.o Modules/_testlimitedcapi/list.o Modules/_testlimitedcapi/long.o Modules/_testlimitedcapi/object.o Modules/_testlimitedcapi/pyos.o Modules/_testlimitedcapi/set.o Modules/_testlimitedcapi/slice.o Modules/_testlimitedcapi/sys.o Modules/_testlimitedcapi/tuple.o Modules/_testlimitedcapi/unicode.o Modules/_testlimitedcapi/vectorcall_limited.o Modules/_testlimitedcapi/version.o Modules/_testlimitedcapi/file.o Modules/_testlimitedcapi/weakref.o Modules/_testlimitedcapi/run.o Modules/_testlimitedcapi/type.o Modules/_testlimitedcapi/build.o $(MODULE__TESTLIMITEDCAPI_LDFLAGS) $(MODULE_LDFLAGS_SHARED) -o Modules/_testlimitedcapi$(EXT_SUFFIX)
 Modules/_tkinter.o: $(srcdir)/Modules/_tkinter.c $(MODULE__TKINTER_DEPS) $(MODULE_DEPS_SHARED) $(PYTHON_HEADERS); $(CC) $(MODULE__TKINTER_CFLAGS) $(PY_STDMODULE_CFLAGS) $(CCSHARED) -c $(srcdir)/Modules/_tkinter.c -o Modules/_tkinter.o
 Modules/tkappinit.o: $(srcdir)/Modules/tkappinit.c $(MODULE__TKINTER_DEPS) $(MODULE_DEPS_SHARED) $(PYTHON_HEADERS); $(CC) $(MODULE__TKINTER_CFLAGS) $(PY_STDMODULE_CFLAGS) $(CCSHARED) -c $(srcdir)/Modules/tkappinit.c -o Modules/tkappinit.o
 Modules/_tkinter$(EXT_SUFFIX):  Modules/_tkinter.o Modules/tkappinit.o $(MODULE__TKINTER_LDEPS); $(BLDSHARED)  Modules/_tkinter.o Modules/tkappinit.o $(MODULE__TKINTER_LDFLAGS) $(MODULE_LDFLAGS_SHARED) -o Modules/_tkinter$(EXT_SUFFIX)
