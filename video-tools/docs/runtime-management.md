@@ -8,7 +8,7 @@
 python tools/build_runtime.py --refresh --archive
 ```
 
-이 명령은 고정된 SHA-256의 CPython 3.14.8 / 20261013 배포와 의존성 휠을 받습니다. 패키지는 `--no-deps`로 잠금 목록만 네이티브 동봉 Python에 오프라인으로 설치합니다. MCP의 HTTP OAuth용 cryptography·PyJWT처럼 stdio 서버가 불러오지 않는 선택 의존성은 잠금 목록에 넣지 않습니다. 생성 후에는 GUI·MCP 진입점을 실제로 import해 정리 결과를 검사합니다. GUI와 MCP가 공유하는 FFmpeg 한 벌과 라이선스를 수집하고, Mac 실행 파일과 라이브러리의 서명을 보존하거나 ad-hoc 서명합니다.
+이 명령은 고정된 SHA-256의 CPython 3.14.10 / 20261026 배포와 의존성 휠을 받습니다. 패키지는 `--no-deps`로 잠금 목록만 네이티브 동봉 Python에 오프라인으로 설치합니다. MCP의 HTTP OAuth용 cryptography·PyJWT처럼 stdio 서버가 불러오지 않는 선택 의존성은 잠금 목록에 넣지 않습니다. 생성 후에는 GUI·MCP 진입점을 실제로 import해 정리 결과를 검사합니다. GUI와 MCP가 공유하는 FFmpeg 한 벌과 라이선스를 수집하고, Mac 실행 파일과 라이브러리의 서명을 보존하거나 ad-hoc 서명합니다.
 
 런타임에서 제외하는 항목은 `prune_build_files()`에 있습니다. 대상은 CPython 회귀 테스트·테스트 확장 모듈, `ensurepip`·`venv`·`pydoc_data`·`turtledemo`, 사용하지 않는 SQLite 바인딩, Windows 확장 빌드용 `libs`, pywin32의 COM·Pythonwin·ISAPI·데모입니다. pywin32에서 MCP가 사용하는 `win32` API 모듈과 DLL은 유지합니다.
 

@@ -21,8 +21,8 @@ ITCL_LIB_FILE=libtcl9itcl4.3.8.dylib
 
 # String to pass to linker to pick up the Itcl library from its
 # build directory.
-itcl_BUILD_LIB_SPEC='-L/private/tmp/tmpxu3g3txd/tcl9.0.4/unix/pkgs/itcl4.3.8 -litcl4.3.8'
-ITCL_BUILD_LIB_SPEC='-L/private/tmp/tmpxu3g3txd/tcl9.0.4/unix/pkgs/itcl4.3.8 -litcl4.3.8'
+itcl_BUILD_LIB_SPEC='-L/private/tmp/tmp1vjbee8b/tcl9.0.4/unix/pkgs/itcl4.3.8 -litcl4.3.8'
+ITCL_BUILD_LIB_SPEC='-L/private/tmp/tmp1vjbee8b/tcl9.0.4/unix/pkgs/itcl4.3.8 -litcl4.3.8'
 
 # String to pass to linker to pick up the Itcl library from its
 # installed directory.
@@ -35,8 +35,8 @@ ITCL_STUB_LIB_FILE=libitclstub.a
 
 # String to pass to linker to pick up the Itcl stub library from its
 # build directory.
-itcl_BUILD_STUB_LIB_SPEC='-L/private/tmp/tmpxu3g3txd/tcl9.0.4/unix/pkgs/itcl4.3.8 -litclstub'
-ITCL_BUILD_STUB_LIB_SPEC='-L/private/tmp/tmpxu3g3txd/tcl9.0.4/unix/pkgs/itcl4.3.8 -litclstub'
+itcl_BUILD_STUB_LIB_SPEC='-L/private/tmp/tmp1vjbee8b/tcl9.0.4/unix/pkgs/itcl4.3.8 -litclstub'
+ITCL_BUILD_STUB_LIB_SPEC='-L/private/tmp/tmp1vjbee8b/tcl9.0.4/unix/pkgs/itcl4.3.8 -litclstub'
 
 # String to pass to linker to pick up the Itcl stub library from its
 # installed directory.
@@ -45,8 +45,8 @@ ITCL_STUB_LIB_SPEC='-L/tools/deps/lib/itcl4.3.8 -litclstub'
 
 # String to pass to linker to pick up the Itcl stub library from its
 # build directory.
-itcl_BUILD_STUB_LIB_PATH='/private/tmp/tmpxu3g3txd/tcl9.0.4/unix/pkgs/itcl4.3.8/libitclstub.a'
-ITCL_BUILD_STUB_LIB_PATH='/private/tmp/tmpxu3g3txd/tcl9.0.4/unix/pkgs/itcl4.3.8/libitclstub.a'
+itcl_BUILD_STUB_LIB_PATH='/private/tmp/tmp1vjbee8b/tcl9.0.4/unix/pkgs/itcl4.3.8/libitclstub.a'
+ITCL_BUILD_STUB_LIB_PATH='/private/tmp/tmp1vjbee8b/tcl9.0.4/unix/pkgs/itcl4.3.8/libitclstub.a'
 
 # String to pass to linker to pick up the Itcl stub library from its
 # installed directory.
@@ -58,10 +58,10 @@ ITCL_STUB_LIB_PATH='/tools/deps/lib/itcl4.3.8/libitclstub.a'
 # If [incr Tcl] was compiled in a different place than the directory
 # containing the source files, this points to the location of the sources,
 # not the location where [incr Tcl] was compiled.
-itcl_SRC_DIR='/private/tmp/tmpxu3g3txd/tcl9.0.4/pkgs/itcl4.3.8'
-ITCL_SRC_DIR='/private/tmp/tmpxu3g3txd/tcl9.0.4/pkgs/itcl4.3.8'
+itcl_SRC_DIR='/private/tmp/tmp1vjbee8b/tcl9.0.4/pkgs/itcl4.3.8'
+ITCL_SRC_DIR='/private/tmp/tmp1vjbee8b/tcl9.0.4/pkgs/itcl4.3.8'
 
 # String to pass to the compiler so that an extension can
 # find installed Itcl headers.
-itcl_INCLUDE_SPEC='"-I/private/tmp/tmpxu3g3txd/tcl9.0.4/pkgs/itcl4.3.8/generic"'
-ITCL_INCLUDE_SPEC='"-I/private/tmp/tmpxu3g3txd/tcl9.0.4/pkgs/itcl4.3.8/generic"'
+itcl_INCLUDE_SPEC='"-I/private/tmp/tmp1vjbee8b/tcl9.0.4/pkgs/itcl4.3.8/generic"'
+ITCL_INCLUDE_SPEC='"-I/private/tmp/tmp1vjbee8b/tcl9.0.4/pkgs/itcl4.3.8/generic"'

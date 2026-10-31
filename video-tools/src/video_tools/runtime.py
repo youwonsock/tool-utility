@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import sys
 from pathlib import Path
 
@@ -27,7 +28,7 @@ def require_runtime() -> None:
         if not path.is_file():
             raise RuntimeError(f"필수 동봉 파일이 없습니다: {path}. 저장소를 다시 clone하세요.")
     data = json.loads(manifest.read_text(encoding="utf-8"))
-    if data.get("profile") != profile or data.get("python") != "3.14.8":
+    if data.get("profile") != profile or data.get("python") != platform.python_version():
         raise RuntimeError("동봉 런타임 버전 또는 플랫폼이 올바르지 않습니다. 저장소를 다시 clone하세요.")
     if Path(sys.executable).resolve() != python_executable().resolve():
         raise RuntimeError("run.bat 또는 run_mac.command로 동봉 Python을 실행하세요.")
