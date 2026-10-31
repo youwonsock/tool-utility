@@ -48,12 +48,6 @@ class ExtractionRequest:
 
 
 @dataclass(frozen=True)
-class ExtractionProgress:
-    percent: float
-    frames: int
-
-
-@dataclass(frozen=True)
 class ExtractionFinished:
     count: int
     output_dir: Path
@@ -62,19 +56,7 @@ class ExtractionFinished:
     generated: int = 0
 
 
-@dataclass(frozen=True)
-class ExtractionCancelled:
-    pass
-
-
-@dataclass(frozen=True)
-class ExtractionFailed:
-    error: str
-
-
-MediaEvent = Union[ProbeCompleted, ProbeFailed, ExtractionProgress,
-                   ExtractionFinished, ExtractionCancelled, ExtractionFailed]
-EventSink = Callable[[MediaEvent], None]
+MediaEvent = Union[ProbeCompleted, ProbeFailed]
 
 
 def validate_request(request: ExtractionRequest) -> int:
@@ -153,27 +135,4 @@ def extract_images(request: ExtractionRequest, cancel: Optional[threading.Event]
                 skipped += 1
         on_progress(100.0, len(staged_files))
         return ExtractionFinished(len(saved), request.output_dir, skipped, tuple(saved), len(staged_files))
-
-
-class FFmpegExtractionService:
-    """Adapter preserving the existing GUI's typed-event interface."""
-
-    def __init__(self, request: ExtractionRequest, cancel_event: threading.Event, event_sink: EventSink) -> None:
-        self.request = request
-        self.cancel_event = cancel_event
-        self.event_sink = event_sink
-
-    def terminate(self) -> None:
-        # run_ffmpeg checks the event every 100 ms, even with a silent child.
-        self.cancel_event.set()
-
-    def run(self) -> None:
-        try:
-            result = extract_images(self.request, self.cancel_event,
-                                    lambda percent, frames: self.event_sink(ExtractionProgress(percent, frames)))
-            self.event_sink(result)
-        except OperationCancelled:
-            self.event_sink(ExtractionCancelled())
-        except Exception as exc:
-            self.event_sink(ExtractionFailed(str(exc)))
 
