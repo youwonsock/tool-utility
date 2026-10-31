@@ -51,6 +51,8 @@ Windows x64 런타임 2,426개 파일, Mac ARM64 런타임 2,092개 파일의 ma
 
 2026-10-31에 런타임을 Video Tools 복사본 대신 `tools`의 고정 입력에서 직접 생성하도록 바꿨습니다. Tcl/Tk와 사용하지 않는 cryptography, cffi, pycparser, PyJWT를 뺐습니다. Mac 런타임은 134MB에서 76MB가 되었습니다. 생성은 두 OS의 GitHub Actions에서 수행했고, Mac에서 `--audit --git`, 단위 테스트, smoke, 스키마 확인, 경로 이동·오프라인 검사와 MCP 실행 스크립트를 통과했습니다. Windows 런타임은 CI로만 확인합니다.
 
+2026-10-31에 Python 3.14.10, Pillow 13.0.0, certifi 2026.10.23으로 런타임을 다시 생성했습니다. Pillow 12.3.0에는 13.0.0에서 고쳐진 권고 59건이 있었습니다. 두 OS CI와 Mac 새 clone에서 위 검사를 통과했습니다. 테스트는 합성 이미지만 사용하므로 실제 영상의 결과 변화는 확인하지 않았습니다.
+
 ## 재현과 남은 검사
 
 README의 테스트·schema·audit 명령과 `tools/verify_portable.py --output <새 외부 폴더>`로 재현합니다. 검증 스크립트는 기존 결과 폴더를 덮어쓰지 않습니다. 이번 결과의 요약 JSON은 [evidence/2026-10-23](evidence/2026-10-23)에 보관하며, 기계별 절대 경로만 치환했습니다.
