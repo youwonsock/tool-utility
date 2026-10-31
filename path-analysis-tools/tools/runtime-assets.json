@@ -1,20 +1,20 @@
 {
-  "python": "3.14.8",
-  "release": "20261013",
+  "python": "3.14.10",
+  "release": "20261026",
   "profiles": {
     "windows-x64": {
       "triple": "x86_64-pc-windows-msvc",
-      "archive_sha256": "dce851f280b986764037bd952d40819e94ccceb08ac914004123f43ce17f4095",
-      "metadata_url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261013/cpython-3.14.8+20261013-x86_64-pc-windows-msvc-pgo-full.tar.zst",
-      "metadata_sha256": "2ce5a489c8a5960b24e3d8f1227639300963a13b25588970ca164f8a719deac3",
-      "archive_url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261013/cpython-3.14.8+20261013-x86_64-pc-windows-msvc-install_only_stripped.tar.gz"
+      "archive_sha256": "c1876a9795d3a94ee49a1499a69cd91e26ca3e2829593f93fa6e4db90d05402b",
+      "metadata_url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/cpython-3.14.10+20261026-x86_64-pc-windows-msvc-pgo-full.tar.zst",
+      "metadata_sha256": "7a828feea84763362f5e56031a12eee5d2697196ccf987b21ccce5ec9ad4a00f",
+      "archive_url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/cpython-3.14.10+20261026-x86_64-pc-windows-msvc-install_only_stripped.tar.gz"
     },
     "macos-arm64": {
       "triple": "aarch64-apple-darwin",
-      "archive_sha256": "994adadc202c5df0b4570192cc9a70e3f2c131e512f4a125c56efa8562f44b28",
-      "metadata_url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261013/cpython-3.14.8+20261013-aarch64-apple-darwin-pgo+lto-full.tar.zst",
-      "metadata_sha256": "5806ddb9d95d73796c87e1aeb45bf7ec984d08ae9eb94f9020436052b32ce498",
-      "archive_url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261013/cpython-3.14.8+20261013-aarch64-apple-darwin-install_only_stripped.tar.gz"
+      "archive_sha256": "95eb8c87d16af37c54e9765e31d8c56c0d8ffa9968ea0f704f73a9b83f84e9f9",
+      "metadata_url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/cpython-3.14.10+20261026-aarch64-apple-darwin-pgo+lto-full.tar.zst",
+      "metadata_sha256": "137db511241f7693ddc57586af1744c7b6375982ab4c31c4a82d10115657d462",
+      "archive_url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/cpython-3.14.10+20261026-aarch64-apple-darwin-install_only_stripped.tar.gz"
     }
   }
 }
