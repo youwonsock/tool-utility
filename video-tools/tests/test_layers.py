@@ -3,6 +3,9 @@ import unittest
 from pathlib import Path
 
 SOURCE = Path(__file__).resolve().parents[1] / "src" / "video_tools"
+# Operations go through VideoService; interfaces only need these types.
+ALLOWED_FROM_CORE = {"video_tools.core.process": {"OperationCancelled"}, "video_tools.core.probe": {"VideoInfo"},
+                     "video_tools.core.files": set()}
 
 
 def imported_modules(path: Path) -> set[str]:
@@ -32,9 +35,9 @@ class LayerTest(unittest.TestCase):
         for folder in ("gui", "mcp"):
             for path in (SOURCE / folder).rglob("*.py"):
                 for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-                    if isinstance(node, ast.ImportFrom) and node.module == "video_tools.core.backend":
+                    if isinstance(node, ast.ImportFrom) and node.module in ALLOWED_FROM_CORE:
                         names = {alias.name for alias in node.names}
-                        self.assertLessEqual(names, {"OperationCancelled", "VideoInfo"}, path.name)
+                        self.assertLessEqual(names, ALLOWED_FROM_CORE[node.module], path.name)
 
     def test_options_stay_free_of_tk(self):
         self.assertFalse(any(module.startswith("tkinter") for module in imported_modules(SOURCE / "gui" / "options.py")))

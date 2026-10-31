@@ -11,10 +11,12 @@ from typing import Callable, Optional
 from video_tools.core.domain import (
     SizePlan, build_video_filter, calculate_expected_output_count, safe_prefix,
 )
-from video_tools.core.backend import OperationCancelled, probe_video, publish_file, run_ffmpeg
+from video_tools.core.files import publish_file
 from video_tools.core.limits import (
     DURATION_TOLERANCE, GRID_SIZES, IMAGE_FORMATS, MAX_OUTPUT_IMAGES, MAX_OUTPUT_MEGAPIXELS, MAX_OUTPUT_PIXELS,
 )
+from video_tools.core.probe import probe_video
+from video_tools.core.process import OperationCancelled, run_ffmpeg
 
 
 @dataclass(frozen=True, kw_only=True)
