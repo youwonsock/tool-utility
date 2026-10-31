@@ -54,13 +54,24 @@ jobs:
         env:
           MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
         run: python tools/build_ffmpeg.py
+      # Upload before the codec check so a failed check keeps the build for diagnosis.
+      - name: Preserve FFmpeg archive and its corresponding sources
+        uses: actions/upload-artifact@v4
+        with:
+          name: video-ffmpeg-${{ matrix.os }}
+          path: |
+            video-tools/.build/artifacts/ffmpeg-*.tar.gz
+            video-tools/.build/artifacts/ffmpeg-*.tar.gz.sha256
+            video-tools/.build/artifacts/ffmpeg-sources/
+          if-no-files-found: error
       - name: Decode, extract and re-encode every supported codec with the new FFmpeg
         # Samples are encoded with the committed full FFmpeg, so this check needs
         # a runtime that predates the minimal build (or another full FFmpeg).
         shell: bash
         run: |
           set -e
-          work="$RUNNER_TEMP/ffmpeg-check"
+          # Git Bash tar -C cannot open RUNNER_TEMP's backslash path on Windows (\134 is a backslash).
+          work="$(printf '%s' "$RUNNER_TEMP" | tr '\134' /)/ffmpeg-check"
           mkdir -p "$work/new"
           tar -xzf .build/artifacts/ffmpeg-*.tar.gz -C "$work/new"
           if [ "$RUNNER_OS" = "Windows" ]; then
@@ -77,15 +88,6 @@ jobs:
           name: video-ffmpeg-check-${{ matrix.os }}
           path: ${{ runner.temp }}/ffmpeg-check/report.json
           if-no-files-found: warn
-      - name: Preserve FFmpeg archive and its corresponding sources
-        uses: actions/upload-artifact@v4
-        with:
-          name: video-ffmpeg-${{ matrix.os }}
-          path: |
-            video-tools/.build/artifacts/ffmpeg-*.tar.gz
-            video-tools/.build/artifacts/ffmpeg-*.tar.gz.sha256
-            video-tools/.build/artifacts/ffmpeg-sources/
-          if-no-files-found: error
   runtime:
     if: ${{ !inputs.ffmpeg }}
     strategy:
