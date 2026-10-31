@@ -21,9 +21,11 @@ python tools/build_runtime.py --refresh --archive
 
 목록 밖 코덱이나 컨테이너의 영상은 열 수 없습니다. 지원 범위를 바꾸면 `components`를 수정하고 두 FFmpeg와 두 런타임을 함께 다시 생성합니다.
 
-1. GitHub Actions의 **Video tools distribution**을 ffmpeg 옵션으로 실행합니다. Windows는 MSYS2 MINGW64, Mac은 Xcode와 Homebrew의 nasm·meson·ninja·pkg-config로 빌드합니다. 이 작업은 `tools/make_codec_samples.py`로 지원 코덱마다 샘플 영상을 만들고, `verify_smoke.py --codec-matrix <폴더> --ffmpeg <새 FFmpeg>`로 새 빌드의 smoke 검사 전체와 코덱별 조회·추출·재인코딩, 회전 인식을 검사합니다. 샘플 인코딩에는 libx265·libvpx·libaom 등을 갖춘 전체 기능 FFmpeg가 필요하므로, 커밋된 런타임이 이미 최소 빌드라면 다른 전체 기능 FFmpeg를 지정합니다.
+1. GitHub Actions의 **Video tools distribution**을 ffmpeg 옵션으로 실행합니다. Windows는 MSYS2 MINGW64, Mac은 Xcode와 Homebrew의 nasm·meson·ninja·pkg-config로 빌드합니다. 이 작업은 `tools/fetch_codec_samples.py`로 `tools/codec-samples.json`에 고정된 코덱 샘플을 받고, `verify_smoke.py --codec-matrix <폴더> --ffmpeg <새 FFmpeg>`로 새 빌드의 smoke 검사 전체와 코덱별 조회·추출·재인코딩, 회전 인식을 검사합니다.
 2. `video-ffmpeg-*` 아티팩트의 `ffmpeg-windows-x64.tar.gz`, `ffmpeg-macos-arm64.tar.gz`와 `ffmpeg-sources/`의 원본 소스 아카이브를 하나의 GitHub Release에 함께 올립니다. 소스 아카이브는 GPL 대응 소스로 바이너리와 함께 게시합니다.
 3. 두 아카이브의 URL과 SHA-256을 `tools/runtime-assets.json`의 각 프로필 `ffmpeg_url`, `ffmpeg_sha256`에 고정한 뒤 아래 refresh로 런타임을 생성합니다. 로컬 개발에서는 같은 해시의 파일을 `--ffmpeg <tar.gz>`로 전달할 수 있습니다.
+
+지원 코덱을 바꿔 샘플도 달라지면 libx265·libvpx·libaom 등을 갖춘 전체 기능 FFmpeg로 `tools/make_codec_samples.py <FFmpeg> <폴더> --archive codec-samples.tar.gz`를 실행합니다. 동봉 최소 빌드는 이 형식들을 디코딩만 할 수 있습니다. 결과를 새 GitHub Release에 올리고 URL과 SHA-256을 `tools/codec-samples.json`에 고정합니다.
 
 x264 소스는 stable 브랜치 커밋의 GitLab 아카이브입니다. 아카이브 바이트가 바뀌어 해시가 맞지 않으면 같은 커밋인지 확인한 뒤 새 해시로 다시 고정합니다.
 
@@ -33,7 +35,7 @@ GitHub Actions의 **Video tools distribution**을 refresh 옵션으로 실행하
 python tools/sync_runtime.py /path/to/windows-x64.tar.gz /path/to/macos-arm64.tar.gz --stage
 ```
 
-동기화는 해시와 런타임 입력을 검사하고 Git 실행 권한·심볼릭 링크를 보존합니다. Windows에서 Mac 런타임을 동기화할 때도 Git 인덱스에 정확한 권한과 링크를 저장합니다.
+동기화는 해시와 런타임 입력을 검사하고, 작업 폴더의 실행 권한을 manifest대로 맞추며 Git 실행 권한·심볼릭 링크를 보존합니다. Windows에서 Mac 런타임을 동기화할 때도 Git 인덱스에 정확한 권한과 링크를 저장합니다.
 
 ```bash
 python tools/build_runtime.py --audit --git

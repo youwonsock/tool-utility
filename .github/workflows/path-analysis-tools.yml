@@ -18,7 +18,7 @@ jobs:
       run:
         working-directory: path-analysis-tools
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Select committed interpreter
         shell: pwsh
         run: |
@@ -39,7 +39,7 @@ jobs:
         run: '& $env:PAT_PYTHON -I -B -X utf8 tools/verify_portable.py --output "$env:RUNNER_TEMP/path-analysis-portable"'
       - name: Preserve validation evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: path-analysis-${{ matrix.os }}
           path: ${{ runner.temp }}/path-analysis-portable/*.json
