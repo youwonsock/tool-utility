@@ -1,5 +1,5 @@
 {
-  "python": "3.14.8",
+  "python": "3.14.10",
   "machine": "arm64",
   "tcl": "9.0.4",
   "tk": "9.0.4",
@@ -9,6 +9,7 @@
     "click": "8.5.0",
     "packaging": "26.3",
     "jsonschema-specifications": "2025.9.1",
+    "certifi": "2026.10.23",
     "jsonschema": "4.26.0",
     "httpcore": "1.0.9",
     "h11": "0.16.0",
@@ -16,7 +17,6 @@
     "pydantic_core": "2.50.1",
     "python-multipart": "0.0.32",
     "python-dotenv": "1.2.4",
-    "certifi": "2026.7.22",
     "annotated-types": "0.8.0",
     "referencing": "0.37.0",
     "typing-inspection": "0.4.4",
@@ -32,13 +32,13 @@
     "idna": "3.20"
   },
   "profile": "macos-arm64",
-  "input_sha256": "58e26b1e9efbad2eef24ffa2f2e6e31e815e69c4d250452c4effdb63aa67b6e1",
+  "input_sha256": "2c4e69fda2e74104d78ffb9df546fc868d8a28786cebe767b00469a30a3357ae",
   "provider": {
     "triple": "aarch64-apple-darwin",
-    "archive_sha256": "994adadc202c5df0b4570192cc9a70e3f2c131e512f4a125c56efa8562f44b28",
-    "metadata_url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261013/cpython-3.14.8+20261013-aarch64-apple-darwin-pgo+lto-full.tar.zst",
-    "metadata_sha256": "5806ddb9d95d73796c87e1aeb45bf7ec984d08ae9eb94f9020436052b32ce498",
-    "archive_url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261013/cpython-3.14.8+20261013-aarch64-apple-darwin-install_only_stripped.tar.gz",
+    "archive_sha256": "95eb8c87d16af37c54e9765e31d8c56c0d8ffa9968ea0f704f73a9b83f84e9f9",
+    "metadata_url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/cpython-3.14.10+20261026-aarch64-apple-darwin-pgo+lto-full.tar.zst",
+    "metadata_sha256": "137db511241f7693ddc57586af1744c7b6375982ab4c31c4a82d10115657d462",
+    "archive_url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/cpython-3.14.10+20261026-aarch64-apple-darwin-install_only_stripped.tar.gz",
     "ffmpeg_url": "https://github.com/youwonsock/tool-utility/releases/download/video-tools-ffmpeg-7.1.5-1/ffmpeg-macos-arm64.tar.gz",
     "ffmpeg_sha256": "f03e43acd223c60fef6ddb990753289bc219e7f2aa86a22436b9a604a64888f5"
   },
@@ -58,10 +58,10 @@
       "url": "https://files.pythonhosted.org/packages/64/b4/17d4b0b2a2dc85a6df63d1157e028ed19f90d4cd97c36717afef2bc2f395/attrs-26.1.0-py3-none-any.whl",
       "sha256": "c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309"
     },
-    "certifi==2026.7.22": {
-      "filename": "certifi-2026.7.22-py3-none-any.whl",
-      "url": "https://files.pythonhosted.org/packages/0b/a7/71ac2cff56fec219ed242bb11b8efb69fcc4bec75db06fb7bfe35de520e6/certifi-2026.7.22-py3-none-any.whl",
-      "sha256": "62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775"
+    "certifi==2026.10.23": {
+      "filename": "certifi-2026.10.23-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/32/d1/a3652fe2c19134d0d15922177821d863cbd7e842d53a21bbe7e8e3a1b5ac/certifi-2026.10.23-py3-none-any.whl",
+      "sha256": "e9b54de76e530bb6cf0ccd036787103acb58fd42ba930ea8bf948ddbaa2f61d1"
     },
     "click==8.5.0": {
       "filename": "click-8.5.0-py3-none-any.whl",
@@ -191,7 +191,7 @@
   },
   "ffmpeg_version": "ffmpeg version 7.1.5 Copyright (c) 2000-2026 the FFmpeg developers\nbuilt with Apple clang version 17.0.0 (clang-1700.0.13.5)\nconfiguration: --disable-everything --disable-autodetect --disable-network --disable-doc --disable-ffplay --disable-ffprobe --disable-debug --enable-gpl --enable-static --disable-shared --pkg-config-flags=--static --enable-zlib --enable-libx264 --enable-libdav1d --enable-swscale --enable-swresample --enable-avfilter --enable-pthreads --prefix=/Users/runner/work/tool-utility/tool-utility/video-tools/.build/ffmpeg/macos-arm64/prefix --extra-cflags=-I/Users/runner/work/tool-utility/tool-utility/video-tools/.build/ffmpeg/macos-arm64/prefix/include --extra-ldflags=-L/Users/runner/work/tool-utility/tool-utility/video-tools/.build/ffmpeg/macos-arm64/prefix/lib --enable-protocol=file --enable-protocol=pipe --enable-demuxer=mov --enable-demuxer=matroska --enable-demuxer=avi --enable-demuxer=image2 --enable-demuxer=image_png_pipe --enable-demuxer=image_jpeg_pipe --enable-muxer=mp4 --enable-muxer=image2 --enable-muxer=image2pipe --enable-muxer=rawvideo --enable-decoder=h264 --enable-decoder=hevc --enable-decoder=vp8 --enable-decoder=vp9 --enable-decoder=libdav1d --enable-decoder=mpeg4 --enable-decoder=mpeg1video --enable-decoder=mpeg2video --enable-decoder=mjpeg --enable-decoder=prores --enable-decoder=png --enable-decoder=rawvideo --enable-decoder=wrapped_avframe --enable-decoder=aac --enable-decoder=mp2 --enable-decoder=mp2float --enable-decoder=mp3 --enable-decoder=mp3float --enable-decoder=opus --enable-decoder=vorbis --enable-decoder=ac3 --enable-decoder=eac3 --enable-decoder=flac --enable-decoder=alac --enable-decoder=pcm_s16le --enable-decoder=pcm_s16be --enable-decoder=pcm_s24le --enable-decoder=pcm_s24be --enable-decoder=pcm_s32le --enable-decoder=pcm_f32le --enable-decoder=pcm_u8 --enable-encoder=png --enable-encoder=mjpeg --enable-encoder=libx264 --enable-encoder=aac --enable-encoder=rawvideo --enable-parser=h264 --enable-parser=hevc --enable-parser=vp8 --enable-parser=vp9 --enable-parser=av1 --enable-parser=mpeg4video --enable-parser=mpegvideo --enable-parser=mjpeg --enable-parser=png --enable-parser=aac --enable-parser=mpegaudio --enable-parser=opus --enable-parser=vorbis --enable-parser=ac3 --enable-parser=flac --enable-bsf=aac_adtstoasc --enable-bsf=h264_mp4toannexb --enable-bsf=hevc_mp4toannexb --enable-bsf=vp9_superframe_split --enable-filter=trim --enable-filter=atrim --enable-filter=fps --enable-filter=format --enable-filter=aformat --enable-filter=scale --enable-filter=pad --enable-filter=tile --enable-filter=crop --enable-filter=transpose --enable-filter=hflip --enable-filter=vflip --enable-filter=rotate --enable-filter=setsar --enable-filter=setpts --enable-filter=asetpts --enable-filter=atempo --enable-filter=aresample --enable-filter=null --enable-filter=anull --enable-filter=testsrc2 --enable-filter=sine --enable-indev=lavfi\nlibavutil      59. 39.100 / 59. 39.100\nlibavcodec     61. 19.101 / 61. 19.101\nlibavformat    61.  7.103 / 61.  7.103\nlibavdevice    61.  3.100 / 61.  3.100\nlibavfilter    10.  5.100 / 10.  5.100\nlibswscale      8.  3.100 /  8.  3.100\nlibswresample   5.  3.100 /  5.  3.100\nlibpostproc    58.  3.100 / 58.  3.100\n",
   "signed_macho_files": 13,
-  "total_bytes": 79796998,
+  "total_bytes": 79945819,
   "files": {
     "licenses/FFmpeg/dav1d-COPYING": {
       "mode": "100644",
@@ -238,7 +238,7 @@
       "size": 1109,
       "sha256": "882115c95dfc2af1eeb6714f8ec6d5cbcabf667caff8729f42420da63f714e9f"
     },
-    "licenses/packages/certifi-2026.7.22.dist-info/licenses/LICENSE": {
+    "licenses/packages/certifi-2026.10.23.dist-info/licenses/LICENSE": {
       "mode": "100644",
       "size": 989,
       "sha256": "e93716da6b9c0d5a4a1df60fe695b370f0695603d21f6f83f053e42cfc10caf7"
@@ -303,112 +303,112 @@
       "size": 1344,
       "sha256": "b70e7e9b742f1cc6f948b34c16aa39ffece94196364bc88ff0d2180f0028fac5"
     },
-    "licenses/packages/pip-26.2.1.dist-info/licenses/AUTHORS.txt": {
+    "licenses/packages/pip-26.2.2.dist-info/licenses/AUTHORS.txt": {
       "mode": "100644",
       "size": 12139,
       "sha256": "4eb1fb1705e2def898e81bcba19c3aac80620d27ba3569d6a6df7b4629d1b5c2"
     },
-    "licenses/packages/pip-26.2.1.dist-info/licenses/LICENSE.txt": {
+    "licenses/packages/pip-26.2.2.dist-info/licenses/LICENSE.txt": {
       "mode": "100644",
       "size": 1093,
       "sha256": "634300a669d49aeae65b12c6c48c924c51a4cdf3d1ff086dc3456dc8bcaa2104"
     },
-    "licenses/packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/cachecontrol/LICENSE.txt": {
+    "licenses/packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/cachecontrol/LICENSE.txt": {
       "mode": "100644",
       "size": 558,
       "sha256": "86eeee87be2a43f3ff1f56496f451f69243926f025fedbb033666c304c4c161b"
     },
-    "licenses/packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/certifi/LICENSE": {
+    "licenses/packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/certifi/LICENSE": {
       "mode": "100644",
       "size": 989,
       "sha256": "e93716da6b9c0d5a4a1df60fe695b370f0695603d21f6f83f053e42cfc10caf7"
     },
-    "licenses/packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/distlib/LICENSE.txt": {
+    "licenses/packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/distlib/LICENSE.txt": {
       "mode": "100644",
       "size": 14531,
       "sha256": "808e10c8a6ab8deb149ff9b3fb19f447a808094606d712a9ca57fead3552599d"
     },
-    "licenses/packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/distro/LICENSE": {
+    "licenses/packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/distro/LICENSE": {
       "mode": "100644",
       "size": 11325,
       "sha256": "cb5e8e7e5f4a3988e1063c142c60dc2df75605f4c46515e776e3aca6df976e14"
     },
-    "licenses/packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/idna/LICENSE.md": {
+    "licenses/packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/idna/LICENSE.md": {
       "mode": "100644",
       "size": 1541,
       "sha256": "1a9a4f0e3d479a27240ddd59a9137a66ab4a0f9dfdc8ca6188cc0bfd85187f04"
     },
-    "licenses/packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/msgpack/COPYING": {
+    "licenses/packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/msgpack/COPYING": {
       "mode": "100644",
       "size": 614,
       "sha256": "492dedba85da5872f78e6091bcd1fea474d660d35acb4dee964b8aab3f007427"
     },
-    "licenses/packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/packaging/LICENSE": {
+    "licenses/packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/packaging/LICENSE": {
       "mode": "100644",
       "size": 197,
       "sha256": "cad1ef5bd340d73e074ba614d26f7deaca5c7940c3d8c34852e65c4909686c48"
     },
-    "licenses/packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/packaging/LICENSE.APACHE": {
+    "licenses/packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/packaging/LICENSE.APACHE": {
       "mode": "100644",
       "size": 10174,
       "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
     },
-    "licenses/packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/packaging/LICENSE.BSD": {
+    "licenses/packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/packaging/LICENSE.BSD": {
       "mode": "100644",
       "size": 1344,
       "sha256": "b70e7e9b742f1cc6f948b34c16aa39ffece94196364bc88ff0d2180f0028fac5"
     },
-    "licenses/packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/pkg_resources/LICENSE": {
+    "licenses/packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/pkg_resources/LICENSE": {
       "mode": "100644",
       "size": 1023,
       "sha256": "86da0f01aeae46348a3c3d465195dc1ceccde79f79e87769a64b8da04b2a4741"
     },
-    "licenses/packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/platformdirs/LICENSE": {
+    "licenses/packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/platformdirs/LICENSE": {
       "mode": "100644",
       "size": 1089,
       "sha256": "29e0fd62e929850e86eb28c3fdccf0cefdf4fa94879011cffb3d0d4bed6d4db6"
     },
-    "licenses/packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/pygments/LICENSE": {
+    "licenses/packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/pygments/LICENSE": {
       "mode": "100644",
       "size": 1331,
       "sha256": "a9d66f1d526df02e29dce73436d34e56e8632f46c275bbdffc70569e882f9f17"
     },
-    "licenses/packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/pyproject_hooks/LICENSE": {
+    "licenses/packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/pyproject_hooks/LICENSE": {
       "mode": "100644",
       "size": 1081,
       "sha256": "1b22b049b5267d6dfc23a67bf4a84d8ec04b9fdfb1a51d360e42b4342c8b4154"
     },
-    "licenses/packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/requests/LICENSE": {
+    "licenses/packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/requests/LICENSE": {
       "mode": "100644",
       "size": 10142,
       "sha256": "09e8a9bcec8067104652c168685ab0931e7868f9c8284b66f5ae6edae5f1130b"
     },
-    "licenses/packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/resolvelib/LICENSE": {
+    "licenses/packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/resolvelib/LICENSE": {
       "mode": "100644",
       "size": 751,
       "sha256": "f388fd38cad13112c1dc0f669bbe80e7f84541edbafb72f3030d2ca7642c3c9d"
     },
-    "licenses/packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/rich/LICENSE": {
+    "licenses/packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/rich/LICENSE": {
       "mode": "100644",
       "size": 1056,
       "sha256": "deed7c17a4318158190a3ea239cc879a5a50271cebb98ae7025f48fbe58dca15"
     },
-    "licenses/packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/tomli/LICENSE": {
+    "licenses/packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/tomli/LICENSE": {
       "mode": "100644",
       "size": 1072,
       "sha256": "b80816b0d530b8accb4c2211783790984a6e3b61922c2b5ee92f3372ab2742fe"
     },
-    "licenses/packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/tomli_w/LICENSE": {
+    "licenses/packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/tomli_w/LICENSE": {
       "mode": "100644",
       "size": 1072,
       "sha256": "b80816b0d530b8accb4c2211783790984a6e3b61922c2b5ee92f3372ab2742fe"
     },
-    "licenses/packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/truststore/LICENSE": {
+    "licenses/packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/truststore/LICENSE": {
       "mode": "100644",
       "size": 1086,
       "sha256": "33be7b7e8fa4fd19b1760e1a8ed8a668bdab852c91b692dd41424bcb725a9fca"
     },
-    "licenses/packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/urllib3/LICENSE.txt": {
+    "licenses/packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/urllib3/LICENSE.txt": {
       "mode": "100644",
       "size": 1093,
       "sha256": "130e3a64d5fdd5d096a752694634a7d9df284469de86e5732100268041e3d686"
@@ -480,8 +480,8 @@
     },
     "licenses/python-build-standalone/PYTHON.json": {
       "mode": "100644",
-      "size": 114062,
-      "sha256": "69b36e46feeda88a374a1d951d3440b08c827c7d083b21cbb7e585c25e4a7a49"
+      "size": 114313,
+      "sha256": "70bf19884827e77967735cda589fec450c7e5e89d144025736a69b42ed62f8f5"
     },
     "licenses/python-build-standalone/install/lib/python3.14/LICENSE.txt": {
       "mode": "100644",
@@ -588,107 +588,107 @@
       "size": 1093,
       "sha256": "130e3a64d5fdd5d096a752694634a7d9df284469de86e5732100268041e3d686"
     },
-    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.1.dist-info/licenses/LICENSE.txt": {
+    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.2.dist-info/licenses/LICENSE.txt": {
       "mode": "100644",
       "size": 1093,
       "sha256": "634300a669d49aeae65b12c6c48c924c51a4cdf3d1ff086dc3456dc8bcaa2104"
     },
-    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/cachecontrol/LICENSE.txt": {
+    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/cachecontrol/LICENSE.txt": {
       "mode": "100644",
       "size": 558,
       "sha256": "86eeee87be2a43f3ff1f56496f451f69243926f025fedbb033666c304c4c161b"
     },
-    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/certifi/LICENSE": {
+    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/certifi/LICENSE": {
       "mode": "100644",
       "size": 989,
       "sha256": "e93716da6b9c0d5a4a1df60fe695b370f0695603d21f6f83f053e42cfc10caf7"
     },
-    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/distlib/LICENSE.txt": {
+    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/distlib/LICENSE.txt": {
       "mode": "100644",
       "size": 14531,
       "sha256": "808e10c8a6ab8deb149ff9b3fb19f447a808094606d712a9ca57fead3552599d"
     },
-    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/distro/LICENSE": {
+    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/distro/LICENSE": {
       "mode": "100644",
       "size": 11325,
       "sha256": "cb5e8e7e5f4a3988e1063c142c60dc2df75605f4c46515e776e3aca6df976e14"
     },
-    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/idna/LICENSE.md": {
+    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/idna/LICENSE.md": {
       "mode": "100644",
       "size": 1541,
       "sha256": "1a9a4f0e3d479a27240ddd59a9137a66ab4a0f9dfdc8ca6188cc0bfd85187f04"
     },
-    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/msgpack/COPYING": {
+    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/msgpack/COPYING": {
       "mode": "100644",
       "size": 614,
       "sha256": "492dedba85da5872f78e6091bcd1fea474d660d35acb4dee964b8aab3f007427"
     },
-    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/packaging/LICENSE": {
+    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/packaging/LICENSE": {
       "mode": "100644",
       "size": 197,
       "sha256": "cad1ef5bd340d73e074ba614d26f7deaca5c7940c3d8c34852e65c4909686c48"
     },
-    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/packaging/LICENSE.APACHE": {
+    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/packaging/LICENSE.APACHE": {
       "mode": "100644",
       "size": 10174,
       "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
     },
-    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/packaging/LICENSE.BSD": {
+    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/packaging/LICENSE.BSD": {
       "mode": "100644",
       "size": 1344,
       "sha256": "b70e7e9b742f1cc6f948b34c16aa39ffece94196364bc88ff0d2180f0028fac5"
     },
-    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/pkg_resources/LICENSE": {
+    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/pkg_resources/LICENSE": {
       "mode": "100644",
       "size": 1023,
       "sha256": "86da0f01aeae46348a3c3d465195dc1ceccde79f79e87769a64b8da04b2a4741"
     },
-    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/platformdirs/LICENSE": {
+    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/platformdirs/LICENSE": {
       "mode": "100644",
       "size": 1089,
       "sha256": "29e0fd62e929850e86eb28c3fdccf0cefdf4fa94879011cffb3d0d4bed6d4db6"
     },
-    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/pygments/LICENSE": {
+    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/pygments/LICENSE": {
       "mode": "100644",
       "size": 1331,
       "sha256": "a9d66f1d526df02e29dce73436d34e56e8632f46c275bbdffc70569e882f9f17"
     },
-    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/pyproject_hooks/LICENSE": {
+    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/pyproject_hooks/LICENSE": {
       "mode": "100644",
       "size": 1081,
       "sha256": "1b22b049b5267d6dfc23a67bf4a84d8ec04b9fdfb1a51d360e42b4342c8b4154"
     },
-    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/requests/LICENSE": {
+    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/requests/LICENSE": {
       "mode": "100644",
       "size": 10142,
       "sha256": "09e8a9bcec8067104652c168685ab0931e7868f9c8284b66f5ae6edae5f1130b"
     },
-    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/resolvelib/LICENSE": {
+    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/resolvelib/LICENSE": {
       "mode": "100644",
       "size": 751,
       "sha256": "f388fd38cad13112c1dc0f669bbe80e7f84541edbafb72f3030d2ca7642c3c9d"
     },
-    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/rich/LICENSE": {
+    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/rich/LICENSE": {
       "mode": "100644",
       "size": 1056,
       "sha256": "deed7c17a4318158190a3ea239cc879a5a50271cebb98ae7025f48fbe58dca15"
     },
-    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/tomli/LICENSE": {
+    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/tomli/LICENSE": {
       "mode": "100644",
       "size": 1072,
       "sha256": "b80816b0d530b8accb4c2211783790984a6e3b61922c2b5ee92f3372ab2742fe"
     },
-    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/tomli_w/LICENSE": {
+    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/tomli_w/LICENSE": {
       "mode": "100644",
       "size": 1072,
       "sha256": "b80816b0d530b8accb4c2211783790984a6e3b61922c2b5ee92f3372ab2742fe"
     },
-    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/truststore/LICENSE": {
+    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/truststore/LICENSE": {
       "mode": "100644",
       "size": 1086,
       "sha256": "33be7b7e8fa4fd19b1760e1a8ed8a668bdab852c91b692dd41424bcb725a9fca"
     },
-    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.1.dist-info/licenses/src/pip/_vendor/urllib3/LICENSE.txt": {
+    "licenses/python-build-standalone/install/lib/python3.14/site-packages/pip-26.2.2.dist-info/licenses/src/pip/_vendor/urllib3/LICENSE.txt": {
       "mode": "100644",
       "size": 1093,
       "sha256": "130e3a64d5fdd5d096a752694634a7d9df284469de86e5732100268041e3d686"
@@ -758,11 +758,6 @@
       "size": 1447,
       "sha256": "87a4c4442337b8968ef956031c406b74f9cb7149b7ba87311bdaba534816201c"
     },
-    "licenses/python-build-standalone/licenses/LICENSE.openssl-1.1.txt": {
-      "mode": "100644",
-      "size": 6120,
-      "sha256": "9c04cce50c4989d5601dd8b07f6ab922c40388b66ac736c9007cb1ed9d9dd560"
-    },
     "licenses/python-build-standalone/licenses/LICENSE.openssl-3.txt": {
       "mode": "100644",
       "size": 10175,
@@ -783,10 +778,20 @@
       "size": 2826,
       "sha256": "3ac5cdd0bef6c43ce34c6a7ced452081d9e5a0bf94082b9f9147d23ec9e214f5"
     },
+    "licenses/python-build-standalone/licenses/LICENSE.zlib-ng.txt": {
+      "mode": "100644",
+      "size": 867,
+      "sha256": "6c9f0d975b41afaa34d22f55bb8986ce69e5cb7ad327cb2b28820cd425edf5ee"
+    },
     "licenses/python-build-standalone/licenses/LICENSE.zlib.txt": {
       "mode": "100644",
       "size": 995,
       "sha256": "818922b2620f12801a12bf78e399644a30990e66824abd8ca8ec24d451d6f92c"
+    },
+    "licenses/python-build-standalone/licenses/LICENSE.zstd.txt": {
+      "mode": "100644",
+      "size": 1549,
+      "sha256": "7055266497633c9025b777c78eb7235af13922117480ed5c674677adc381c9d8"
     },
     "media/ffmpeg": {
       "mode": "100755",
@@ -803,8 +808,8 @@
     },
     "python/bin/python3.14": {
       "mode": "100755",
-      "size": 18970560,
-      "sha256": "69d5d7633be933a8e4df3c1d6ce4a4883233f0b24660ceaeb8720c4e9f368cee"
+      "size": 19055536,
+      "sha256": "26b5194d2beb09e648b4676ddc18a1384f182a7ed84f3db73106096aba6febf4"
     },
     "python/lib/itcl4.3.8/itcl.tcl": {
       "mode": "100644",
@@ -814,7 +819,7 @@
     "python/lib/itcl4.3.8/itclConfig.sh": {
       "mode": "100644",
       "size": 3072,
-      "sha256": "2b0fbab42d3a3669e1fee85df80db89dda525324ebd67ff2791ff55d28affd22"
+      "sha256": "be04d0ed2a9f65081927ede46a13aabdd55a2862ef292af3fd2a51ae1be3ed4a"
     },
     "python/lib/itcl4.3.8/itclHullCmds.tcl": {
       "mode": "100644",
@@ -834,12 +839,12 @@
     "python/lib/itcl4.3.8/libitclstub.a": {
       "mode": "100644",
       "size": 1840,
-      "sha256": "dcfc2da840a5476ce12afb33b9adbe8accbe2a002ca8fec007231caeb1bf8225"
+      "sha256": "cbf7c397969d8a1705a098461113a4e5973c9842622f95c18f7fbf16c048ac75"
     },
     "python/lib/itcl4.3.8/libitclstub4.3.8.a": {
       "mode": "100644",
       "size": 1840,
-      "sha256": "dcfc2da840a5476ce12afb33b9adbe8accbe2a002ca8fec007231caeb1bf8225"
+      "sha256": "cbf7c397969d8a1705a098461113a4e5973c9842622f95c18f7fbf16c048ac75"
     },
     "python/lib/itcl4.3.8/libtcl9itcl4.3.8.dylib": {
       "mode": "100644",
@@ -853,18 +858,18 @@
     },
     "python/lib/libpython3.14.dylib": {
       "mode": "100755",
-      "size": 18986944,
-      "sha256": "c8470cecf083b4c7c793eda25de65521b12a9748ad71781a4c8309c1c789137c"
+      "size": 19038912,
+      "sha256": "766e7884f00adbcf73c25fd884ea04fe7e69f451429256f723a7c13629eb6b8d"
     },
     "python/lib/libtcl9.0.dylib": {
       "mode": "100755",
       "size": 2040608,
-      "sha256": "78fd2152ea8df575ea08d65c78b18c7f1ac0174adab62fc1fd7f6add7754e8c1"
+      "sha256": "1ca2d624e43054a3f82478b4dd6f37dfea5c2c4777f7e5eba30000aa430da651"
     },
     "python/lib/libtcl9tk9.0.dylib": {
       "mode": "100755",
       "size": 1843888,
-      "sha256": "380e725fe37f9bbadd204139a553be5c7556dc721556a195e5bae665dc9abf43"
+      "sha256": "06411b4c3743ae275a69d95a08d96156024fdc1d624c910323982709a5809349"
     },
     "python/lib/pkgconfig/python-3.14-embed.pc": {
       "mode": "100644",
@@ -981,13 +986,13 @@
     },
     "python/lib/python3.14/_pydecimal.py": {
       "mode": "100644",
-      "size": 229368,
-      "sha256": "1dc41470c51d2bb83e19f0c1316993962da453cc640e075ab06b56d2635423a8"
+      "size": 232769,
+      "sha256": "07cae78cbf5952142b8590f6bd8996617421dd8ab00053f80f61b664eacce740"
     },
     "python/lib/python3.14/_pyio.py": {
       "mode": "100644",
-      "size": 96048,
-      "sha256": "e07d55084185e40255084d409a126ab9889c76ff1d9cc67fc9157450e78770f1"
+      "size": 96059,
+      "sha256": "556f36df910e3bd3a70135d938e3197130605a6d06f342b1b1b2a5accdfee370"
     },
     "python/lib/python3.14/_pylong.py": {
       "mode": "100644",
@@ -1041,8 +1046,8 @@
     },
     "python/lib/python3.14/_pyrepl/historical_reader.py": {
       "mode": "100644",
-      "size": 13240,
-      "sha256": "cab5c4ab74ffcd5ad413b3e8e3b557064db24545bdd16abe0cdd242a75e1b799"
+      "size": 13385,
+      "sha256": "876546988cb1fe4abd4a7533bceba0758aaa615ae6e3e692c100ce8bf3b2d309"
     },
     "python/lib/python3.14/_pyrepl/input.py": {
       "mode": "100644",
@@ -1076,13 +1081,13 @@
     },
     "python/lib/python3.14/_pyrepl/readline.py": {
       "mode": "100644",
-      "size": 21414,
-      "sha256": "0aa869de4165f45d34d75a4da13de3586168ebfc4e4336a4a1fe26cd56d06d9e"
+      "size": 21464,
+      "sha256": "b1d40e522e9473f23f51055e5d2025b6400c9e04cf141634e7bb13b18ee92314"
     },
     "python/lib/python3.14/_pyrepl/simple_interact.py": {
       "mode": "100644",
-      "size": 5950,
-      "sha256": "b0cdbbd5cead1fca2dceecbbbb15cc09545bd481cd03a26ae8083219ec7e3336"
+      "size": 6119,
+      "sha256": "fef620858fcbcd45e48258d4a24f0b16d2392f62641685ae361567cb7498ceac"
     },
     "python/lib/python3.14/_pyrepl/terminfo.py": {
       "mode": "100644",
@@ -1136,13 +1141,13 @@
     },
     "python/lib/python3.14/_sysconfig_vars__darwin_darwin.json": {
       "mode": "100644",
-      "size": 67952,
-      "sha256": "90c8a7e15e1648fcb8cc2b1ac0edc347a4920b3caced38c14996ce1c016863fc"
+      "size": 68212,
+      "sha256": "0040d0cb97a0b6c414d233e3548342099163c86abf6f11b6eba23d2018d6b3ad"
     },
     "python/lib/python3.14/_sysconfigdata__darwin_darwin.py": {
       "mode": "100644",
-      "size": 59792,
-      "sha256": "e4cd22a935e69513ad0301e6c1c9fa3c233e4c0849a8440b1f322d909c4f833b"
+      "size": 60063,
+      "sha256": "71fbf99b741704c9012a08f49e210931768a70209d154d41bad4e0873200946c"
     },
     "python/lib/python3.14/_threading_local.py": {
       "mode": "100644",
@@ -1161,8 +1166,8 @@
     },
     "python/lib/python3.14/annotationlib.py": {
       "mode": "100644",
-      "size": 44420,
-      "sha256": "1cce29393714b91e3f71571ffbedacc7f73f11ad26be10701debeb86ec059a32"
+      "size": 44827,
+      "sha256": "e562a066a5151c98a197574088fa87f1538c2e1239ac2e2dc2d8f4bfe8d32be9"
     },
     "python/lib/python3.14/antigravity.py": {
       "mode": "100644",
@@ -1191,8 +1196,8 @@
     },
     "python/lib/python3.14/asyncio/base_events.py": {
       "mode": "100644",
-      "size": 81456,
-      "sha256": "9b20711272761ecad93248391c12532fcc7264849fcf59291f27a0a3c536ff90"
+      "size": 81508,
+      "sha256": "3e54aa78ed18af0ee5a93384a63fd522496d1805b56ab6561e54c4fdb0869127"
     },
     "python/lib/python3.14/asyncio/base_futures.py": {
       "mode": "100644",
@@ -1261,8 +1266,8 @@
     },
     "python/lib/python3.14/asyncio/proactor_events.py": {
       "mode": "100644",
-      "size": 33890,
-      "sha256": "e3bedbdeb8f7e18a51d7326d460741e5bcb0ad9ec0523b9fdee3a330a54076f8"
+      "size": 35207,
+      "sha256": "a99400596b3148ed08a3d20754c43dbc4efbee95492889410f928ef58c427895"
     },
     "python/lib/python3.14/asyncio/protocols.py": {
       "mode": "100644",
@@ -1281,13 +1286,13 @@
     },
     "python/lib/python3.14/asyncio/selector_events.py": {
       "mode": "100644",
-      "size": 48981,
-      "sha256": "de05a1bec1f96eb85643d67958b31a01f0dff3210af0527af5ff3629bcbaa17e"
+      "size": 49020,
+      "sha256": "3805eead73e63f10ef3600bb86bd08e960be82e186a27f6711891cc6894e42dc"
     },
     "python/lib/python3.14/asyncio/sslproto.py": {
       "mode": "100644",
-      "size": 31869,
-      "sha256": "b33d2f13fc373b7220402c4358dc96c770cea14489f5570b49774b37f9ac052f"
+      "size": 32370,
+      "sha256": "365b34dd7b0a958164c9eecb271e7417971224688d6b801a2dfea4fc128c8c14"
     },
     "python/lib/python3.14/asyncio/staggered.py": {
       "mode": "100644",
@@ -1311,8 +1316,8 @@
     },
     "python/lib/python3.14/asyncio/tasks.py": {
       "mode": "100644",
-      "size": 41427,
-      "sha256": "de76790a02ed881e595c31272bca50854aadadd9d91ca6f52706606505cb7ab0"
+      "size": 40893,
+      "sha256": "85a314ab91924a253828211127d6498061b5f232cba01aec92de6172863e1f2e"
     },
     "python/lib/python3.14/asyncio/threads.py": {
       "mode": "100644",
@@ -1326,8 +1331,8 @@
     },
     "python/lib/python3.14/asyncio/tools.py": {
       "mode": "100644",
-      "size": 9923,
-      "sha256": "6e74b35d25157f99335d70e2352a11d9be4aeee80f3300294dc80f75862dd00b"
+      "size": 9975,
+      "sha256": "945a67e5b06001fd5cc17c73f0ba4166d2a645c6d2a091e43971ab115e3d59a9"
     },
     "python/lib/python3.14/asyncio/transports.py": {
       "mode": "100644",
@@ -1341,8 +1346,8 @@
     },
     "python/lib/python3.14/asyncio/unix_events.py": {
       "mode": "100644",
-      "size": 38172,
-      "sha256": "760967defab5b28d611c46d7dbd51fd734679837a87a0673837ca5bdff8b1a41"
+      "size": 38668,
+      "sha256": "0fd60fd8be99ae8053707d324d845e6452c6253f88c46ad882be1eeb79da03e9"
     },
     "python/lib/python3.14/asyncio/windows_events.py": {
       "mode": "100644",
@@ -1361,8 +1366,8 @@
     },
     "python/lib/python3.14/bdb.py": {
       "mode": "100644",
-      "size": 44829,
-      "sha256": "ed54964aed0bb23931265607c3ef1e38ec09ccb681d298fd1b56e5ac1cd4223c"
+      "size": 45175,
+      "sha256": "0f546637fe02fdaf4695d8d915168394ec1a014ba6ab84a89e70fcce352c2ad1"
     },
     "python/lib/python3.14/bisect.py": {
       "mode": "100644",
@@ -1371,8 +1376,8 @@
     },
     "python/lib/python3.14/build-details.json": {
       "mode": "100644",
-      "size": 1133,
-      "sha256": "d7bf39726d05ff22e3d0babc16915c21a95d0a89f76f757fc719b9faca4b066d"
+      "size": 1165,
+      "sha256": "39731e6afee4933d75694e5cad389206fd32d58cbed2468a241a26d96a7a8f94"
     },
     "python/lib/python3.14/bz2.py": {
       "mode": "100644",
@@ -1516,13 +1521,13 @@
     },
     "python/lib/python3.14/config-3.14-darwin/Makefile": {
       "mode": "100644",
-      "size": 226247,
-      "sha256": "4e6ffe010b1b9b0d7dc831154009c38ae488fedeafe4e1a6b83ccd318e06e2c2"
+      "size": 227396,
+      "sha256": "46d7655e806d28633b7754f1f0b5d9771905b0a473fa1395b3fb83df2d9798c2"
     },
     "python/lib/python3.14/config-3.14-darwin/Setup": {
       "mode": "100644",
-      "size": 11083,
-      "sha256": "7db652648cd3f0f9afee585595fa80b52d53cf414514eb856803fc5dddf0f13b"
+      "size": 11140,
+      "sha256": "4ebc390918c23486b92db17fa3b9f8f69e69568b6fe4ab71305230d78d826841"
     },
     "python/lib/python3.14/config-3.14-darwin/Setup.bootstrap": {
       "mode": "100644",
@@ -1531,13 +1536,13 @@
     },
     "python/lib/python3.14/config-3.14-darwin/Setup.local": {
       "mode": "100644",
-      "size": 1613,
-      "sha256": "cdd41f396a3d3a9387c35b2baa57d6384c4076cbedba6d503df232a0e2ed3308"
+      "size": 1662,
+      "sha256": "a15e9958287789af3d59af4946262571c45e4161cb198cee18cf14e58e6c0e32"
     },
     "python/lib/python3.14/config-3.14-darwin/Setup.stdlib": {
       "mode": "100644",
-      "size": 7420,
-      "sha256": "a80f367ef476214661f5717e3e846a4397c7098d4259badcc25070abd6ed010a"
+      "size": 7469,
+      "sha256": "4df9d0532b2e6ae4af011a7f0c46b80e041c8fdba299ba7de6a1742db94a257a"
     },
     "python/lib/python3.14/config-3.14-darwin/config.c": {
       "mode": "100644",
@@ -1567,7 +1572,7 @@
     "python/lib/python3.14/config-3.14-darwin/python.o": {
       "mode": "100644",
       "size": 5920,
-      "sha256": "c18f70ff0a633eef0d5cf181e5874983c9821df0b3cf975ddd5a08d0986186ba"
+      "sha256": "ebd23de916eae944ded31d5a5fa02109630ffff01f5fc8e27e63f957174c02b8"
     },
     "python/lib/python3.14/configparser.py": {
       "mode": "100644",
@@ -1756,8 +1761,8 @@
     },
     "python/lib/python3.14/email/_header_value_parser.py": {
       "mode": "100644",
-      "size": 113183,
-      "sha256": "7beea37afd292ebc963afec0efb6e003638ec93d894dbd2ce631fd989c5106b7"
+      "size": 113546,
+      "sha256": "43108d56e15d50fc2a8687ed17f358f40bb01bb9bcc7098ff8267e6d53036359"
     },
     "python/lib/python3.14/email/_parseaddr.py": {
       "mode": "100644",
@@ -1827,7 +1832,7 @@
     "python/lib/python3.14/email/message.py": {
       "mode": "100644",
       "size": 48428,
-      "sha256": "f0299633f792a88342a9893ebc2fa07f24d7fe6ad15fe26204b0b7577a8f32fc"
+      "sha256": "a1ba779c997dd5cbef3266c26787416527a593b67b35d744fb1b8c49e8436289"
     },
     "python/lib/python3.14/email/mime/__init__.py": {
       "mode": "100644",
@@ -2576,8 +2581,8 @@
     },
     "python/lib/python3.14/gzip.py": {
       "mode": "100644",
-      "size": 25247,
-      "sha256": "bc3f00153a2cfdf28ae0cb41f2dde3ee2e39d88efc220c1e47de87fc58e970cb"
+      "size": 25455,
+      "sha256": "a5c6e7714160c6972427eb6612bb6ee0d4d6e70727c77f7ad4b6ab7a56b8cc50"
     },
     "python/lib/python3.14/hashlib.py": {
       "mode": "100644",
@@ -2591,8 +2596,8 @@
     },
     "python/lib/python3.14/hmac.py": {
       "mode": "100644",
-      "size": 9589,
-      "sha256": "10e8952ae06300f63a1a8f4898f7f828e8e5ad17bf29240d4e2d106418f0226b"
+      "size": 9844,
+      "sha256": "ebdd88ecfa4edf89c46eb8dece9265e69eb75dade2ff74e8eed2493adab66097"
     },
     "python/lib/python3.14/html/__init__.py": {
       "mode": "100644",
@@ -2616,13 +2621,13 @@
     },
     "python/lib/python3.14/http/client.py": {
       "mode": "100644",
-      "size": 59576,
-      "sha256": "016aa7664201a82f0f37ddfb11ed662dd1f07aa23c9470c6a3cb3278aa479230"
+      "size": 59581,
+      "sha256": "426efb3157421094db809b674002f15d53f6916a4b4049293a3c431552310790"
     },
     "python/lib/python3.14/http/cookiejar.py": {
       "mode": "100644",
-      "size": 77662,
-      "sha256": "7a9c2e4cf1eaf0dad693417a3807691503faacda8a5b6eac36cb5f9d0aa22a91"
+      "size": 78176,
+      "sha256": "5d69036a10084b82609d0b03950edb3b1f6f4237f576905386e9f44542a02a50"
     },
     "python/lib/python3.14/http/cookies.py": {
       "mode": "100644",
@@ -2766,8 +2771,8 @@
     },
     "python/lib/python3.14/inspect.py": {
       "mode": "100644",
-      "size": 128112,
-      "sha256": "6daf297029d8971703b344de5cd485d71d4d935c72b85591493d8abc8512bdf7"
+      "size": 128180,
+      "sha256": "f1555059ddc7e2ab15dce44429021c8ab86d1cbd8c448f2084b0d2cd3210d3c8"
     },
     "python/lib/python3.14/io.py": {
       "mode": "100644",
@@ -2822,17 +2827,17 @@
     "python/lib/python3.14/lib-dynload/_dbm.cpython-314-darwin.so": {
       "mode": "100755",
       "size": 54240,
-      "sha256": "7a597b66fff2477fe7bf039d8966b47e4507d2c9f235b53a5c07008936e2af70"
+      "sha256": "c24a9ff4d886bb902b2264839cb0cb13719f535b48dabd122a5186fce9dc8a7b"
     },
     "python/lib/python3.14/lib-dynload/_tkinter.cpython-314-darwin.so": {
       "mode": "100755",
       "size": 100448,
-      "sha256": "0f1892293747a2e02799192c5f254aba45fcbeb641880994e1a67d62e1dc64a6"
+      "sha256": "97eeba4d0bbb130d4c040f4a9bd722df7dff297fb2ed9753273fbaa746ed8c71"
     },
     "python/lib/python3.14/linecache.py": {
       "mode": "100644",
-      "size": 8044,
-      "sha256": "692daec68e2a419adf46bafc0eb2f8a2fb36c482183fa1ac47e00fec440f7d7e"
+      "size": 9628,
+      "sha256": "4a95399c61c9a6ee596ea0a19d6d88bba19cd5019ec8c85062e91058b10ece8c"
     },
     "python/lib/python3.14/locale.py": {
       "mode": "100644",
@@ -2851,8 +2856,8 @@
     },
     "python/lib/python3.14/logging/handlers.py": {
       "mode": "100644",
-      "size": 63112,
-      "sha256": "6caf7ccfb6e4e0259332055862050b6002df4bd094041a3d073208940e17d796"
+      "size": 63242,
+      "sha256": "78bc0d70724c98dbd6bc96f9f4be4d7a5cac080ed4e6a91e8322ea1029365ab2"
     },
     "python/lib/python3.14/lzma.py": {
       "mode": "100644",
@@ -2861,13 +2866,13 @@
     },
     "python/lib/python3.14/mailbox.py": {
       "mode": "100644",
-      "size": 81531,
-      "sha256": "78f75c4bce87eaa904c15ed2e337fca666a5560bce912157a2b3ea8d92d1840f"
+      "size": 81566,
+      "sha256": "d00da9995ff7d52ad7dd141918cecd5dd4ab4d5a17236ff4e77a4cf697ec0116"
     },
     "python/lib/python3.14/mimetypes.py": {
       "mode": "100644",
-      "size": 26747,
-      "sha256": "1307cd9736918e9e1dc1f8fe15539eef97c52769db23bf0fc207b5e5ed8c57f2"
+      "size": 27060,
+      "sha256": "a438179522d84fd1357a041a6c7cf2eae896e1d3725729b3e3813c04fa44b142"
     },
     "python/lib/python3.14/modulefinder.py": {
       "mode": "100644",
@@ -2881,13 +2886,13 @@
     },
     "python/lib/python3.14/multiprocessing/connection.py": {
       "mode": "100644",
-      "size": 43841,
-      "sha256": "c8123946008ec2bd57266e61a3a388d3914b75856cb2c8af8685978658fef879"
+      "size": 43911,
+      "sha256": "7063a47c34b5b18071ce60cef222b65bd92e63181ac8f36b0655dbcd22b91f62"
     },
     "python/lib/python3.14/multiprocessing/context.py": {
       "mode": "100644",
-      "size": 12163,
-      "sha256": "6d9058b6770152b5d26f2f3ece22de423decf1c751038f6bcd81995096aa9ab6"
+      "size": 13020,
+      "sha256": "d50e6b4e65cac9d0b0b0cc036c72ac6bee72def30e2d56addf37f6ac95918027"
     },
     "python/lib/python3.14/multiprocessing/dummy/__init__.py": {
       "mode": "100644",
@@ -2986,8 +2991,8 @@
     },
     "python/lib/python3.14/multiprocessing/util.py": {
       "mode": "100644",
-      "size": 17428,
-      "sha256": "a03138826235c4806bd0baea705b33a42edd9727eb55ff50fc6d2e4cacb0bfea"
+      "size": 19325,
+      "sha256": "f54d44ee1d9698ff9c103fcb46b9c2a74e2f78b80c9ed87a4c68f6e20d1f9d55"
     },
     "python/lib/python3.14/netrc.py": {
       "mode": "100644",
@@ -3206,8 +3211,8 @@
     },
     "python/lib/python3.14/shutil.py": {
       "mode": "100644",
-      "size": 60235,
-      "sha256": "28a5df6415bf1a7ab36cbd544d6d35ae0f056a198e3872a786dc4e156d5fcd7d"
+      "size": 60684,
+      "sha256": "b6e01921d7f8a6dcac774c07d1d7f858b2d536ee9535ae576120503fcc559261"
     },
     "python/lib/python3.14/signal.py": {
       "mode": "100644",
@@ -3722,7 +3727,7 @@
     "python/lib/python3.14/site-packages/certifi/__init__.py": {
       "mode": "100644",
       "size": 94,
-      "sha256": "7a52e5f4205f9b3d12a31898ceaa7e3f6837d19cc230700bcae1a9d91d1486c1"
+      "sha256": "6c069810be5831ee48e99eb0fbd79c06b51803771f48d7ccd28f9c0c32270e86"
     },
     "python/lib/python3.14/site-packages/certifi/__main__.py": {
       "mode": "100644",
@@ -3731,8 +3736,8 @@
     },
     "python/lib/python3.14/site-packages/certifi/cacert.pem": {
       "mode": "100644",
-      "size": 240216,
-      "sha256": "9cc2a774b5198dcff14d9be1e66091f538975d867ce029a96bce15a55dfd730f"
+      "size": 235863,
+      "sha256": "2ef52ad56b4803e264045c915e55c236cbfa045b84b81efefc218a19eb44bd2b"
     },
     "python/lib/python3.14/site-packages/certifi/core.py": {
       "mode": "100644",
@@ -3744,37 +3749,37 @@
       "size": 0,
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
-    "python/lib/python3.14/site-packages/certifi-2026.7.22.dist-info/INSTALLER": {
+    "python/lib/python3.14/site-packages/certifi-2026.10.23.dist-info/INSTALLER": {
       "mode": "100644",
       "size": 4,
       "sha256": "ceebae7b8927a3227e5303cf5e0f1f7b34bb542ad7250ac03fbcde36ec2f1508"
     },
-    "python/lib/python3.14/site-packages/certifi-2026.7.22.dist-info/METADATA": {
+    "python/lib/python3.14/site-packages/certifi-2026.10.23.dist-info/METADATA": {
       "mode": "100644",
-      "size": 2474,
-      "sha256": "ef5af1638fbb23676ac3c5777dfcfc2cd9c348fe4172ed5ba3d277655b248090"
+      "size": 2526,
+      "sha256": "e463e38f7fe7da36a11e6d3fecc5dfa5b97be8c8022620400750d79ae7d842bc"
     },
-    "python/lib/python3.14/site-packages/certifi-2026.7.22.dist-info/RECORD": {
+    "python/lib/python3.14/site-packages/certifi-2026.10.23.dist-info/RECORD": {
       "mode": "100644",
-      "size": 1141,
-      "sha256": "ddea9025e9dd1871760b65ab1b82b5375644f6f05097cde8040f745755ded57f"
+      "size": 1148,
+      "sha256": "5985b127e4bed94e824249f23848f41635fcdab31b5b1197048d7928738dc276"
     },
-    "python/lib/python3.14/site-packages/certifi-2026.7.22.dist-info/REQUESTED": {
+    "python/lib/python3.14/site-packages/certifi-2026.10.23.dist-info/REQUESTED": {
       "mode": "100644",
       "size": 0,
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
-    "python/lib/python3.14/site-packages/certifi-2026.7.22.dist-info/WHEEL": {
+    "python/lib/python3.14/site-packages/certifi-2026.10.23.dist-info/WHEEL": {
       "mode": "100644",
       "size": 91,
-      "sha256": "2b6eb4118ce7cd7b09601406aa623c553c4476265836f0d9c16f5c061f7efcc0"
+      "sha256": "98e75747d0b7c0c568bfb71263c3d8f970b3a374a6996087bc642be5cb09a1aa"
     },
-    "python/lib/python3.14/site-packages/certifi-2026.7.22.dist-info/licenses/LICENSE": {
+    "python/lib/python3.14/site-packages/certifi-2026.10.23.dist-info/licenses/LICENSE": {
       "mode": "100644",
       "size": 989,
       "sha256": "e93716da6b9c0d5a4a1df60fe695b370f0695603d21f6f83f053e42cfc10caf7"
     },
-    "python/lib/python3.14/site-packages/certifi-2026.7.22.dist-info/top_level.txt": {
+    "python/lib/python3.14/site-packages/certifi-2026.10.23.dist-info/top_level.txt": {
       "mode": "100644",
       "size": 8,
       "sha256": "28cbb8bd409fb232eb90f6d235d81d7a44bea552730402453bffe723c345ebe5"
@@ -7321,8 +7326,8 @@
     },
     "python/lib/python3.14/sysconfig/__init__.py": {
       "mode": "100644",
-      "size": 29047,
-      "sha256": "b40242a0824caab81d6eab15f249c0a7ff464c6a4b9ad633de0382e0604488e2"
+      "size": 29077,
+      "sha256": "929de876551794708c90510864ba2f8c619c993102987a924fb55fdeda69687c"
     },
     "python/lib/python3.14/sysconfig/__main__.py": {
       "mode": "100644",
@@ -7336,13 +7341,13 @@
     },
     "python/lib/python3.14/tarfile.py": {
       "mode": "100644",
-      "size": 120808,
-      "sha256": "825de0990d0bedf6ed8db97b4a0fc98f25617a692c3d38c0bbba800beb9952fb"
+      "size": 121234,
+      "sha256": "0f521ef8759f672841632bce6189f805d5420db9fe7f41a00db81b6150207cc7"
     },
     "python/lib/python3.14/tempfile.py": {
       "mode": "100644",
-      "size": 33112,
-      "sha256": "3714372b63f6bc05a5273425d446f6ad3a2112a659c71c321bb4575fd082d634"
+      "size": 36132,
+      "sha256": "5e2a8c5539e2aa3f4d39a364c701711ba54eeca88c17e95d31ebb83ea84de27d"
     },
     "python/lib/python3.14/textwrap.py": {
       "mode": "100644",
@@ -7356,8 +7361,8 @@
     },
     "python/lib/python3.14/threading.py": {
       "mode": "100644",
-      "size": 56923,
-      "sha256": "5323909624ec2165e70b6d31333e4191b63d383d2dc5a7d7d516a3475ea2b7e3"
+      "size": 56986,
+      "sha256": "4647ad7ab7fb65e02b77ce4d9891906255317972fe0f4710efe0aa5facfd8883"
     },
     "python/lib/python3.14/timeit.py": {
       "mode": "100644",
@@ -7421,8 +7426,8 @@
     },
     "python/lib/python3.14/tkinter/simpledialog.py": {
       "mode": "100644",
-      "size": 11748,
-      "sha256": "887453a6b6e7cdcc8b4c73495b445e60033f42d5adae697561b47e546c7b4f46"
+      "size": 11860,
+      "sha256": "1d4cb7c27c14bcb7f0a1031006d4c2513779e870f9305fb9032c71324814e685"
     },
     "python/lib/python3.14/tkinter/ttk.py": {
       "mode": "100644",
@@ -7471,8 +7476,8 @@
     },
     "python/lib/python3.14/traceback.py": {
       "mode": "100644",
-      "size": 70064,
-      "sha256": "a8fbeea470aa4e29691560de889de136570bead76d9c8a2b6a891849c047a3b3"
+      "size": 70305,
+      "sha256": "85d4b0db67040d6acecac8307cb8ddc1518c259cc7dac17dd1b61ab8dcc17687"
     },
     "python/lib/python3.14/tracemalloc.py": {
       "mode": "100644",
@@ -7776,13 +7781,13 @@
     },
     "python/lib/python3.14/zipapp.py": {
       "mode": "100644",
-      "size": 8713,
-      "sha256": "fe845e2ea2c20d3114d2dea458cc53f3bebffb9bf85f0ed43d9e8405bbf8823e"
+      "size": 8728,
+      "sha256": "e07177b43104971cd00656dc4ba4b2c1b70c9461a47f9a111bf9babfa8ba1aa6"
     },
     "python/lib/python3.14/zipfile/__init__.py": {
       "mode": "100644",
-      "size": 94183,
-      "sha256": "0e39a3dce18037f350f4d65dfc684c03a68d91bd75fcb1b03568e4d032b296a2"
+      "size": 94478,
+      "sha256": "8d2cf869f773f3c80fdfe79bc6e411b42a2fdba9bccd51a9a45d02c72078514a"
     },
     "python/lib/python3.14/zipfile/__main__.py": {
       "mode": "100644",
@@ -7791,8 +7796,8 @@
     },
     "python/lib/python3.14/zipfile/_path/__init__.py": {
       "mode": "100644",
-      "size": 11953,
-      "sha256": "319c002564b7deca9ca9dc913f5d06bc32a2f376d291094afa635558af6e17ff"
+      "size": 12049,
+      "sha256": "086d8286f1e1f87642380708c2a0d1c1d40bad236f57eca4726d2156a2b4b0fc"
     },
     "python/lib/python3.14/zipfile/_path/glob.py": {
       "mode": "100644",
@@ -7801,8 +7806,8 @@
     },
     "python/lib/python3.14/zipimport.py": {
       "mode": "100644",
-      "size": 33466,
-      "sha256": "4de64633a484e16c39fdb46a3f939ce7c577b14a6e9ee49b79871ec1880b4597"
+      "size": 33726,
+      "sha256": "7e066d9dc5af5e194c175bad4c59a66b9a6ba1a26ce123cc24fff29c6202f02b"
     },
     "python/lib/python3.14/zoneinfo/__init__.py": {
       "mode": "100644",
@@ -7821,8 +7826,8 @@
     },
     "python/lib/python3.14/zoneinfo/_zoneinfo.py": {
       "mode": "100644",
-      "size": 25053,
-      "sha256": "0279b3226e70f7ec2a8b0127f4bcab524587486ae1f80b26eb46ee87ba95bfe4"
+      "size": 25052,
+      "sha256": "41beeb5d7c75dd64479a16416fbb5dc286bacab3a9bff6587a9257c5ddeab984"
     },
     "python/lib/tcl9/9.0/http-2.10.2.tm": {
       "mode": "100644",
