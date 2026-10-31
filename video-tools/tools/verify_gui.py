@@ -90,10 +90,12 @@ def verify(work: Path) -> None:
     check("bundled_ffmpeg", Path(window.service.ffmpeg).resolve() == bundled_ffmpeg().resolve())
     check("video_probe", choose(window, source), window.info_var.get())
 
-    single = next(mode for mode in window.output_mode_combo.cget("values") if mode != gui.GRID_OUTPUT_MODE)
+    single, grid = gui.OUTPUT_MODE_LABELS["individual"], gui.OUTPUT_MODE_LABELS["grid"]
+    check("mode_labels_offered", set(window.output_mode_combo.cget("values")) == {single, grid}
+          and set(window.size_mode_combo.cget("values")) == set(gui.SIZE_MODE_LABELS.values()))
     out = work / "out" / "png"
     window.output_var.set(str(out)); window.output_mode_var.set(single); window.format_var.set("PNG"); window.interval_var.set("0.5")
-    window.size_mode_var.set(gui.SIZE_MODES[0]); window.size_preset_var.set(gui.CUSTOM_SIZE_LABEL)
+    window.size_mode_var.set(gui.SIZE_MODE_LABELS["final"]); window.size_preset_var.set(gui.CUSTOM_SIZE_LABEL)
     window.update()
     window.size_width_var.set("64"); window.size_height_var.set("36")
     window.update()
@@ -105,7 +107,7 @@ def verify(work: Path) -> None:
     check("existing_png_skipped", kind == "showinfo" and len(sorted(out.glob("*.png"))) == 4, text.splitlines()[0])
 
     out = work / "out" / "grid"
-    window.output_var.set(str(out)); window.output_mode_var.set(gui.GRID_OUTPUT_MODE); window.format_var.set("JPG")
+    window.output_var.set(str(out)); window.output_mode_var.set(grid); window.format_var.set("JPG")
     window.grid_size_var.set("2 × 2"); window.update()
     pump(window, lambda: False, .2)
     check("preview_drawn", window.preview_canvas.find_all(), window.preview_info_var.get())
@@ -160,12 +162,24 @@ def verify(work: Path) -> None:
 
     expected_grid, expected_output = window.grid_size_var.get(), window.output_var.get()
     check("window_closed", close(window))
-    check("settings_saved", settings.is_file())
+    saved = json.loads(settings.read_text(encoding="utf-8")) if settings.is_file() else {}
+    check("settings_store_modes_not_labels", saved.get("output_mode") == "individual" and saved.get("size_mode") == "final",
+          (saved.get("output_mode"), saved.get("size_mode")))
     again = gui.VideoToolsApp(settings)
     again.update()
     check("settings_restored", again.grid_size_var.get() == expected_grid and again.output_var.get() == expected_output
           and again.editor.fields["mute"].get() is True, again.grid_size_var.get())
     close(again)
+
+    # A settings file from before the modes were separated from their labels.
+    old = work / "old-settings.json"
+    old.write_text(json.dumps({"output_mode": "개별 이미지 저장", "size_mode": "격자 셀 이미지 크기", "size_preset": "원본",
+                               "prefix": "유지"}, ensure_ascii=False), encoding="utf-8")
+    upgraded = gui.VideoToolsApp(old)
+    upgraded.update()
+    check("old_settings_use_defaults", upgraded.output_mode_var.get() == grid and upgraded.size_mode_var.get() == gui.SIZE_MODE_LABELS["final"]
+          and upgraded.prefix_var.get() == "유지", upgraded.summary_var.get())
+    close(upgraded)
     check("no_callback_errors", not callback_errors, "\n".join(callback_errors)[-2000:])
 
 
