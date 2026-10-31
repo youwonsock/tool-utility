@@ -17,7 +17,7 @@
     "check:connections": "node scripts/connection-check.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.30.0",
+    "@modelcontextprotocol/sdk": "1.32.2",
     "cross-spawn": "7.0.6",
     "zod": "3.25.76"
   },
