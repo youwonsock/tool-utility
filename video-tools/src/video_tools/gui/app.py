@@ -157,23 +157,8 @@ class VideoToolsApp(tk.Tk):
 
         buttons = ttk.Frame(progress_area, style="App.TFrame")
         buttons.pack(fill="x")
-        self.start_button = tk.Button(
-            buttons,
-            text="이미지 추출 시작",
-            command=self._start,
-            bg="#2563eb",
-            fg="#ffffff",
-            activebackground="#1d4ed8",
-            activeforeground="#ffffff",
-            disabledforeground="#64748b",
-            relief="flat",
-            bd=0,
-            highlightthickness=0,
-            font=(self.font_family, 10, "bold"),
-            padx=18,
-            pady=7,
-            cursor="hand2",
-        )
+        # tk.Button ignores its background on macOS, which left white text on a white button.
+        self.start_button = ttk.Button(buttons, text="이미지 추출 시작", style="Accent.TButton", command=self._start, cursor="hand2")
         self.start_button.pack(side="right")
         ttk.Button(buttons, text="MCP 연결 설정", command=lambda: show_mcp_configuration(self)).pack(side="left")
         self.cancel_button = ttk.Button(buttons, text="취소", style="Secondary.TButton", command=self._cancel, state="disabled")
@@ -340,7 +325,10 @@ class VideoToolsApp(tk.Tk):
 
     def _set_controls(self, state: str) -> None:
         self.editor.sync(state == 'normal')
-        for index in range(2): self.notebook.tab(index, state='normal' if state == 'normal' else 'disabled')
+        # A disabled selected tab unmaps its panel, and enabling it again does not bring the panel back.
+        selected = self.notebook.select()
+        for tab in self.notebook.tabs():
+            self.notebook.tab(tab, state='normal' if state == 'normal' or tab == selected else 'disabled')
         for widget in (self.video_entry, self.video_button, self.start_entry, self.end_entry, self.interval_entry, self.start_button):
             widget.configure(state=state)
         self.extraction.set_enabled(state)

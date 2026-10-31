@@ -35,7 +35,7 @@ def show_mcp_configuration(app):
             content = json.dumps(value, ensure_ascii=False, indent=2)
             text.delete('1.0', 'end'); text.insert('1.0', content)
             return content
-        except (ValueError, OSError) as exc:
+        except (ValueError, OSError, RuntimeError) as exc:
             messagebox.showerror('MCP 연결 설정', str(exc), parent=dialog)
     def copy():
         content = generate()
