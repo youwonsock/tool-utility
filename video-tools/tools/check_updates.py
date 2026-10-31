@@ -1,6 +1,6 @@
 """Report vulnerable pinned packages and newer pinned-source releases, optionally in a GitHub issue.
 
-Packages are looked up in the OSV database. FFmpeg, x264, dav1d, zlib and the Python
+Python and npm packages are looked up in the OSV database. FFmpeg, x264, dav1d, zlib and the Python
 distribution only have their versions compared: OSV does not track those builds.
 """
 from __future__ import annotations
@@ -15,7 +15,8 @@ import sys
 TOOLS = Path(__file__).resolve().parent
 LOCKS = [TOOLS / "requirements-runtime.lock",
          TOOLS.parents[1] / "path-analysis-tools" / "tools" / "requirements-runtime.lock"]
-ISSUE_TITLE = "Video Tools dependency updates"
+NPM_LOCK = TOOLS.parents[1] / "agent-delegation" / "package-lock.json"
+ISSUE_TITLE = "Dependency updates"
 TIMEOUT = 60
 
 
@@ -33,6 +34,12 @@ def parse_lock(text: str) -> dict[str, str]:
     return {name.lower(): version for name, version in re.findall(r"^([A-Za-z0-9_.-]+)==([^\s\;]+)", text, re.M)}
 
 
+def parse_npm_lock(text: str) -> list[tuple[str, str]]:
+    """Every installed package, including nested copies of another version."""
+    installed = json.loads(text)["packages"]
+    return sorted({(path.rsplit("node_modules/", 1)[1], item["version"]) for path, item in installed.items() if path})
+
+
 def version_key(version: str) -> tuple[int, ...]:
     return tuple(int(part) for part in version.split("."))
 
@@ -41,12 +48,11 @@ def newest(versions: list[str]) -> str | None:
     return max(versions, key=version_key, default=None)
 
 
-def vulnerabilities(packages: dict[str, str]) -> list[str]:
-    names = sorted(packages)
-    queries = [{"package": {"name": name, "ecosystem": "PyPI"}, "version": packages[name]} for name in names]
+def vulnerabilities(packages: list[tuple[str, str]], ecosystem: str) -> list[str]:
+    queries = [{"package": {"name": name, "ecosystem": ecosystem}, "version": version} for name, version in packages]
     results = json.loads(fetch("https://api.osv.dev/v1/querybatch", {"queries": queries}))["results"]
-    return [f"`{name}` {packages[name]}: " + ", ".join(sorted(item["id"] for item in result["vulns"]))
-            for name, result in zip(names, results) if result.get("vulns")]
+    return [f"`{name}` {version}: " + ", ".join(sorted(item["id"] for item in result["vulns"]))
+            for (name, version), result in zip(packages, results) if result.get("vulns")]
 
 
 def source_updates(sources: dict, assets: dict) -> tuple[list[str], list[str]]:
@@ -124,9 +130,10 @@ def main() -> int:
     for lock in args.lock or LOCKS:
         if lock.is_file():
             packages.update(parse_lock(lock.read_text(encoding="utf-8")))
+    npm_packages = parse_npm_lock(NPM_LOCK.read_text(encoding="utf-8"))
     failures: list[str] = []
     try:
-        vulnerable = vulnerabilities(packages)
+        vulnerable = vulnerabilities(sorted(packages.items()), "PyPI") + vulnerabilities(npm_packages, "npm")
     except (OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:
         vulnerable = []
         failures.append(f"OSV: {exc}")
@@ -135,7 +142,7 @@ def main() -> int:
     updates, source_failures = source_updates(sources, assets)
     failures += source_failures
     body = report_body(vulnerable, updates, failures) if vulnerable or updates or failures else None
-    print(f"Checked {len(packages)} packages" if body is None else body)
+    print(f"Checked {len(packages) + len(npm_packages)} packages" if body is None else body)
     if args.issue:
         update_issue(body)
     return 0

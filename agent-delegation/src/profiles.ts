@@ -18,7 +18,7 @@ const profileSchema = z
     executable: z.string().min(1),
     args: z.array(z.string()).default([]),
     native_profile: z.string().min(1).optional(),
-    env_refs: z.record(z.string().min(1)).optional(),
+    env_refs: z.record(z.string(), z.string().min(1)).optional(),
     sdk_root: z
       .string()
       .refine((value) => path.isAbsolute(value), 'sdk_root must be an absolute package directory.')
@@ -29,7 +29,7 @@ const profileSchema = z
       .optional(),
   })
   .strict();
-const fileSchema = z.object({ profiles: z.record(profileSchema) }).strict();
+const fileSchema = z.object({ profiles: z.record(z.string(), profileSchema) }).strict();
 export function resolveWorker(root: string, selection?: WorkerSelection): WorkerConfig {
   const choice = workerSchema.parse(selection ?? { platform: 'opencode' });
   const profile = choice.profile ?? 'default';

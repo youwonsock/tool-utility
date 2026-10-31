@@ -4,3 +4,7 @@ updates:
     directory: /agent-delegation
     schedule:
       interval: weekly
+    ignore:
+      # Node 22 is the supported runtime, so its types stay on the same major.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]

@@ -51,7 +51,7 @@ python tools/build_runtime.py --audit --git
 - `tools/run_tests.py`: `tests`의 단위 테스트로 크기 계산, FFmpeg 필터와 명령, 입력 검증, 작업 관리, 파일 게시, 경로 경계, 설정을 확인합니다. FFmpeg와 창을 사용하지 않습니다.
 - `tools/verify_gui.py`: 실제 창의 위젯을 코드로 조작해 추출, 격자, 취소, 편집, 회전 영상, 크기·출력 방식 선택, 스크롤, MCP 설정 창, 창 닫기, 설정 복원을 확인합니다. 파일 선택 창과 알림 창은 코드로 대체합니다. 실행 중 창이 잠시 표시됩니다.
 
-주간 **Dependency check** 워크플로는 `tools/check_updates.py`로 잠금 목록의 패키지를 OSV 취약점 데이터베이스에서 조회하고, FFmpeg·x264·dav1d·zlib·Python 배포본의 새 버전을 확인해 GitHub 이슈 하나에 기록합니다. 확인된 항목이 없으면 이슈를 닫습니다. FFmpeg와 Python 배포본은 OSV가 추적하지 않아 버전만 비교합니다. 공개 저장소는 60일간 활동이 없으면 GitHub가 예약 실행을 멈추므로, 멈춘 경우 Actions 화면에서 다시 켭니다. Agent Delegation의 npm 의존성은 Dependabot이 확인합니다.
+주간 **Dependency check** 워크플로는 `tools/check_updates.py`로 잠금 목록과 Agent Delegation `package-lock.json`의 패키지를 OSV 취약점 데이터베이스에서 조회하고, FFmpeg·x264·dav1d·zlib·Python 배포본의 새 버전을 확인해 GitHub 이슈 하나에 기록합니다. 확인된 항목이 없으면 이슈를 닫습니다. FFmpeg와 Python 배포본은 OSV가 추적하지 않아 버전만 비교합니다. 공개 저장소는 60일간 활동이 없으면 GitHub가 예약 실행을 멈추므로, 멈춘 경우 Actions 화면에서 다시 켭니다. Agent Delegation의 npm 의존성은 Dependabot이 확인합니다.
 
 Mac에서 수동 실행:
 

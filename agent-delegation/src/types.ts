@@ -31,7 +31,7 @@ export const workerSchema = z.discriminatedUnion('platform', [
 export const resourceSchema = z
   .object({
     resource_key: idSchema,
-    connection: z.object({ name: idSchema, config: z.record(z.unknown()) }).strict(),
+    connection: z.object({ name: idSchema, config: z.record(z.string(), z.unknown()) }).strict(),
     probe: z.object({ executable: z.string().min(1), args: z.array(z.string()), read_only: z.literal(true) }).strict(),
     expected_instance: z.string().min(1),
     project_bound: z.boolean().default(false),
