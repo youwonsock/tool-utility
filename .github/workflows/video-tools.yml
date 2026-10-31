@@ -111,6 +111,13 @@ jobs:
         timeout-minutes: 5
         run: |
           python -c "import os,pathlib,subprocess,sys; runtime='portable/windows-x64/python/python.exe' if sys.platform=='win32' else 'portable/macos-arm64/python/bin/python3.14'; report=pathlib.Path(os.environ['RUNNER_TEMP'])/'video-tools-smoke'/'report.json'; subprocess.run([runtime,'-I','-B','-X','utf8','tools/verify_smoke.py','--report',str(report)],check=True)"
+      - name: Run unit tests and drive the real GUI window
+        timeout-minutes: 10
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then py=portable/windows-x64/python/python.exe; else py=portable/macos-arm64/python/bin/python3.14; fi
+          "$py" -I -B -X utf8 tools/run_tests.py
+          "$py" -I -B -X utf8 tools/verify_gui.py
       - name: Preserve media regression diagnostics
         if: always()
         uses: actions/upload-artifact@v7

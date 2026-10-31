@@ -74,11 +74,12 @@ Mac:
 - `src/video_tools/gui`, `src/video_tools/mcp`: GUI와 MCP 인터페이스
 - `src/video_tools/platforms`: Windows와 macOS 동작
 - `portable/windows-x64`, `portable/macos-arm64`: 각 OS의 동봉 런타임
-- `tools`: 고정된 런타임·최소 FFmpeg 생성, 동기화
+- `tools`: 고정된 런타임·최소 FFmpeg 생성, 동기화, 검사 실행
+- `tests`: FFmpeg와 창 없이 실행하는 단위 테스트
 - `docs`: 개발 안내와 완료 검증 기록
 
 공용 소스 변경은 다음 실행부터 바로 반영됩니다. 런타임이나 의존성 변경은 두 플랫폼의 검증된 파일을 함께 갱신합니다. 개발 절차는 [런타임 관리](docs/runtime-management.md)를 참고하세요.
 
-`tools/verify_smoke.py`는 임시 영상을 생성해 실제 stdio MCP의 조회·PNG/JPG 추출·MP4 편집·덮어쓰기 방지·경로 제한·취소를 검사합니다. Windows·Mac CI에서 동봉 런타임으로 실행하며 추가 설치나 다운로드가 필요하지 않습니다. 테스트 미디어와 사용자 설정은 제품 폴더에 저장하지 않습니다. 실제 GUI 조작과 새 clone 검증은 별도로 수행하며 [완료 검증 기록](docs/verification.md)에 실행 커밋·OS·런타임 해시와 결과를 남깁니다.
+`tools/verify_smoke.py`는 임시 영상을 생성해 실제 stdio MCP의 조회·PNG/JPG 추출·MP4 편집·덮어쓰기 방지·경로 제한·취소를 검사합니다. `tools/run_tests.py`는 크기 계산·필터·입력 검증·작업 관리·설정의 단위 테스트를, `tools/verify_gui.py`는 실제 창의 위젯을 코드로 조작하는 GUI 검사를 실행합니다. 셋 다 Windows·Mac CI에서 동봉 런타임으로 실행하며 추가 설치나 다운로드가 필요하지 않습니다. 테스트 미디어와 사용자 설정은 제품 폴더에 저장하지 않습니다. 실제 마우스 조작과 새 clone 검증은 별도로 수행하며 [완료 검증 기록](docs/verification.md)에 실행 커밋·OS·런타임 해시와 결과를 남깁니다.
 
 런타임의 `manifest.json`에는 버전·출처·의존성·파일 해시·권한이, `licenses`에는 Python과 네이티브 의존성·패키지·FFmpeg 고지와 출처가 포함되어 있습니다.
