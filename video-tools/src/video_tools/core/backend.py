@@ -57,9 +57,6 @@ class OperationCancelled(Exception):
     """A requested media operation was cancelled."""
 
 
-ProbeCancelled = OperationCancelled
-
-
 def find_ffmpeg() -> str:
     """Use the tool folder's bundled FFmpeg, independent of the host PATH."""
     executable = bundled_ffmpeg()

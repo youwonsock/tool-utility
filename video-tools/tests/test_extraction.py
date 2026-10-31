@@ -4,7 +4,7 @@ from pathlib import Path
 
 from video_tools.core.domain import SizePlan
 from video_tools.core.edit import EditRequest
-from video_tools.core.media import ExtractionRequest, build_extraction_command, validate_request
+from video_tools.core.extraction import ExtractionRequest, build_extraction_command, validate_request
 
 REQUEST = ExtractionRequest(
     video_path=Path("source.mp4"), output_dir=Path("staged"), prefix="frame %d [1]",
