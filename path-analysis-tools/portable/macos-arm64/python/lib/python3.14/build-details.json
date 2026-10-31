@@ -8,7 +8,7 @@
     "version_info": {
       "major": 3,
       "minor": 14,
-      "micro": 8,
+      "micro": 10,
       "releaselevel": "final",
       "serial": 0
     }
@@ -19,11 +19,11 @@
     "version": {
       "major": 3,
       "minor": 14,
-      "micro": 8,
+      "micro": 10,
       "releaselevel": "final",
       "serial": 0
     },
-    "hexversion": 51251440,
+    "hexversion": 51251952,
     "_multiarch": "darwin",
     "supports_isolated_interpreters": true
   },
@@ -48,7 +48,7 @@
   "libpython": {
     "dynamic": "./lib/libpython3.14.dylib",
     "link_extensions": false,
-    "static": "./lib/libpython3.14.a"
+    "static": "./lib/python3.14/config-3.14-darwin/libpython3.14.a"
   },
   "c_api": {
     "headers": "./include/python3.14",

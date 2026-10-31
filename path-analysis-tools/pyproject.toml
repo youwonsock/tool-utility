@@ -7,7 +7,7 @@ name = "path-analysis-tools"
 version = "1.0.0"
 description = "Host-neutral reference image path calculation and scene edit planning"
 requires-python = ">=3.12"
-dependencies = ["Pillow>=12,<13", "jsonschema>=4.26,<5", "mcp>=1.30,<2"]
+dependencies = ["Pillow>=13,<14", "jsonschema>=4.26,<5", "mcp>=1.30,<2"]
 
 [project.scripts]
 path-analysis-tools = "path_analysis_tools.cli:main"

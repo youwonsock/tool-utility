@@ -1,24 +1,25 @@
 Metadata-Version: 2.4
 Name: pillow
-Version: 12.3.0
+Version: 13.0.0
 Summary: Python Imaging Library (fork)
 Author-email: Jeffrey 'Alex' Clark <aclark@aclark.net>
 License-Expression: MIT-CMU
 Project-URL: Release notes, https://pillow.readthedocs.io/en/stable/releasenotes/index.html
 Project-URL: Changelog, https://github.com/python-pillow/Pillow/releases
 Project-URL: Documentation, https://pillow.readthedocs.io
-Project-URL: Funding, https://tidelift.com/subscription/pkg/pypi-pillow?utm_source=pypi-pillow&utm_medium=pypi
-Project-URL: Homepage, https://python-pillow.github.io
+Project-URL: Funding, https://tidelift.com/lifter/search/pypi/pillow
+Project-URL: Homepage, https://python-pillow.org
 Project-URL: Mastodon, https://fosstodon.org/@pillow
+Project-URL: Security, https://pillow.readthedocs.io/en/stable/handbook/security.html
 Project-URL: Source, https://github.com/python-pillow/Pillow
 Keywords: Imaging
 Classifier: Development Status :: 6 - Mature
 Classifier: Programming Language :: Python :: 3 :: Only
-Classifier: Programming Language :: Python :: 3.10
 Classifier: Programming Language :: Python :: 3.11
 Classifier: Programming Language :: Python :: 3.12
 Classifier: Programming Language :: Python :: 3.13
 Classifier: Programming Language :: Python :: 3.14
+Classifier: Programming Language :: Python :: 3.15
 Classifier: Programming Language :: Python :: Implementation :: CPython
 Classifier: Programming Language :: Python :: Implementation :: PyPy
 Classifier: Topic :: Multimedia :: Graphics
@@ -27,7 +28,7 @@ Classifier: Topic :: Multimedia :: Graphics :: Capture :: Screen Capture
 Classifier: Topic :: Multimedia :: Graphics :: Graphics Conversion
 Classifier: Topic :: Multimedia :: Graphics :: Viewers
 Classifier: Typing :: Typed
-Requires-Python: >=3.10
+Requires-Python: >=3.11
 Description-Content-Type: text/markdown
 License-File: LICENSE
 Provides-Extra: docs
@@ -53,6 +54,7 @@ Requires-Dist: defusedxml; extra == "tests"
 Requires-Dist: markdown2; extra == "tests"
 Requires-Dist: olefile; extra == "tests"
 Requires-Dist: packaging; extra == "tests"
+Requires-Dist: psutil; (sys_platform == "linux" or sys_platform == "darwin") and extra == "tests"
 Requires-Dist: pytest; extra == "tests"
 Requires-Dist: pytest-cov; extra == "tests"
 Requires-Dist: pytest-timeout; extra == "tests"
@@ -75,7 +77,7 @@ Pillow is the friendly PIL fork by [Jeffrey 'Alex' Clark and
 contributors](https://github.com/python-pillow/Pillow/graphs/contributors).
 PIL is the Python Imaging Library by Fredrik Lundh and contributors.
 Development is supported by:
-- [Tidelift](https://tidelift.com/subscription/pkg/pypi-pillow?utm_source=pypi-pillow&utm_medium=readme&utm_campaign=enterprise) (since 2018)
+- [Tidelift](https://tidelift.com/lifter/search/pypi/pillow) (since 2018)
 - [Thanks.dev](https://thanks.dev) (since 2023)
 - [GitHub Sponsors](https://github.com/sponsors/python-pillow) (since 2026)
 
@@ -123,7 +125,7 @@ Development is supported by:
             <a href="https://zenodo.org/badge/latestdoi/17549/python-pillow/Pillow"><img
                 alt="Zenodo"
                 src="https://zenodo.org/badge/17549/python-pillow/Pillow.svg"></a>
-            <a href="https://tidelift.com/subscription/pkg/pypi-pillow?utm_source=pypi-pillow&utm_medium=badge"><img
+            <a href="https://tidelift.com/lifter/search/pypi/pillow"><img
                 alt="Tidelift"
                 src="https://tidelift.com/badges/package/pypi/pillow?style=flat"></a>
             <a href="https://pypi.org/project/pillow/"><img
