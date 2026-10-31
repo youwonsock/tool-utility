@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import io
 import os
 import sys
 import anyio
@@ -15,9 +14,8 @@ from typing import Any, Literal
 from mcp.server.fastmcp import FastMCP, Image
 from mcp.types import ToolAnnotations
 from mcp.server.stdio import stdio_server
-from PIL import Image as PillowImage
 
-from video_tools.core.backend import probe_video
+from video_tools.core.backend import encode_preview_jpeg, probe_image, probe_video
 from video_tools.core.domain import SIZE_MODES, resolve_size_plan
 from video_tools.core.edit import EditRequest
 from video_tools.core.service import VideoService
@@ -215,14 +213,10 @@ def create_server(workspace: Path, ffmpeg_path: str | None = None) -> FastMCP:
             raise ValueError("PNG/JPG 파일만 미리 볼 수 있습니다.")
 
         def encode():
-            with PillowImage.open(path) as source:
-                if source.width * source.height > MAX_OUTPUT_PIXELS:
-                    raise ValueError("미리보기 원본은 64메가픽셀 이하여야 합니다.")
-                source.thumbnail((max_width, max_width))
-                converted = source.convert("RGB")
-                output = io.BytesIO()
-                converted.save(output, format="JPEG", quality=85)
-                return output.getvalue()
+            width, height = probe_image(ffmpeg, path)
+            if width * height > MAX_OUTPUT_PIXELS:
+                raise ValueError("미리보기 원본은 64메가픽셀 이하여야 합니다.")
+            return encode_preview_jpeg(ffmpeg, path, max_width)
         return Image(data=await asyncio.to_thread(encode), format="jpeg")
 
     return server

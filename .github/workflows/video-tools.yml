@@ -1,6 +1,7 @@
 name: Video tools distribution
 on:
   push:
+    branches: ["**"]
     paths: ["video-tools/**", ".github/workflows/video-tools.yml"]
   pull_request:
     paths: ["video-tools/**", ".github/workflows/video-tools.yml"]
@@ -10,10 +11,83 @@ on:
         description: "Regenerate both runtime archives for tools/sync_runtime.py"
         type: boolean
         default: false
+      ffmpeg:
+        description: "Build both minimal FFmpeg archives from tools/ffmpeg-sources.json"
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
+  ffmpeg:
+    if: ${{ inputs.ffmpeg }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: video-tools
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install MSYS2 MINGW64 build tools
+        if: runner.os == 'Windows'
+        id: msys2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            make diffutils nasm
+            mingw-w64-x86_64-gcc mingw-w64-x86_64-binutils mingw-w64-x86_64-pkgconf
+            mingw-w64-x86_64-meson mingw-w64-x86_64-ninja
+      - name: Install Mac build tools
+        if: runner.os == 'macOS'
+        run: brew install nasm meson ninja pkg-config
+      - name: Build minimal static FFmpeg
+        env:
+          MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
+        run: python tools/build_ffmpeg.py
+      # Upload before the codec check so a failed check keeps the build for diagnosis.
+      - name: Preserve FFmpeg archive and its corresponding sources
+        uses: actions/upload-artifact@v4
+        with:
+          name: video-ffmpeg-${{ matrix.os }}
+          path: |
+            video-tools/.build/artifacts/ffmpeg-*.tar.gz
+            video-tools/.build/artifacts/ffmpeg-*.tar.gz.sha256
+            video-tools/.build/artifacts/ffmpeg-sources/
+          if-no-files-found: error
+      - name: Run the smoke checks and every supported codec with the new FFmpeg
+        # Samples are encoded with the committed full FFmpeg, so this check needs
+        # a runtime that predates the minimal build (or another full FFmpeg).
+        shell: bash
+        run: |
+          set -e
+          # Git Bash tar -C cannot open RUNNER_TEMP's backslash path on Windows (\134 is a backslash).
+          work="$(printf '%s' "$RUNNER_TEMP" | tr '\134' /)/ffmpeg-check"
+          mkdir -p "$work/new"
+          tar -xzf .build/artifacts/ffmpeg-*.tar.gz -C "$work/new"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            py=portable/windows-x64/python/python.exe; old=portable/windows-x64/media/ffmpeg.exe; new="$work/new/ffmpeg.exe"
+          else
+            py=portable/macos-arm64/python/bin/python3.14; old=portable/macos-arm64/media/ffmpeg; new="$work/new/ffmpeg"
+          fi
+          "$py" -I -B -X utf8 tools/make_codec_samples.py "$old" "$work/samples"
+          "$py" -I -B -X utf8 tools/verify_smoke.py --codec-matrix "$work/samples" --ffmpeg "$new" --report "$work/report.json"
+      - name: Preserve codec check report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: video-ffmpeg-check-${{ matrix.os }}
+          path: ${{ runner.temp }}/ffmpeg-check/report.json
+          if-no-files-found: warn
   runtime:
+    if: ${{ !inputs.ffmpeg }}
     strategy:
       fail-fast: false
       matrix:
@@ -52,6 +126,6 @@ jobs:
         with:
           name: video-runtime-${{ matrix.os }}
           path: |
-            video-tools/.build/artifacts/*.tar.gz
-            video-tools/.build/artifacts/*.sha256
+            video-tools/.build/artifacts/windows-x64.tar.gz*
+            video-tools/.build/artifacts/macos-arm64.tar.gz*
           if-no-files-found: error

@@ -1,18 +1,26 @@
 # Video Tools
 
-Windows x64·Mac Apple Silicon에서 영상 이미지 추출과 영상 편집을 수행하는 GUI 및 로컬 MCP 도구입니다. 필요한 Python·Tcl/Tk·Pillow·MCP SDK·FFmpeg가 이 폴더에 포함되어 있습니다.
+Windows x64·Mac Apple Silicon에서 영상 이미지 추출과 영상 편집을 수행하는 GUI 및 로컬 MCP 도구입니다. 필요한 Python·Tcl/Tk·MCP SDK와 필요한 기능만 넣은 FFmpeg가 이 폴더에 포함되어 있습니다.
 
 ## 바로 실행
 
-1. 저장소를 Git clone하거나 GitHub **Code → Download ZIP**으로 받습니다.
-2. ZIP으로 받았다면 운영체제 기본 압축 해제 도구로 전체를 풉니다.
-3. Windows는 **run.bat**, Mac은 **run_mac.command**를 더블클릭합니다.
+1. 저장소를 clone합니다.
 
-Python·FFmpeg 설치, pip 실행, 가상환경 생성이나 최초 실행 다운로드가 필요하지 않습니다. 도구 폴더 전체를 함께 보관하고 이동하세요. 런처 실행 시 콘솔 또는 Terminal 창이 함께 열립니다.
+   ```bash
+   git clone https://github.com/youwonsock/tool-utility.git
+   ```
+
+2. `video-tools` 폴더에서 Windows는 **run.bat**, Mac은 **run_mac.command**를 더블클릭합니다.
+
+저장소 전체를 받으므로 약 510MB를 사용합니다. Git 기록이 필요 없으면 `--depth 1`을 붙여 약 470MB로 줄일 수 있습니다.
+
+두 OS의 런타임이 저장소에 들어 있어 Python·FFmpeg 설치, pip 실행, 가상환경 생성이나 별도 다운로드가 필요하지 않습니다. 도구 폴더 전체를 함께 보관하고 이동하세요. 런처 실행 시 콘솔 또는 Terminal 창이 함께 열립니다.
 
 지원 대상은 **Windows 10 이상 x64**와 **macOS 15 이상 Apple Silicon**입니다. Intel Mac·Linux 배포는 제공하지 않습니다. Mac은 native ARM64 런타임을 사용하므로 Rosetta가 필요하지 않습니다.
 
 Mac에서 최초 실행 시 보안 승인을 요구하면 시스템 설정 → 개인정보 보호 및 보안에서 해당 실행을 승인합니다. 프로그램은 내부용 ad-hoc 서명을 사용합니다.
+
+지원 입력은 mp4·mov·m4v·mkv·webm·avi입니다. 영상 코덱은 H.264·HEVC·VP8·VP9·AV1·MPEG-4 Part 2·MPEG-1/2·MJPEG·ProRes, 오디오 코덱은 AAC·MP2·MP3·Opus·Vorbis·AC-3·E-AC-3·FLAC·ALAC·PCM을 지원합니다. 이 밖의 코덱으로 만든 영상은 열 수 없습니다. 출력은 PNG·JPG 이미지와 H.264·AAC MP4입니다.
 
 ## GUI
 
@@ -66,11 +74,11 @@ Mac:
 - `src/video_tools/gui`, `src/video_tools/mcp`: GUI와 MCP 인터페이스
 - `src/video_tools/platforms`: Windows와 macOS 동작
 - `portable/windows-x64`, `portable/macos-arm64`: 각 OS의 동봉 런타임
-- `tools`: 고정된 런타임 생성·동기화
+- `tools`: 고정된 런타임·최소 FFmpeg 생성, 동기화
 - `docs`: 개발 안내와 완료 검증 기록
 
 공용 소스 변경은 다음 실행부터 바로 반영됩니다. 런타임이나 의존성 변경은 두 플랫폼의 검증된 파일을 함께 갱신합니다. 개발 절차는 [런타임 관리](docs/runtime-management.md)를 참고하세요.
 
-`tools/verify_smoke.py`는 임시 영상을 생성해 실제 stdio MCP의 조회·PNG/JPG 추출·MP4 편집·덮어쓰기 방지·경로 제한·취소를 검사합니다. Windows·Mac CI에서 동봉 런타임으로 실행하며 추가 설치나 다운로드가 필요하지 않습니다. 테스트 미디어와 사용자 설정은 제품 폴더에 저장하지 않습니다. 실제 GUI 조작과 새 clone·ZIP 이동 검증은 별도로 수행하며 [완료 검증 기록](docs/verification.md)에 실행 커밋·OS·런타임 해시와 결과를 남깁니다.
+`tools/verify_smoke.py`는 임시 영상을 생성해 실제 stdio MCP의 조회·PNG/JPG 추출·MP4 편집·덮어쓰기 방지·경로 제한·취소를 검사합니다. Windows·Mac CI에서 동봉 런타임으로 실행하며 추가 설치나 다운로드가 필요하지 않습니다. 테스트 미디어와 사용자 설정은 제품 폴더에 저장하지 않습니다. 실제 GUI 조작과 새 clone 검증은 별도로 수행하며 [완료 검증 기록](docs/verification.md)에 실행 커밋·OS·런타임 해시와 결과를 남깁니다.
 
 런타임의 `manifest.json`에는 버전·출처·의존성·파일 해시·권한이, `licenses`에는 Python과 네이티브 의존성·패키지·FFmpeg 고지와 출처가 포함되어 있습니다.

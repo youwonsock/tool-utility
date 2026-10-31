@@ -27,55 +27,11 @@
       "sha256": "62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775"
     }
   ],
-  "cffi==2.1.1": [
-    {
-      "filename": "cffi-2.1.1-cp314-cp314-macosx_11_0_arm64.whl",
-      "url": "https://files.pythonhosted.org/packages/b3/a9/9db617d05d7367c1ad0ab00b3aa6e6f9281edd689b4ee9ea0e5a84e89c97/cffi-2.1.1-cp314-cp314-macosx_11_0_arm64.whl",
-      "sha256": "661c298b4821edebead0c91edd2b00374d67ad7c5a1f7a91d4442633b79d6a72"
-    },
-    {
-      "filename": "cffi-2.1.1-cp314-cp314-win_amd64.whl",
-      "url": "https://files.pythonhosted.org/packages/a7/06/1c3e01e3ba14c39f6d10bfbac52753b7e22259e38088e5cfe1d704918690/cffi-2.1.1-cp314-cp314-win_amd64.whl",
-      "sha256": "3222ba5d678f80a030e6afbcc33dc1ae5cb45facabb61cee2c7016b8432fde48"
-    }
-  ],
   "click==8.5.0": [
     {
       "filename": "click-8.5.0-py3-none-any.whl",
       "url": "https://files.pythonhosted.org/packages/58/50/6c0d534c5f134586a8e1ba4e330569e32f057e33372ae556463212fb4cd3/click-8.5.0-py3-none-any.whl",
       "sha256": "255bc9599cf7748b4b1a446ccc735421bd08a2ae529a8b88597d3de5664ee360"
-    }
-  ],
-  "cryptography==50.0.2": [
-    {
-      "filename": "cryptography-50.0.2-cp311-abi3-macosx_11_0_arm64.whl",
-      "url": "https://files.pythonhosted.org/packages/e5/56/d194340cc4a57535e82e1bee9e89667ac4b7c13b5d3f59686deae3094dd5/cryptography-50.0.2-cp311-abi3-macosx_11_0_arm64.whl",
-      "sha256": "fa8f5efb344d6908a1ce62f4a24e2e5780f825d6f53f5f50ec5ffacac72936cb"
-    },
-    {
-      "filename": "cryptography-50.0.2-cp311-abi3-win_amd64.whl",
-      "url": "https://files.pythonhosted.org/packages/9a/4f/adfc442765721292fff86d314ce385d3249d22db42295c0dd057727b60f3/cryptography-50.0.2-cp311-abi3-win_amd64.whl",
-      "sha256": "7afa5a6602a9f29af1f3a2965f831bae7c9d5d597b7cbb716d41ab3b7d89879c"
-    },
-    {
-      "filename": "cryptography-50.0.2-cp39-abi3-macosx_11_0_arm64.whl",
-      "url": "https://files.pythonhosted.org/packages/23/ad/ac987755d00e1e64273760228d2635ae38dae2be83e3c6e0d3289d91dec3/cryptography-50.0.2-cp39-abi3-macosx_11_0_arm64.whl",
-      "sha256": "0ec5f09541743261e66e291b4a0cbf0fb2997aeaab6d9e9c740b9dba1b58d1c2"
-    },
-    {
-      "filename": "cryptography-50.0.2-cp39-abi3-win_amd64.whl",
-      "url": "https://files.pythonhosted.org/packages/f6/b6/a1faf3a27ae9405fb34b1713cc73b2d8a26b04d5c561578fa2e6ef3e5bb9/cryptography-50.0.2-cp39-abi3-win_amd64.whl",
-      "sha256": "4e81d95e5bafc2d6e34e4bed780e53e4d5b9a2f928573428aa4d35fbec1eb0de"
-    },
-    {
-      "filename": "cryptography-50.0.2-pp311-pypy311_pp80-macosx_11_0_arm64.whl",
-      "url": "https://files.pythonhosted.org/packages/36/8b/e6d153808bf353e152abd2fd4d8f09670d956ac78379ac46e60d7efbf04c/cryptography-50.0.2-pp311-pypy311_pp80-macosx_11_0_arm64.whl",
-      "sha256": "3dc4fd8058cea1644971207d530e1a03a184a805ffc8ebdddf0599d78a331b81"
-    },
-    {
-      "filename": "cryptography-50.0.2-pp311-pypy311_pp80-win_amd64.whl",
-      "url": "https://files.pythonhosted.org/packages/ca/1d/1271f287ff7170ddafc2aad36260c4eec20ccd2fea70f38455e9d56d427b/cryptography-50.0.2-pp311-pypy311_pp80-win_amd64.whl",
-      "sha256": "7b75de3c8b3be1cdb1052747c929440c3eea46c1bc2cb8a6e3a48388e9b7b452"
     }
   ],
   "h11==0.16.0": [
@@ -113,18 +69,6 @@
       "sha256": "ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c"
     }
   ],
-  "imageio-ffmpeg==0.6.0": [
-    {
-      "filename": "imageio_ffmpeg-0.6.0-py3-none-macosx_11_0_arm64.whl",
-      "url": "https://files.pythonhosted.org/packages/40/5c/f3d8a657d362cc93b81aab8feda487317da5b5d31c0e1fdfd5e986e55d17/imageio_ffmpeg-0.6.0-py3-none-macosx_11_0_arm64.whl",
-      "sha256": "b1ae3173414b5fc5f538a726c4e48ea97edc0d2cdc11f103afee655c463fa742"
-    },
-    {
-      "filename": "imageio_ffmpeg-0.6.0-py3-none-win_amd64.whl",
-      "url": "https://files.pythonhosted.org/packages/2c/c6/fa760e12a2483469e2bf5058c5faff664acf66cadb4df2ad6205b016a73d/imageio_ffmpeg-0.6.0-py3-none-win_amd64.whl",
-      "sha256": "02fa47c83703c37df6bfe4896aab339013f62bf02c5ebf2dce6da56af04ffc0a"
-    }
-  ],
   "jsonschema==4.26.0": [
     {
       "filename": "jsonschema-4.26.0-py3-none-any.whl",
@@ -151,35 +95,6 @@
       "filename": "packaging-26.3-py3-none-any.whl",
       "url": "https://files.pythonhosted.org/packages/63/34/ba1c580383c9eada3711951fef0795c80b829a078d72188184bcab9dd527/packaging-26.3-py3-none-any.whl",
       "sha256": "d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c"
-    }
-  ],
-  "pillow==12.3.0": [
-    {
-      "filename": "pillow-12.3.0-cp314-cp314-macosx_11_0_arm64.whl",
-      "url": "https://files.pythonhosted.org/packages/c7/da/32c752228ae345f489e3a42499d817b6c3996da7e8a3bc7a04fc806b243b/pillow-12.3.0-cp314-cp314-macosx_11_0_arm64.whl",
-      "sha256": "e158cb00350dc278f3b91551101aa7d12415a66ebf2c91d8d5ac14e56ddd3ad0"
-    },
-    {
-      "filename": "pillow-12.3.0-cp314-cp314-win_amd64.whl",
-      "url": "https://files.pythonhosted.org/packages/f1/e0/492879f69d94f91f60fc8cd05ba03650e9520afebb2fb7aa12777d7c7f38/pillow-12.3.0-cp314-cp314-win_amd64.whl",
-      "sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d"
-    },
-    {
-      "filename": "pillow-12.3.0-pp311-pypy311_pp73-macosx_11_0_arm64.whl",
-      "url": "https://files.pythonhosted.org/packages/46/3e/51fabf59d5ab801ceab709453d3ab6b180083496579549de4c45ced6528a/pillow-12.3.0-pp311-pypy311_pp73-macosx_11_0_arm64.whl",
-      "sha256": "b343699e8308bdc51978310e1c959c584e7869cc8c40780058c87da7781a1e94"
-    },
-    {
-      "filename": "pillow-12.3.0-pp311-pypy311_pp73-win_amd64.whl",
-      "url": "https://files.pythonhosted.org/packages/36/54/0169bc772ec491108b62f644f8ecf1fe5d8ae5ebafde2ee2142210166903/pillow-12.3.0-pp311-pypy311_pp73-win_amd64.whl",
-      "sha256": "04f01d28a6aaff387bf842a13be313df23ba0597a44f1a976c9feb3c6ff4711a"
-    }
-  ],
-  "pycparser==3.11": [
-    {
-      "filename": "pycparser-3.11-py3-none-any.whl",
-      "url": "https://files.pythonhosted.org/packages/90/11/0e6f11117525ff0eec40ebac3d313376f102df93ca44ad9e893ee85e4f89/pycparser-3.11-py3-none-any.whl",
-      "sha256": "51d5a8ba2be0bbe440b99d2112604c95bbbc3c2748a64260186c541e1729cd80"
     }
   ],
   "pydantic==2.14.1": [
@@ -226,13 +141,6 @@
       "filename": "pydantic_core-2.50.1-pp311-pypy311_pp73-win_amd64.whl",
       "url": "https://files.pythonhosted.org/packages/24/f3/d15bc0b1fb0c4f1e07b3326ffb7489f7ae70da2b56a0884d22641b0eb47c/pydantic_core-2.50.1-pp311-pypy311_pp73-win_amd64.whl",
       "sha256": "7f476456ac2bb0d937f75191494a09c83a30765fea4f70f3b404942fe25f6cdf"
-    }
-  ],
-  "PyJWT==2.15.1": [
-    {
-      "filename": "pyjwt-2.15.1-py3-none-any.whl",
-      "url": "https://files.pythonhosted.org/packages/50/ca/44de4e75f8aadc457f0634be3b542815078ded46dca30efb960edeecad6e/pyjwt-2.15.1-py3-none-any.whl",
-      "sha256": "42d59d631f7768a1028a64c7ff581a9bf7519804daf91fc5b6c56e30eec5e193"
     }
   ],
   "python-dotenv==1.2.4": [

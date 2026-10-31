@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import base64
 import hashlib
 import json
 import os
@@ -58,20 +59,31 @@ def cancellation_server(workspace: Path):
     server_module.create_server(workspace).run(transport='stdio')
 
 
+def decoded_rgb(ffmpeg: str, path: Path) -> tuple[tuple[int, int], str]:
+    """Decode an image with the checked FFmpeg; return its size and RGB24 hash."""
+    from video_tools.core.backend import probe_image
+    size = probe_image(ffmpeg, path)
+    result = subprocess.run([ffmpeg, '-hide_banner', '-loglevel', 'error', '-nostdin', '-i', str(path),
+                             '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'],
+                            capture_output=True, timeout=30)
+    if result.returncode or len(result.stdout) != size[0] * size[1] * 3:
+        raise AssertionError(f'Image decode failed: {path.name}: {result.stderr[-500:]!r}')
+    return size, hashlib.sha256(result.stdout).hexdigest()
+
+
 def content(result):
     if result.isError:
         raise AssertionError(str(result.content))
     return result.structuredContent or json.loads(next(c.text for c in result.content if c.type == 'text'))
 
 
-async def verify(report: dict, workspace: Path):
+async def verify(report: dict, workspace: Path, ffmpeg: str):
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
-    from PIL import Image
-    from video_tools.runtime import bundled_ffmpeg, require_runtime
+    from video_tools.runtime import require_runtime
     require_runtime()
     source = workspace / 'source.mp4'
-    command = [str(bundled_ffmpeg()), '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i',
+    command = [ffmpeg, '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i',
                'testsrc2=size=96x64:rate=10:duration=2', '-f', 'lavfi', '-i',
                'sine=frequency=440:sample_rate=44100', '-t', '2', '-c:v', 'libx264',
                '-pix_fmt', 'yuv420p', '-c:a', 'aac', str(source)]
@@ -125,22 +137,22 @@ async def verify(report: dict, workspace: Path):
         assert extracted['result']['saved_count'] == 4
         hashes = {}
         for name in extracted['result']['files']:
-            with Image.open(workspace / name) as image:
-                assert image.size == (64, 36)
-                hashes[name] = hashlib.sha256(image.convert('RGB').tobytes()).hexdigest()
+            size, hashes[name] = decoded_rgb(ffmpeg, workspace / name)
+            assert size == (64, 36)
         preview = await session.call_tool('read_image', {'image_path': extracted['result']['files'][0]})
-        assert not preview.isError and any(c.type == 'image' for c in preview.content)
+        assert not preview.isError and any(c.type == 'image' and c.mimeType == 'image/jpeg'
+                                           and base64.b64decode(c.data).startswith(b'\xff\xd8\xff')
+                                           for c in preview.content)
         skipped = await terminal(await call('start_frame_extraction', video_path='source.mp4',
                                             output_directory='frames', interval=.5, width=64, height=36))
         assert skipped['result']['saved_count'] == 0 and skipped['result']['skipped_count'] == 4
         for name, before in hashes.items():
-            with Image.open(workspace / name) as image:
-                assert hashlib.sha256(image.convert('RGB').tobytes()).hexdigest() == before
+            assert decoded_rgb(ffmpeg, workspace / name)[1] == before
         grid = await terminal(await call('start_frame_extraction', video_path='source.mp4', output_directory='grid',
                                          interval=.5, grid_size=2, image_format='jpg', width=128, height=80))
         assert grid['result']['saved_count'] == 1
-        with Image.open(workspace / grid['result']['files'][0]) as image:
-            assert image.size == (128, 80) and image.format == 'JPEG'
+        grid_file = workspace / grid['result']['files'][0]
+        assert decoded_rgb(ffmpeg, grid_file)[0] == (128, 80) and grid_file.read_bytes()[:3] == b'\xff\xd8\xff'
         report['checks'].extend(['four_png_frames', 'image_preview', 'existing_png_preserved', 'jpg_grid'])
         edited = await terminal(await call('start_video_edit', video_path='source.mp4', output_path='edited.mp4',
                                            start=0, end=1, width=64, height=36, mute=True))
@@ -174,15 +186,40 @@ async def verify(report: dict, workspace: Path):
         assert not (workspace / 'cancelled').exists()
         report['checks'].append('synchronized_queued_cancellation')
 
-    await exercise([str(ROOT / 'launch.py'), 'mcp', '--workspace', str(workspace)], 'mcp_stderr', normal)
+    await exercise([str(ROOT / 'launch.py'), 'mcp', '--workspace', str(workspace), '--ffmpeg', ffmpeg], 'mcp_stderr', normal)
     await exercise([str(Path(__file__).resolve()), '--cancel-server', '--workspace', str(workspace)], 'cancel_stderr', cancellation)
     assert hashlib.sha256(source.read_bytes()).hexdigest() == source_hash
     report['checks'].extend(['original_preserved', 'stdio_shutdown'])
 
 
+def codec_matrix(report: dict, samples: Path, workspace: Path, ffmpeg: str):
+    """Probe, extract and re-encode every sample file with the given FFmpeg."""
+    from video_tools.core.backend import probe_video
+    from video_tools.core.domain import SizePlan
+    from video_tools.core.edit import EditRequest, edit_video
+    from video_tools.core.media import ExtractionRequest, extract_images
+    results = report.setdefault('codec_matrix', {})
+    files = sorted(path for path in samples.iterdir()
+                   if path.suffix.lower() in {'.mp4', '.mov', '.m4v', '.mkv', '.webm', '.avi'})
+    if not files:
+        raise AssertionError(f'No sample videos in {samples}')
+    for path in files:
+        info = probe_video(ffmpeg, path)
+        end = min(info.duration, 1.0)
+        frames = extract_images(ExtractionRequest(ffmpeg, path, workspace / path.stem, 'frame', 'png', 0, end, end / 2,
+                                                  False, False, (1, 1), SizePlan(None, None, None)))
+        edited = edit_video(EditRequest(ffmpeg, path, workspace / f'{path.stem}.mp4', 0, end))
+        assert frames.count >= 1 and edited['has_audio'] == info.has_audio, path.name
+        results[path.name] = {'codec': info.video_codec, 'size': list(info.display_size), 'rotation': info.rotation,
+                              'audio': info.has_audio, 'frames': frames.count, 'edited_size': [edited['width'], edited['height']]}
+    report['checks'].append('codec_matrix')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--report', type=Path, help='JSON diagnostic report outside the product folder')
+    parser.add_argument('--codec-matrix', type=Path, help='Folder of sample videos to probe, extract and re-encode')
+    parser.add_argument('--ffmpeg', type=Path, help='FFmpeg to check instead of the bundled one, e.g. a new build_ffmpeg.py output')
     parser.add_argument('--cancel-server', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--workspace', type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args()
@@ -194,8 +231,12 @@ def main():
     report = {'platform': platform.platform(), 'python': sys.version, 'checks': [], 'status': 'running'}
     started = time.monotonic()
     try:
+        from video_tools.runtime import bundled_ffmpeg
+        ffmpeg = str((args.ffmpeg or bundled_ffmpeg()).resolve())
         with tempfile.TemporaryDirectory(prefix='video smoke 한글 ') as temporary:
-            asyncio.run(verify(report, Path(temporary)))
+            asyncio.run(verify(report, Path(temporary), ffmpeg))
+            if args.codec_matrix:
+                codec_matrix(report, args.codec_matrix, Path(temporary) / 'codec-matrix', ffmpeg)
         report['status'] = 'passed'
     except Exception:
         report['status'] = 'failed'
