@@ -86,12 +86,13 @@ class VideoInfo:
         return (self.height, self.width) if abs(self.rotation) % 180 == 90 else (self.width, self.height)
 
 
-def _capture(command: list[str], cancel: Optional[threading.Event], timeout: float = 30) -> tuple[int, str, str]:
+def _capture(command: list[str], cancel: Optional[threading.Event], timeout: float = 30,
+             binary: bool = False) -> tuple[int, str | bytes, str | bytes]:
     if cancel is not None and cancel.is_set():
         raise OperationCancelled()
+    text_options = {} if binary else {"text": True, "encoding": "utf-8", "errors": "replace"}
     process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                               stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace",
-                               **current.process_options())
+                               stderr=subprocess.PIPE, **text_options, **current.process_options())
     _register_process(process)
     deadline = time.monotonic() + timeout
     try:
@@ -144,6 +145,32 @@ def probe_video(ffmpeg: str, video_path: Path, cancel_event: Optional[threading.
                      video_line.split("Video:", 1)[1].strip().split()[0].rstrip(","),
                      int(float(rotation_match[1])) if rotation_match else 0,
                      "ffmpeg", int(stream_match[1]) if stream_match else 0)
+
+
+def probe_image(ffmpeg: str, image_path: Path) -> tuple[int, int]:
+    """Read a still image's pixel size; images report no usable duration."""
+    if not image_path.is_file():
+        raise ValueError(f"이미지 파일을 찾을 수 없습니다: {image_path}")
+    _, _, output = _capture([ffmpeg, "-hide_banner", "-nostdin", "-protocol_whitelist", "file,pipe",
+                             "-i", str(image_path)], None)
+    video_line = next((line for line in output.splitlines() if "Video:" in line), "")
+    size = re.search(r"\b([1-9]\d{0,5})x([1-9]\d{0,5})\b", video_line)
+    if not size:
+        raise ValueError("이미지 정보를 읽지 못했습니다.\n" + output[-2000:])
+    return int(size[1]), int(size[2])
+
+
+def encode_preview_jpeg(ffmpeg: str, image_path: Path, max_size: int) -> bytes:
+    """Shrink, never enlarge, an image into a max_size box and return JPEG bytes."""
+    scale = (f"scale=w='min(iw,{max_size})':h='min(ih,{max_size})'"
+             ":force_original_aspect_ratio=decrease,format=yuvj444p")
+    code, stdout, stderr = _capture([ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin",
+                                     "-protocol_whitelist", "file,pipe", "-i", str(image_path),
+                                     "-vf", scale, "-frames:v", "1", "-f", "image2pipe",
+                                     "-c:v", "mjpeg", "-q:v", "4", "pipe:1"], None, binary=True)
+    if code or not stdout.startswith(b"\xff\xd8\xff"):
+        raise ValueError("미리보기 이미지를 만들지 못했습니다.\n" + stderr.decode("utf-8", "replace")[-2000:])
+    return stdout
 
 
 def probe_duration(ffmpeg: str, video_path: Path, cancel_event: Optional[threading.Event] = None) -> float:

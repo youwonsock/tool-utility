@@ -65,3 +65,55 @@ GUI 검증은 개별 PNG 추출, JPG 격자, 미리보기·크기, 구간·크�
 기능 검증 소스는 임시 환경·검증 브랜치에서만 사용했다. main에는 검증 소스 대신 이 결과 기록을 남긴다. 이 실행 커밋 이후 완료 기록·사용 안내만 갱신하며 병합 전 공용 소스 및 두 런타임 트리의 동일성을 확인한다.
 
 실제 Windows 검증 OS는 위에 명시한 Server 2025이다. Windows 10 클라이언트 실기기 검증과 Mac의 브라우저 quarantine 보안 승인 화면은 이 자동 검증에 포함하지 않았다. 첫 실행 시 필요한 OS 보안 승인은 사용 안내에 따른다.
+
+## 경량화 재검증
+
+검증일: 2026-10-31. 위 기록은 경량화 전 런타임의 증거이며 이 절이 현재 런타임의 기록이다. 배포 방식은 저장소 clone 하나로 정리해 OS별 ZIP과 앱 Release를 만들지 않는다.
+
+### 검증 대상
+
+- 런타임 커밋: `ffa92ec669fdf4afe40a667c7fa0b13a7bfff683`, 런타임 입력 SHA-256: `58e26b1e9efbad2eef24ffa2f2e6e31e815e69c4d250452c4effdb63aa67b6e1`
+- CPython 3.14.8, Tcl/Tk 9.0.4, MCP SDK 1.30.0. Pillow, imageio-ffmpeg, cryptography, cffi, pycparser, PyJWT는 제거했다.
+- FFmpeg 7.1.5 최소 정적 빌드: [Release `video-tools-ffmpeg-7.1.5-1`](https://github.com/youwonsock/tool-utility/releases/tag/video-tools-ffmpeg-7.1.5-1). x264, dav1d, zlib을 포함한 원본 소스를 함께 게시했다.
+
+| 런타임 | 파일 수 | 저장소 크기 | FFmpeg 아카이브 SHA-256 | manifest SHA-256 |
+| --- | ---: | --- | --- | --- |
+| windows-x64 | 1,631 | 182MB → 68MB | `bdd09d6f26f6222e01dc6b6c20d80f110a690954cf343eb3f4e58e3751c57fce` | `c5d51c974c9d19a4a674f18a3836db1249a0c4d48ec871a5da79464a5af6546a` |
+| macos-arm64 | 1,714 | 146MB → 80MB | `f03e43acd223c60fef6ddb990753289bc219e7f2aa86a22436b9a604a64888f5` | `c59173c7cb28cec3f6ac861c2c01d9a629bd002a6b04ea3ba1fc4b99bb5f360c` |
+
+경량화 브랜치의 새 clone은 약 513MB이고, 이 중 `.git`이 130MB, `video-tools`가 149MB, `path-analysis-tools`가 234MB다. `--depth 1` clone은 약 467MB다.
+
+### 실행 결과
+
+CI는 Windows Server 2025와 macOS 15.8.2에서 실행했다.
+
+- [FFmpeg 빌드](https://github.com/youwonsock/tool-utility/actions/runs/41170129103): 두 OS의 새 FFmpeg로 smoke 검사 18개 항목과 코덱 샘플 14개 통과
+- [런타임 재생성](https://github.com/youwonsock/tool-utility/actions/runs/41171551818): 두 OS의 `--refresh`와 smoke 검사 17개 항목 통과
+- [커밋된 런타임](https://github.com/youwonsock/tool-utility/actions/runs/41172190715): 두 OS의 `--audit --git`과 smoke 검사 17개 항목 통과
+
+macOS 26.6.2 ARM64에서 원격 저장소를 한글·공백이 포함된 경로에 새로 clone해 다음을 확인했다.
+
+- `run_mac.command` 창 실행, `run_mcp.command` 초기화와 stdin 종료 후 종료 코드 0
+- `--audit --git`, smoke 검사 18개 항목, 코덱 샘플 14개. 실행 후 Git 상태는 깨끗했다.
+- clone한 파일에 격리 속성이 없어 브라우저 다운로드의 보안 승인 절차를 거치지 않는다.
+- 실제 창의 위젯을 코드로 조작한 GUI 검사 19개 항목: PNG 추출, JPG 격자, 기존 파일 건너뛰기, 잘못된 입력, 추출 취소, 크롭·회전·반전·크기·배속·CRF 편집, 회전 영상, 음소거, 덮어쓰기 거부, 창 닫기, 설정 저장·복원
+
+### 검증하지 않은 범위
+
+- Windows의 실제 GUI 조작과 새 clone 실행은 결정에 따라 제외했다. Windows는 위 CI 결과만 확인했다.
+- Mac의 마우스·키보드 입력, 화면 배치, 파일 선택 창과 알림 창은 확인하지 않았다. GUI 검사에서 두 대화 상자는 코드로 대체했다.
+- `read_image`는 RGBA·팔레트·16비트 PNG와 JPG의 축소 동작만 확인했다. 색 비교는 하지 않았고, JPEG 설정이 Pillow 85에서 FFmpeg `-q:v 4`로 바뀌어 결과 바이트가 다르다.
+
+### 지원 범위 변경
+
+[런타임 관리](runtime-management.md#최소-ffmpeg) 목록 밖 코덱의 영상은 더 이상 열리지 않는다. 목록에 없는 오디오 코덱은 추출은 가능해도 음소거하지 않은 편집이 실패한다.
+
+### 남은 개선 후보
+
+- **FFmpeg 재빌드:** 커밋된 런타임이 최소 빌드가 되어 CI의 샘플 생성 단계가 더 이상 동작하지 않는다. 다음 재빌드 전에 샘플을 저장소 밖에 보관하거나 전체 기능 FFmpeg를 지정해야 한다.
+- **Windows 경로 길이:** 저장소의 최장 경로가 181자여서 clone 위치가 깊으면 Git의 경로 길이 제한에 걸릴 수 있다. 배포하지 않는 pip의 고지가 `licenses/python-build-standalone/install` 아래에 중복되어 있어 줄일 수 있다.
+- **Mac 동기화:** Mac에서 `sync_runtime.py`를 실행하면 Windows 실행 파일 5개의 작업 폴더 권한이 Git 기록과 달라진다. Git에 기록되는 값은 정상이다.
+- **`path-analysis-tools` 경량화:** 동봉 런타임이 234MB로 clone 크기의 가장 큰 부분이다. Pillow를 실제로 사용하므로 별도 측정이 필요하다.
+- **Git 기록 용량:** `.git`이 130MB다. 기록을 다시 쓰지 않으면 줄지 않는다.
+- **CI 정비:** Node 20 사용 중단 경고가 나오는 `checkout@v4`, `setup-python@v5`, `upload-artifact@v4`를 갱신한다.
+- **FFmpeg 소스 고정:** GitLab의 x264 아카이브는 바이트가 바뀔 수 있고, `zlib.net`은 새 버전이 나오면 이전 URL을 옮길 수 있다. 다운로드가 실패하면 같은 소스인지 확인한 뒤 다시 고정한다.
