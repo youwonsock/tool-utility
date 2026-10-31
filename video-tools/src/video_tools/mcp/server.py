@@ -15,13 +15,19 @@ from mcp.server.fastmcp import FastMCP, Image
 from mcp.types import ToolAnnotations
 from mcp.server.stdio import stdio_server
 
-from video_tools.core.backend import encode_preview_jpeg, probe_image, probe_video
 from video_tools.core.domain import SIZE_MODES, resolve_size_plan
 from video_tools.core.edit import EditRequest
 from video_tools.core.service import VideoService
-from video_tools.core.media import MAX_OUTPUT_PIXELS, ExtractionRequest
+from video_tools.core.limits import (
+    GRID_SIZES, IMAGE_EXTENSIONS, IMAGE_FORMATS, MAX_ACTIVE_JOBS, MAX_OUTPUT_IMAGES, MAX_OUTPUT_MEGAPIXELS,
+    MAX_OUTPUT_PIXELS, MAX_PENDING_JOBS, ROTATIONS, VIDEO_EXTENSIONS,
+)
+from video_tools.core.media import ExtractionRequest
 
-MEDIA_EXTENSIONS = {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v", ".png", ".jpg", ".jpeg"}
+MEDIA_EXTENSIONS = {*VIDEO_EXTENSIONS, *IMAGE_EXTENSIONS}
+GridSize = Literal[(1, *GRID_SIZES)]
+ImageFormat = Literal[IMAGE_FORMATS]
+Rotation = Literal[ROTATIONS]
 
 
 class VideoToolsMCP(FastMCP):
@@ -60,15 +66,13 @@ class Workspace:
 def create_server(workspace: Path, ffmpeg_path: str | None = None) -> FastMCP:
     scope = Workspace(workspace)
     service = VideoService(ffmpeg_path)
-    ffmpeg = service.ffmpeg
-    jobs = service.jobs
 
     @asynccontextmanager
     async def lifespan(_server):
         try:
             yield None
         finally:
-            await asyncio.to_thread(jobs.close)
+            await asyncio.to_thread(service.close)
 
     server = VideoToolsMCP(
         "video-tools",
@@ -95,8 +99,8 @@ def create_server(workspace: Path, ffmpeg_path: str | None = None) -> FastMCP:
     @server.tool(annotations=read_only)
     def server_info() -> dict[str, Any]:
         """Show workspace, limits, editing operations and sampling behavior."""
-        return {"workspace": str(scope.root), "transport": "stdio", "ffmpeg": ffmpeg,
-                "max_active_jobs": 2, "max_pending_jobs": 8, "max_sampled_frames": 10000,
+        return {"workspace": str(scope.root), "transport": "stdio", "ffmpeg": service.ffmpeg,
+                "max_active_jobs": MAX_ACTIVE_JOBS, "max_pending_jobs": MAX_PENDING_JOBS, "max_sampled_frames": MAX_OUTPUT_IMAGES,
                 "editing": ["trim", "crop", "resize_letterbox", "rotate", "flip", "speed", "mute"],
                 "sampling": "start+n*interval < end; latest frame at/before target, first available frame at the start boundary"}
 
@@ -125,7 +129,7 @@ def create_server(workspace: Path, ffmpeg_path: str | None = None) -> FastMCP:
     @server.tool(annotations=read_only)
     async def inspect_video(video_path: str) -> dict[str, Any]:
         """Read duration, dimensions, frame rate, audio and rotation metadata."""
-        info = await asyncio.to_thread(probe_video, ffmpeg, scope.resolve(video_path, existing=True))
+        info = await asyncio.to_thread(service.inspect, scope.resolve(video_path, existing=True))
         result = asdict(info)
         result.update(path=scope.relative(info.path), display_width=info.display_size[0], display_height=info.display_size[1])
         return result
@@ -133,9 +137,9 @@ def create_server(workspace: Path, ffmpeg_path: str | None = None) -> FastMCP:
     @server.tool(annotations=writes)
     def start_frame_extraction(
         video_path: str, output_directory: str, start: float = 0, end: float | None = None,
-        interval: float = 1, grid_size: Literal[1, 2, 3] = 1,
+        interval: float = 1, grid_size: GridSize = 1,
         width: int | None = None, height: int | None = None,
-        image_format: Literal["png", "jpg"] = "png", prefix: str = "frame", overwrite: bool = False,
+        image_format: ImageFormat = "png", prefix: str = "frame", overwrite: bool = False,
     ) -> dict[str, Any]:
         """Start frame extraction. End is exclusive; null uses video duration.
         grid_size=1 saves individuals; 2/3 makes square sheets. Width/height are
@@ -150,20 +154,19 @@ def create_server(workspace: Path, ffmpeg_path: str | None = None) -> FastMCP:
                                  (width, height) if width is not None and height is not None else None,
                                  grid_size > 1, (grid_size, grid_size))
 
-        def prepare(cancel):
+        def prepare():
             # Re-resolve before work to also catch moved/replaced parent links.
-            info = probe_video(ffmpeg, scope.resolve(str(source), existing=True), cancel)
-            request = ExtractionRequest(ffmpeg, source, scope.resolve(str(output)), prefix, image_format,
-                                        start, info.duration if end is None else end, interval, overwrite,
-                                        grid_size > 1, (grid_size, grid_size), plan)
-            return request
+            return ExtractionRequest(
+                video_path=scope.resolve(str(source), existing=True), output_dir=scope.resolve(str(output)), prefix=prefix,
+                extension=image_format, start=start, end=end, interval=interval, overwrite=overwrite,
+                group_mode=grid_size > 1, grid_size=(grid_size, grid_size), size_plan=plan)
         return present(service.start_extraction(prepare))
 
     @server.tool(annotations=writes)
     def start_video_edit(
         video_path: str, output_path: str, start: float = 0, end: float | None = None,
         width: int | None = None, height: int | None = None,
-        crop: list[int] | None = None, rotation: Literal[0, 90, 180, 270] = 0,
+        crop: list[int] | None = None, rotation: Rotation = 0,
         flip_horizontal: bool = False, flip_vertical: bool = False,
         speed: float = 1, mute: bool = False, overwrite: bool = False, crf: int = 20,
     ) -> dict[str, Any]:
@@ -178,22 +181,23 @@ def create_server(workspace: Path, ffmpeg_path: str | None = None) -> FastMCP:
         if crop is not None and len(crop) != 4:
             raise ValueError("crop은 [x, y, width, height]여야 합니다.")
 
-        def prepare(cancel):
-            request = EditRequest(ffmpeg, scope.resolve(str(source), existing=True), scope.resolve(str(output)),
-                                  start, end, width, height, tuple(crop) if crop is not None else None,
-                                  rotation, flip_horizontal, flip_vertical, speed, mute, overwrite, crf)
-            return request
+        def prepare():
+            return EditRequest(
+                video_path=scope.resolve(str(source), existing=True), output_path=scope.resolve(str(output)),
+                start=start, end=end, width=width, height=height, crop=tuple(crop) if crop is not None else None,
+                rotation=rotation, flip_horizontal=flip_horizontal, flip_vertical=flip_vertical, speed=speed,
+                mute=mute, overwrite=overwrite, crf=crf)
         return present(service.start_edit(prepare))
 
     @server.tool(annotations=read_only)
     def get_job(job_id: str) -> dict[str, Any]:
         """Get queued/running/cancelling/completed/failed/cancelled status and outputs."""
-        return present(jobs.get(job_id))
+        return present(service.job(job_id))
 
     @server.tool(annotations=read_only)
     def list_jobs() -> dict[str, Any]:
         """List up to 100 recent jobs; history is cleared on server restart."""
-        return {"jobs": [present(job) for job in jobs.list()]}
+        return {"jobs": [present(job) for job in service.list_jobs()]}
 
     @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False))
     def cancel_job(job_id: str) -> dict[str, Any]:
@@ -201,7 +205,7 @@ def create_server(workspace: Path, ffmpeg_path: str | None = None) -> FastMCP:
         Cancellation before publication discards staged output. If publication
         already started, the job may complete and returns the committed files.
         """
-        return present(jobs.cancel(job_id))
+        return present(service.cancel_job(job_id))
 
     @server.tool(annotations=read_only)
     async def read_image(image_path: str, max_width: int = 1280) -> Image:
@@ -209,14 +213,14 @@ def create_server(workspace: Path, ffmpeg_path: str | None = None) -> FastMCP:
         if not 64 <= max_width <= 2048:
             raise ValueError("max_width는 64~2048이어야 합니다.")
         path = scope.resolve(image_path, existing=True)
-        if path.suffix.lower() not in {".png", ".jpg", ".jpeg"}:
+        if path.suffix.lower() not in IMAGE_EXTENSIONS:
             raise ValueError("PNG/JPG 파일만 미리 볼 수 있습니다.")
 
         def encode():
-            width, height = probe_image(ffmpeg, path)
+            width, height = service.image_size(path)
             if width * height > MAX_OUTPUT_PIXELS:
-                raise ValueError("미리보기 원본은 64메가픽셀 이하여야 합니다.")
-            return encode_preview_jpeg(ffmpeg, path, max_width)
+                raise ValueError(f"미리보기 원본은 {MAX_OUTPUT_MEGAPIXELS}메가픽셀 이하여야 합니다.")
+            return service.image_preview(path, max_width)
         return Image(data=await asyncio.to_thread(encode), format="jpeg")
 
     return server

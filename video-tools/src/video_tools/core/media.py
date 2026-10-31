@@ -12,15 +12,14 @@ from video_tools.core.domain import (
     SizePlan, build_video_filter, calculate_expected_output_count, safe_prefix,
 )
 from video_tools.core.backend import OperationCancelled, VideoInfo, probe_video, publish_file, run_ffmpeg
-
-MAX_OUTPUT_IMAGES = 10000
-MAX_OUTPUT_PIXELS = 67_108_864
+from video_tools.core.limits import (
+    DURATION_TOLERANCE, GRID_SIZES, IMAGE_FORMATS, MAX_OUTPUT_IMAGES, MAX_OUTPUT_MEGAPIXELS, MAX_OUTPUT_PIXELS,
+)
 
 
 @dataclass(frozen=True)
 class ProbeCompleted:
     video_path: Path
-    ffmpeg_path: str
     duration: float
     info: Optional[VideoInfo] = None
 
@@ -31,15 +30,14 @@ class ProbeFailed:
     error: str
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class ExtractionRequest:
-    ffmpeg_path: str
     video_path: Path
     output_dir: Path
     prefix: str
     extension: str
     start: float
-    end: float
+    end: Optional[float]  # None means the end of the video
     interval: float
     overwrite: bool
     group_mode: bool
@@ -67,26 +65,26 @@ def validate_request(request: ExtractionRequest) -> int:
         raise ValueError("추출 끝 시간은 시작 시간보다 커야 합니다.")
     if request.interval < 0.001:
         raise ValueError("추출 간격은 0.001초 이상이어야 합니다.")
-    if request.extension not in {"png", "jpg"}:
+    if request.extension not in IMAGE_FORMATS:
         raise ValueError("이미지 형식은 png 또는 jpg여야 합니다.")
-    if request.group_mode and request.grid_size not in {(2, 2), (3, 3)}:
+    if request.group_mode and request.grid_size not in {(size, size) for size in GRID_SIZES}:
         raise ValueError("격자는 2×2 또는 3×3이어야 합니다.")
     for size in (request.size_plan.frame_size, request.size_plan.output_size):
         if size is not None and (min(size) < 1 or size[0] * size[1] > MAX_OUTPUT_PIXELS):
-            raise ValueError("출력 크기는 양수이고 이미지당 64메가픽셀 이하여야 합니다.")
+            raise ValueError(f"출력 크기는 양수이고 이미지당 {MAX_OUTPUT_MEGAPIXELS}메가픽셀 이하여야 합니다.")
     samples = calculate_expected_output_count(request.start, request.end, request.interval, False, (1, 1))
     if samples > MAX_OUTPUT_IMAGES:
         raise ValueError(f"한 번에 최대 {MAX_OUTPUT_IMAGES}개 프레임을 추출할 수 있습니다. 구간이나 간격을 조정하세요.")
     return samples
 
 
-def build_extraction_command(request: ExtractionRequest, stream_index: Optional[int] = None) -> list[str]:
+def build_extraction_command(ffmpeg: str, request: ExtractionRequest, stream_index: Optional[int] = None) -> list[str]:
     validate_request(request)
     # The service supplies a private staging directory. User text never enters
     # FFmpeg's image sequence pattern, so %, [] and Unicode prefixes are literal.
     pattern = request.output_dir / f"frame_%06d.{request.extension}"
     return [
-        request.ffmpeg_path, "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+        ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
         "-ss", f"{request.start:.9f}", "-protocol_whitelist", "file,pipe",
         "-i", str(request.video_path), "-map", f"0:{stream_index}" if stream_index is not None else "0:v:0", "-an",
         "-vf", build_video_filter(request.interval, request.group_mode, request.grid_size,
@@ -96,15 +94,16 @@ def build_extraction_command(request: ExtractionRequest, stream_index: Optional[
     ]
 
 
-def extract_images(request: ExtractionRequest, cancel: Optional[threading.Event] = None,
+def extract_images(ffmpeg: str, request: ExtractionRequest, cancel: Optional[threading.Event] = None,
                    progress: Optional[Callable[[float, int], None]] = None) -> ExtractionFinished:
     cancel = cancel if cancel is not None else threading.Event()
     on_progress = progress or (lambda _percent, _frames: None)
-    validate_request(request)
     if cancel.is_set():
         raise OperationCancelled()
-    info = probe_video(request.ffmpeg_path, request.video_path, cancel)
-    if request.start >= info.duration or request.end > info.duration + 0.05:
+    info = probe_video(ffmpeg, request.video_path, cancel)
+    request = replace(request, end=info.duration if request.end is None else request.end)
+    validate_request(request)
+    if request.start >= info.duration or request.end > info.duration + DURATION_TOLERANCE:
         raise ValueError(f"추출 구간이 영상 길이({info.duration:g}초)를 벗어납니다.")
     if request.size_plan.frame_size is None:
         columns, rows = request.grid_size if request.group_mode else (1, 1)
@@ -117,7 +116,7 @@ def extract_images(request: ExtractionRequest, cancel: Optional[threading.Event]
         raise ValueError("파일명 앞부분은 160자 이하여야 합니다.")
     with tempfile.TemporaryDirectory(prefix=".video-to-image-", dir=request.output_dir) as directory:
         staged_request = replace(request, output_dir=Path(directory))
-        run_ffmpeg(build_extraction_command(staged_request, info.stream_index), cancel, request.end - request.start, on_progress)
+        run_ffmpeg(build_extraction_command(ffmpeg, staged_request, info.stream_index), cancel, request.end - request.start, on_progress)
         staged_files = sorted(Path(directory).glob(f"frame_*.{request.extension}"))
         if cancel.is_set():
             raise OperationCancelled()
