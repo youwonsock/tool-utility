@@ -1,4 +1,4 @@
-"""Resources and client commands belonging to the downloaded tool folder."""
+"""Resources and client commands belonging to the tool folder."""
 from __future__ import annotations
 
 import json
@@ -25,10 +25,10 @@ def require_runtime() -> None:
     manifest = RUNTIME_ROOT / "manifest.json"
     for path in (python_executable(), bundled_ffmpeg(), manifest):
         if not path.is_file():
-            raise RuntimeError(f"필수 동봉 파일이 없습니다: {path}. 도구 폴더 전체를 다시 받으세요.")
+            raise RuntimeError(f"필수 동봉 파일이 없습니다: {path}. 저장소를 다시 clone하세요.")
     data = json.loads(manifest.read_text(encoding="utf-8"))
     if data.get("profile") != profile or data.get("python") != "3.14.8":
-        raise RuntimeError("동봉 런타임 버전 또는 플랫폼이 올바르지 않습니다. 도구 폴더 전체를 다시 받으세요.")
+        raise RuntimeError("동봉 런타임 버전 또는 플랫폼이 올바르지 않습니다. 저장소를 다시 clone하세요.")
     if Path(sys.executable).resolve() != python_executable().resolve():
         raise RuntimeError("run.bat 또는 run_mac.command로 동봉 Python을 실행하세요.")
 
