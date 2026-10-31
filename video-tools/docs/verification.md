@@ -4,9 +4,9 @@
 
 ## 검증 대상
 
-- 실행 소스·런타임 커밋: `9f6580fb77b4bf4275a165b8966a6c24336b5a98`
-- 공용 소스 및 OS 어댑터 트리: `27b2daa2d731480e63bfe17d2ad0ec72fe6e2bc9`
-- 두 런타임 트리: `0cec2479fa288962d077d22dd20abfa506beca73`
+- 실행 소스·런타임 커밋: `999b2ac7d687578bffe841d057f7a3a4f091f940` (재작성 전 `9f6580fb77b4bf4275a165b8966a6c24336b5a98`)
+- 공용 소스 및 OS 어댑터 트리: `27b2daa2d731480e63bfe17d2ad0ec72fe6e2bc9` (재작성 전 값)
+- 두 런타임 트리: `0cec2479fa288962d077d22dd20abfa506beca73` (재작성 전 값)
 - CPython: 3.14.8, python-build-standalone 20261013, 일반 GIL 빌드. 두 공급자 메타데이터의 `Py_GIL_DISABLED=0` 확인.
 - Tcl/Tk: 9.0.4 / 9.0.4. Pillow 12.3.0, MCP SDK 1.30.0, imageio-ffmpeg 0.6.0 및 전이 의존성 잠금.
 - FFmpeg: Windows 7.1 essentials / Mac 7.1. 제공 휠과 원본 FFmpeg의 SHA-256은 각 manifest에 기록.
@@ -72,7 +72,7 @@ GUI 검증은 개별 PNG 추출, JPG 격자, 미리보기·크기, 구간·크�
 
 ### 검증 대상
 
-- 런타임 커밋: `ffa92ec669fdf4afe40a667c7fa0b13a7bfff683`, 런타임 입력 SHA-256: `58e26b1e9efbad2eef24ffa2f2e6e31e815e69c4d250452c4effdb63aa67b6e1`
+- 런타임 커밋: `c0f3a8c4e225cc5ccb48b04d3c9d5524dbf17323` (재작성 전 `ffa92ec669fdf4afe40a667c7fa0b13a7bfff683`), 런타임 입력 SHA-256: `58e26b1e9efbad2eef24ffa2f2e6e31e815e69c4d250452c4effdb63aa67b6e1`
 - CPython 3.14.8, Tcl/Tk 9.0.4, MCP SDK 1.30.0. Pillow, imageio-ffmpeg, cryptography, cffi, pycparser, PyJWT는 제거했다.
 - FFmpeg 7.1.5 최소 정적 빌드: [Release `video-tools-ffmpeg-7.1.5-1`](https://github.com/youwonsock/tool-utility/releases/tag/video-tools-ffmpeg-7.1.5-1). x264, dav1d, zlib을 포함한 원본 소스를 함께 게시했다.
 
@@ -119,9 +119,17 @@ macOS 26.6.2 ARM64에서 원격 저장소를 한글·공백이 포함된 경로�
 
 Windows 실기기와 양쪽 OS의 실제 마우스 입력, 화면 배치, 파일 선택 창과 알림 창은 여전히 확인하지 않았다. 크기 모드와 출력 방식의 저장값이 내부 값으로 바뀌어, 이전 설정 파일의 두 값은 한 번 기본값으로 돌아간다.
 
+### Git 기록 재작성
+
+검증일: 2026-10-31. 최신 커밋에 없는 과거 런타임 파일 817개를 Git 기록에서 제거했다. 모든 커밋 해시가 바뀌었지만 최신 커밋의 트리 해시 `f33032652accc04fc2025f23fa93b3c67c36ae29`는 그대로다. 새 clone은 약 514MB에서 약 348MB로, `.git`은 약 130MB에서 60MB로 줄었다.
+
+- 재작성 전 커밋에서는 런타임 파일 일부가 빠져 실행과 `--audit`이 불가능하다. 이 문서의 이전 기록은 당시 실행의 증거로만 남는다.
+- Release 태그 2개는 같은 이름으로 옮겼고 파일 주소는 그대로 동작한다.
+- GitHub의 PR 참조가 예전 커밋을 계속 보관하므로 서버 저장 용량은 바로 줄지 않는다. 일반 clone에는 영향이 없다.
+- 런타임을 다시 생성할 때마다 기록은 다시 늘어난다.
+
 ### 남은 개선 후보
 
 - **MSYS2 환경:** `ffmpeg` 작업의 Windows 빌드에 MINGW64 사용 중단 경고가 나온다. 지금은 빌드에 영향이 없으며, UCRT64로 옮기면 FFmpeg를 다시 검증해야 한다.
 
 - **Windows 경로 길이:** 저장소의 최장 경로가 181자여서 clone 위치가 깊으면 Git의 경로 길이 제한에 걸릴 수 있다. 배포하지 않는 pip의 고지가 `licenses/python-build-standalone/install` 아래에 중복되어 있어 줄일 수 있다.
-- **Git 기록 용량:** `.git`이 130MB다. 기록을 다시 쓰지 않으면 줄지 않는다.

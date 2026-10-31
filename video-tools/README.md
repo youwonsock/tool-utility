@@ -12,7 +12,7 @@ Windows x64·Mac Apple Silicon에서 영상 이미지 추출과 영상 편집을
 
 2. `video-tools` 폴더에서 Windows는 **run.bat**, Mac은 **run_mac.command**를 더블클릭합니다.
 
-저장소 전체를 받으므로 약 510MB를 사용합니다. Git 기록이 필요 없으면 `--depth 1`을 붙여 약 470MB로 줄일 수 있습니다.
+저장소 전체를 받으므로 약 350MB를 사용합니다.
 
 두 OS의 런타임이 저장소에 들어 있어 Python·FFmpeg 설치, pip 실행, 가상환경 생성이나 별도 다운로드가 필요하지 않습니다. 도구 폴더 전체를 함께 보관하고 이동하세요. 런처 실행 시 콘솔 또는 Terminal 창이 함께 열립니다.
 

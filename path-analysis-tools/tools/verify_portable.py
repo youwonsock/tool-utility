@@ -56,7 +56,7 @@ def main():
         if sys.platform == "darwin":
             denied_paths = [ROOT, ROOT.parent / 'video-tools']
             policy = '(version 1) (allow default) (deny network*) ' + ' '.join(
-                '(deny file-read* (subpath ' + json.dumps(str(path)) + '))' for path in denied_paths)
+                '(deny file-read* (subpath ' + json.dumps(str(path), ensure_ascii=False) + '))' for path in denied_paths)
             prefix = ["/usr/bin/sandbox-exec", "-p", policy]
             network_control = "macOS sandbox-exec deny network*"
             # Both prohibited capabilities are probed before the smoke test.
