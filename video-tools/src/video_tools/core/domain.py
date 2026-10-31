@@ -7,15 +7,15 @@ import re
 from dataclasses import dataclass
 from typing import Optional
 
+from video_tools.core.limits import GRID_SIZES
+
 
 APP_TITLE = "영상 이미지 추출 · 편집"
 INDIVIDUAL_OUTPUT_MODE = "개별 이미지 저장"
 GRID_OUTPUT_MODE = "격자 합치기"
 OUTPUT_MODES = (INDIVIDUAL_OUTPUT_MODE, GRID_OUTPUT_MODE)
-GRID_SIZE_PRESETS: dict[str, tuple[int, int]] = {
-    "2 × 2": (2, 2),
-    "3 × 3": (3, 3),
-}
+GRID_SIZE_PRESETS: dict[str, tuple[int, int]] = {f"{size} × {size}": (size, size) for size in GRID_SIZES}
+DEFAULT_GRID_SIZE = "3 × 3"
 SIZE_MODES = ("최종 이미지 해상도", "격자 셀 이미지 크기")
 CUSTOM_SIZE_LABEL = "사용자 지정"
 FINAL_SIZE_PRESETS: dict[str, tuple[int, int]] = {
@@ -23,6 +23,7 @@ FINAL_SIZE_PRESETS: dict[str, tuple[int, int]] = {
     "2048 × 2048": (2048, 2048),
     "4096 × 4096": (4096, 4096),
 }
+DEFAULT_FINAL_SIZE = "1920 × 1080"
 CELL_SIZE_PRESETS: dict[str, Optional[tuple[int, int]]] = {
     "원본": None,
     "1920 × 1080": (1920, 1080),
@@ -30,6 +31,7 @@ CELL_SIZE_PRESETS: dict[str, Optional[tuple[int, int]]] = {
     "854 × 480": (854, 480),
     "640 × 360": (640, 360),
 }
+DEFAULT_CELL_SIZE = "원본"
 GRID_PADDING = 6
 GRID_MARGIN = 6
 GRID_COLOR = "0xeeeeee"

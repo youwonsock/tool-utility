@@ -9,12 +9,11 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from video_tools.core.backend import OperationCancelled, VideoInfo, probe_video, publish_file, run_ffmpeg
-from video_tools.core.media import MAX_OUTPUT_PIXELS
+from video_tools.core.limits import DURATION_TOLERANCE, MAX_CRF, MAX_OUTPUT_MEGAPIXELS, MAX_OUTPUT_PIXELS, MAX_SPEED, MIN_SPEED, ROTATIONS
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class EditRequest:
-    ffmpeg_path: str
     video_path: Path
     output_path: Path
     start: float = 0.0
@@ -35,14 +34,14 @@ def validate_edit(request: EditRequest, info: VideoInfo) -> tuple[float, float]:
     end = info.duration if request.end is None else request.end
     if not all(math.isfinite(v) for v in (request.start, end, request.speed)):
         raise ValueError("시간과 재생 속도는 유한한 숫자여야 합니다.")
-    if request.start < 0 or end <= request.start or request.start >= info.duration or end > info.duration + 0.05:
+    if request.start < 0 or end <= request.start or request.start >= info.duration or end > info.duration + DURATION_TOLERANCE:
         raise ValueError(f"구간은 영상 길이({info.duration:g}초) 안에 있어야 합니다.")
-    if not 0.25 <= request.speed <= 4:
-        raise ValueError("재생 속도는 0.25~4배여야 합니다.")
-    if request.rotation not in (0, 90, 180, 270):
+    if not MIN_SPEED <= request.speed <= MAX_SPEED:
+        raise ValueError(f"재생 속도는 {MIN_SPEED:g}~{MAX_SPEED:g}배여야 합니다.")
+    if request.rotation not in ROTATIONS:
         raise ValueError("회전은 시계 방향 0, 90, 180, 270도 중 하나여야 합니다.")
-    if not 0 <= request.crf <= 51:
-        raise ValueError("CRF는 0~51이어야 합니다.")
+    if not 0 <= request.crf <= MAX_CRF:
+        raise ValueError(f"CRF는 0~{MAX_CRF}이어야 합니다.")
     if request.output_path.suffix.lower() != ".mp4":
         raise ValueError("편집 결과는 .mp4 경로로 지정하세요.")
     if request.output_path.resolve() == request.video_path.resolve():
@@ -64,7 +63,7 @@ def validate_edit(request: EditRequest, info: VideoInfo) -> tuple[float, float]:
         if min(width, height) < 2 or width % 2 or height % 2:
             raise ValueError("MP4 출력 너비와 높이는 2 이상의 짝수여야 합니다.")
     if width * height > MAX_OUTPUT_PIXELS:
-        raise ValueError("출력 영상은 64메가픽셀 이하여야 합니다.")
+        raise ValueError(f"출력 영상은 {MAX_OUTPUT_MEGAPIXELS}메가픽셀 이하여야 합니다.")
     return end, (end - request.start) / request.speed
 
 
@@ -80,7 +79,7 @@ def _tempo_chain(speed: float) -> str:
     return ",".join(filters)
 
 
-def build_edit_command(request: EditRequest, info: VideoInfo, output_path: Path) -> list[str]:
+def build_edit_command(ffmpeg: str, request: EditRequest, info: VideoInfo, output_path: Path) -> list[str]:
     end, output_duration = validate_edit(request, info)
     duration = end - request.start
     filters = [f"trim=start=0:end={duration:.9f}", f"setpts=(PTS-STARTPTS)/{request.speed:.9g}",
@@ -104,7 +103,7 @@ def build_edit_command(request: EditRequest, info: VideoInfo, output_path: Path)
     else:
         filters.append("pad=ceil(iw/2)*2:ceil(ih/2)*2")
     filters.extend(("setsar=1", "format=yuv420p"))
-    command = [request.ffmpeg_path, "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+    command = [ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
                "-ss", f"{request.start:.9f}", "-protocol_whitelist", "file,pipe",
                "-i", str(request.video_path), "-map", f"0:{info.stream_index}", "-vf", ",".join(filters),
                "-c:v", "libx264", "-preset", "medium", "-crf", str(request.crf),
@@ -121,22 +120,22 @@ def build_edit_command(request: EditRequest, info: VideoInfo, output_path: Path)
                       "-movflags", "+faststart", "-progress", "pipe:1", "-nostats", str(output_path)]
 
 
-def edit_video(request: EditRequest, cancel: Optional[threading.Event] = None,
+def edit_video(ffmpeg: str, request: EditRequest, cancel: Optional[threading.Event] = None,
                progress: Optional[Callable[[float, int], None]] = None) -> dict:
     cancel = cancel if cancel is not None else threading.Event()
     if cancel.is_set():
         raise OperationCancelled()
-    info = probe_video(request.ffmpeg_path, request.video_path, cancel)
+    info = probe_video(ffmpeg, request.video_path, cancel)
     _, duration = validate_edit(request, info)
     request.output_path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".video-edit-", dir=request.output_path.parent) as directory:
         staged = Path(directory) / "result.mp4"
-        run_ffmpeg(build_edit_command(request, info, staged), cancel, duration, progress or (lambda _p, _f: None))
+        run_ffmpeg(build_edit_command(ffmpeg, request, info, staged), cancel, duration, progress or (lambda _p, _f: None))
         if cancel.is_set():
             raise OperationCancelled()
         if not staged.is_file() or not staged.stat().st_size:
             raise RuntimeError("편집 결과가 생성되지 않았습니다.")
-        result_info = probe_video(request.ffmpeg_path, staged, cancel)
+        result_info = probe_video(ffmpeg, staged, cancel)
         if not publish_file(staged, request.output_path, request.overwrite):
             raise FileExistsError("편집 중 같은 이름의 결과 파일이 생성되었습니다. 다른 경로를 지정하세요.")
     return {"output_path": str(request.output_path), "duration": result_info.duration,
