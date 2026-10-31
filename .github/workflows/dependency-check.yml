@@ -1,0 +1,21 @@
+name: Dependency check
+on:
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: write
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+      - name: Report vulnerable packages and newer pinned sources
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python video-tools/tools/check_updates.py --issue
