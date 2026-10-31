@@ -108,7 +108,20 @@ macOS 26.6.2 ARM64에서 원격 저장소를 한글·공백이 포함된 경로�
 
 [런타임 관리](runtime-management.md#최소-ffmpeg) 목록 밖 코덱의 영상은 더 이상 열리지 않는다. 목록에 없는 오디오 코덱은 추출은 가능해도 음소거하지 않은 편집이 실패한다.
 
+### 유지보수 개선 재검증
+
+검증일: 2026-10-31. FFmpeg 재빌드 경로, 회귀 검사, 역할 분리를 정리했다. 런타임 입력이 바뀌지 않아 런타임은 다시 생성하지 않았다.
+
+- [FFmpeg 재빌드](https://github.com/youwonsock/tool-utility/actions/runs/41193825550): [`video-tools-codec-samples-1`](https://github.com/youwonsock/tool-utility/releases/tag/video-tools-codec-samples-1)의 샘플을 받아 두 OS의 새 빌드가 smoke 검사와 코덱 샘플 14개를 통과했다. 이 빌드는 게시하지 않았다.
+- 상시 CI에 `run_tests.py`와 `verify_gui.py`를 추가했다. 두 OS에서 `--audit --git`, smoke 검사 17개 항목, 단위 테스트, GUI 검사 24개 항목을 통과한다. 경량화 런타임의 Windows 창을 이 검사로 처음 열었다.
+- 단위 테스트가 실제로 오류를 잡는지 핵심 규칙 12곳을 일부러 바꿔 확인했다.
+- `sync_runtime.py`로 커밋된 런타임을 만든 아카이브를 다시 풀어 Git 상태가 깨끗하고 실행 권한이 일치함을 확인했다.
+
+Windows 실기기와 양쪽 OS의 실제 마우스 입력, 화면 배치, 파일 선택 창과 알림 창은 여전히 확인하지 않았다. 크기 모드와 출력 방식의 저장값이 내부 값으로 바뀌어, 이전 설정 파일의 두 값은 한 번 기본값으로 돌아간다.
+
 ### 남은 개선 후보
+
+- **MSYS2 환경:** `ffmpeg` 작업의 Windows 빌드에 MINGW64 사용 중단 경고가 나온다. 지금은 빌드에 영향이 없으며, UCRT64로 옮기면 FFmpeg를 다시 검증해야 한다.
 
 - **Windows 경로 길이:** 저장소의 최장 경로가 181자여서 clone 위치가 깊으면 Git의 경로 길이 제한에 걸릴 수 있다. 배포하지 않는 pip의 고지가 `licenses/python-build-standalone/install` 아래에 중복되어 있어 줄일 수 있다.
 - **`path-analysis-tools` 경량화:** 동봉 런타임이 234MB로 clone 크기의 가장 큰 부분이다. Pillow를 실제로 사용하므로 별도 측정이 필요하다.
