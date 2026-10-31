@@ -124,5 +124,4 @@ Windows 실기기와 양쪽 OS의 실제 마우스 입력, 화면 배치, 파일
 - **MSYS2 환경:** `ffmpeg` 작업의 Windows 빌드에 MINGW64 사용 중단 경고가 나온다. 지금은 빌드에 영향이 없으며, UCRT64로 옮기면 FFmpeg를 다시 검증해야 한다.
 
 - **Windows 경로 길이:** 저장소의 최장 경로가 181자여서 clone 위치가 깊으면 Git의 경로 길이 제한에 걸릴 수 있다. 배포하지 않는 pip의 고지가 `licenses/python-build-standalone/install` 아래에 중복되어 있어 줄일 수 있다.
-- **`path-analysis-tools` 경량화:** 동봉 런타임이 234MB로 clone 크기의 가장 큰 부분이다. Pillow를 실제로 사용하므로 별도 측정이 필요하다.
 - **Git 기록 용량:** `.git`이 130MB다. 기록을 다시 쓰지 않으면 줄지 않는다.
