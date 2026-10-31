@@ -2,7 +2,7 @@
 setlocal EnableExtensions DisableDelayedExpansion
 set "VIDEO_TOOLS_PYTHON=%~dp0portable\windows-x64\python\python.exe"
 if not exist "%VIDEO_TOOLS_PYTHON%" (
-    >&2 echo Required bundled Python is missing. Download and extract the whole video-tools folder.
+    >&2 echo Required bundled Python is missing. Clone the repository again.
     pause
     exit /b 1
 )

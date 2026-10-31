@@ -61,10 +61,10 @@ ProbeCancelled = OperationCancelled
 
 
 def find_ffmpeg() -> str:
-    """Use the downloaded tool's FFmpeg, independent of the host PATH."""
+    """Use the tool folder's bundled FFmpeg, independent of the host PATH."""
     executable = bundled_ffmpeg()
     if not executable.is_file():
-        raise RuntimeError(f"필수 FFmpeg 파일이 없습니다: {executable}. 도구 폴더 전체를 다시 받으세요.")
+        raise RuntimeError(f"필수 FFmpeg 파일이 없습니다: {executable}. 저장소를 다시 clone하세요.")
     return str(executable)
 
 
@@ -171,10 +171,6 @@ def encode_preview_jpeg(ffmpeg: str, image_path: Path, max_size: int) -> bytes:
     if code or not stdout.startswith(b"\xff\xd8\xff"):
         raise ValueError("미리보기 이미지를 만들지 못했습니다.\n" + stderr.decode("utf-8", "replace")[-2000:])
     return stdout
-
-
-def probe_duration(ffmpeg: str, video_path: Path, cancel_event: Optional[threading.Event] = None) -> float:
-    return probe_video(ffmpeg, video_path, cancel_event).duration
 
 
 def run_ffmpeg(command: list[str], cancel: threading.Event, duration: float,
