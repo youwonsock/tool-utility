@@ -1,6 +1,6 @@
 # 동봉 런타임 관리
 
-진행 중인 경량화의 상태와 남은 작업은 [경량화 작업 현황](slimming-status.md)에 있습니다.
+사용자는 저장소를 clone해 커밋된 런타임을 그대로 사용하므로 별도 배포물을 만들지 않습니다. FFmpeg Release는 런타임 생성 입력과 GPL 대응 소스를 보관하는 용도입니다.
 
 런타임 생성은 개발자가 Windows x64 또는 Mac Apple Silicon에서 수행합니다. CPython 3.14 이상의 빌드용 Python과 OS 기본 curl, Git이 필요합니다. Mac 생성에는 codesign이 사용됩니다. 사용자 실행에는 이 개발 환경이 필요하지 않습니다.
 
@@ -45,10 +45,6 @@ python tools/build_runtime.py --audit --git
 
 상시 CI는 배포 생성·완전성 감사와 `tools/verify_smoke.py`의 핵심 기능 검사를 실행합니다. 테스트 영상은 동봉 FFmpeg로 임시 폴더에 생성합니다. 실제 stdio MCP 연결로 9개 도구, PNG/JPG 격자 추출, 구간·크기·음소거 편집, 원본·기존 출력 보존, 경로 경계와 동기화된 대기 작업 취소를 확인합니다. GUI 창 조작은 이 검사에 포함하지 않습니다.
 
-## 플랫폼별 배포 ZIP
-
-`tools/package_release.py`는 현재 OS의 런타임을 감사한 뒤 `.build/artifacts/video-tools-<profile>.zip`을 만듭니다. ZIP에는 실행 소스·문서·해당 OS 런처와 런타임만 들어갑니다. Mac ZIP은 manifest의 실행 권한과 심볼릭 링크를 Unix 속성으로 기록합니다. 상시 CI는 두 OS의 ZIP을 `video-release-*` 아티팩트로 보관합니다. `video-tools-v*` 태그를 push하면 같은 ZIP을 해당 태그의 GitHub Release에 게시합니다.
-
 Mac에서 수동 실행:
 
 ```bash
@@ -61,4 +57,4 @@ Windows PowerShell에서 수동 실행:
 ./portable/windows-x64/python/python.exe -I -B -X utf8 tools/verify_smoke.py --report "$env:TEMP/video-tools-smoke.json"
 ```
 
-보고서는 제품 폴더 밖에 저장해야 하며 실패 시 비정상 종료 코드와 MCP stderr·오류 정보를 포함합니다. CI는 두 OS의 보고서를 `video-smoke-*` 아티팩트로 보관합니다. 임시 미디어는 검사 종료 시 정리합니다. 실제 GUI, 새 clone·ZIP 이동, 오프라인 격리 검증은 기능 변경 범위에 맞춰 별도로 수행하고 커밋·OS·해시·결과를 기록합니다. 기존 날짜의 완료 검증 기록은 당시 실행의 증거로 유지합니다.
+보고서는 제품 폴더 밖에 저장해야 하며 실패 시 비정상 종료 코드와 MCP stderr·오류 정보를 포함합니다. CI는 두 OS의 보고서를 `video-smoke-*` 아티팩트로 보관합니다. 임시 미디어는 검사 종료 시 정리합니다. 실제 GUI, 새 clone, 오프라인 격리 검증은 기능 변경 범위에 맞춰 별도로 수행하고 커밋·OS·해시·결과를 기록합니다. 기존 날짜의 완료 검증 기록은 당시 실행의 증거로 유지합니다.
