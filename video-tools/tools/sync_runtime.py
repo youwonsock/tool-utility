@@ -41,8 +41,6 @@ def unpack(archive):
                 path.parent.mkdir(parents=True, exist_ok=True)
                 with stream.extractfile(member) as source, path.open("wb") as destination:
                     shutil.copyfileobj(source, destination)
-                if os.name != "nt":
-                    path.chmod(member.mode)
             else:
                 raise RuntimeError(f"Unsupported runtime archive entry: {member.name}")
     manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
@@ -61,6 +59,9 @@ def unpack(archive):
                 raise RuntimeError(f"Runtime symlink mismatch: {name}")
         elif sha256(path) != record["sha256"]:
             raise RuntimeError(f"Runtime checksum mismatch: {name}")
+        elif os.name != "nt":
+            # An archive built on Windows marks every file executable.
+            path.chmod(int(record["mode"][-3:], 8))
     return root, manifest
 
 
