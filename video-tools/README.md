@@ -30,7 +30,7 @@ Mac에서 최초 실행 시 보안 승인을 요구하면 시스템 설정 → �
 - 미리보기에서 합성 크기를 확인하고 진행률을 보거나 작업을 취소할 수 있습니다.
 - 영상 편집 탭에서 구간 자르기·크롭·크기 조절·회전·반전·배속·음소거·CRF를 설정합니다.
 
-원본과 기존 출력은 기본적으로 덮어쓰지 않습니다. 설정은 Windows의 `%APPDATA%\VideoToImage\settings.json`, Mac의 `~/Library/Application Support/VideoToImage/settings.json`에 저장합니다. 현재 설정 형식만 읽으며 구형 설정 변환이나 이전 경로의 자동 이전은 수행하지 않습니다.
+원본과 기존 출력은 기본적으로 덮어쓰지 않습니다. 설정은 Windows의 `%APPDATA%\VideoToImage\settings.json`, Mac의 `~/Library/Application Support/VideoToImage/settings.json`에 저장합니다. 현재 설정 형식만 읽으며 구형 설정 변환이나 이전 경로의 자동 이전은 수행하지 않습니다. 형식에 맞지 않는 값은 기본값으로 대체합니다.
 
 ## MCP 연결
 

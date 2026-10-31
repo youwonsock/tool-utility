@@ -7,9 +7,9 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Any
 
-from video_tools.core.domain import SIZE_MODES
+from video_tools.core.domain import SIZE_MODE_FINAL, SIZE_MODES
 from video_tools.core.limits import ROTATIONS
-from video_tools.gui.options import CELL_SIZE_PRESETS, CUSTOM_SIZE_LABEL, DEFAULT_CELL_SIZE, DEFAULT_FINAL_SIZE, DEFAULT_GRID_SIZE, FINAL_SIZE_PRESETS, GRID_OUTPUT_MODE, GRID_SIZE_PRESETS, OUTPUT_MODES, parse_positive_float
+from video_tools.gui.options import CELL_SIZE_PRESETS, CUSTOM_SIZE_LABEL, DEFAULT_CELL_SIZE, DEFAULT_FINAL_SIZE, DEFAULT_GRID_SIZE, FINAL_SIZE_PRESETS, GRID_SIZE_PRESETS, OUTPUT_MODE_GRID, OUTPUT_MODES, parse_positive_float
 from video_tools.runtime import default_settings_path
 
 
@@ -53,9 +53,9 @@ class AppSettings:
     prefix: str = "frame"
     format: str = "PNG"
     interval: str = "1"
-    output_mode: str = GRID_OUTPUT_MODE
+    output_mode: str = OUTPUT_MODE_GRID
     grid_size: str = DEFAULT_GRID_SIZE
-    size_mode: str = SIZE_MODES[0]
+    size_mode: str = SIZE_MODE_FINAL
     size_preset: str = DEFAULT_FINAL_SIZE
     size_width: str = "1920"
     size_height: str = "1080"
@@ -72,11 +72,11 @@ def _text_value(raw: dict[str, Any], key: str, default: str) -> str:
 
 
 def _size_settings(raw: dict[str, Any]) -> tuple[str, str]:
-    size_mode = _text_value(raw, "size_mode", SIZE_MODES[0])
+    size_mode = _text_value(raw, "size_mode", SIZE_MODE_FINAL)
     if size_mode not in SIZE_MODES:
-        size_mode = SIZE_MODES[0]
-    available = FINAL_SIZE_PRESETS if size_mode == SIZE_MODES[0] else CELL_SIZE_PRESETS
-    default = DEFAULT_FINAL_SIZE if size_mode == SIZE_MODES[0] else DEFAULT_CELL_SIZE
+        size_mode = SIZE_MODE_FINAL
+    available = FINAL_SIZE_PRESETS if size_mode == SIZE_MODE_FINAL else CELL_SIZE_PRESETS
+    default = DEFAULT_FINAL_SIZE if size_mode == SIZE_MODE_FINAL else DEFAULT_CELL_SIZE
     preset = _text_value(raw, "size_preset", default)
     if preset not in available and preset != CUSTOM_SIZE_LABEL:
         preset = default
