@@ -66,13 +66,7 @@ CI에서 확인했습니다.
 
 순서대로 진행합니다.
 
-1. **Windows 코덱 검사 단계 수정.** 원인은 `tar -C`가 `$RUNNER_TEMP`의 백슬래시 경로를 열지 못하는 것입니다. 로컬에서 같은 단계가 같은 exit code 2로 실패했습니다. 다음과 같이 경로를 슬래시로 바꾸면 대체 아카이브로 끝까지 통과했습니다.
-
-   ```bash
-   work="$(printf '%s' "$RUNNER_TEMP" | tr '\\' /)/ffmpeg-check"
-   ```
-
-   검사가 실패해도 빌드 결과가 남도록 아카이브 업로드를 코덱 검사보다 앞으로 옮기거나 `if: always()`를 붙입니다.
+1. **Windows 코덱 검사 단계 수정(workflow 반영, CI 미확인).** 원인은 `tar -C`가 `$RUNNER_TEMP`의 백슬래시 경로를 열지 못하는 것이었습니다. 로컬에서 같은 단계가 같은 exit code 2로 실패했습니다. 경로를 슬래시로 바꾼 뒤 workflow의 단계 내용을 그대로 꺼내 실행하니 샘플 12개가 통과했습니다. 다만 새 FFmpeg가 아니라 기존 FFmpeg로 만든 대체 아카이브로 시험했습니다. 아카이브 업로드도 코덱 검사 앞으로 옮겨, 검사가 실패해도 빌드 결과가 남습니다.
 2. **FFmpeg 빌드 재실행.** Actions에서 브랜치 `video-tools-slim`, ffmpeg 옵션으로 실행하고 두 OS의 코덱 검사 12개와 아카이브 크기를 확인합니다.
 3. **FFmpeg Release 게시와 고정.** 두 아카이브와 `ffmpeg-sources/`의 원본 소스를 한 Release에 올리고 URL·SHA-256을 `runtime-assets.json`에 고정합니다. GPL 대응 소스를 함께 게시해야 합니다.
 4. **런타임 한 번 재생성.** refresh 옵션으로 실행하고 `sync_runtime.py --stage`로 반영해 한 커밋으로 만듭니다. 재생성은 Git 기록을 늘리므로 앞 단계가 끝난 뒤 한 번만 실행합니다.
