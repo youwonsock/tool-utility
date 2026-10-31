@@ -4,14 +4,8 @@ from __future__ import annotations
 
 import tkinter as tk
 
-from video_tools.core.domain import (
-    GRID_MARGIN,
-    GRID_PADDING,
-    PREVIEW_INSET,
-    PREVIEW_SAMPLE_COLORS,
-    PreviewPlan,
-    format_time,
-)
+from video_tools.core.domain import GRID_MARGIN, GRID_PADDING
+from video_tools.gui.options import PREVIEW_INSET, PREVIEW_SAMPLE_COLORS, PreviewPlan, format_time
 
 
 class PreviewCanvasRenderer:

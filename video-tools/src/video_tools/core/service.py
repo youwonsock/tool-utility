@@ -7,7 +7,7 @@ from video_tools.core.backend import encode_preview_jpeg, find_ffmpeg, probe_ima
 from video_tools.core.edit import EditRequest, edit_video
 from video_tools.core.jobs import JobManager
 from video_tools.core.limits import MAX_ACTIVE_JOBS
-from video_tools.core.media import ExtractionRequest, extract_images
+from video_tools.core.extraction import ExtractionRequest, extract_images
 
 
 class VideoService:

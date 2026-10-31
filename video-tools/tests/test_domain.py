@@ -2,8 +2,10 @@ import unittest
 
 from video_tools.core.domain import (
     SIZE_MODES, SizePlan, build_video_filter, calculate_expected_output_count, calculate_final_grid_geometry,
-    calculate_sheet_size, format_time, parse_grid_layout, parse_positive_float, parse_positive_int, parse_time,
-    resolve_preview_plan, resolve_size_plan, safe_prefix,
+    calculate_sheet_size, resolve_size_plan, safe_prefix,
+)
+from video_tools.gui.options import (
+    format_time, parse_grid_layout, parse_positive_float, parse_positive_int, parse_time, resolve_preview_plan,
 )
 
 FINAL, CELL = SIZE_MODES

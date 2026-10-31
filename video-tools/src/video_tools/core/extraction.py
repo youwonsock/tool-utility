@@ -1,4 +1,4 @@
-"""GUI와 MCP가 공유하는 프레임 추출 서비스."""
+"""GUI와 MCP가 공유하는 프레임 추출."""
 from __future__ import annotations
 
 import math
@@ -6,28 +6,15 @@ import tempfile
 import threading
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Callable, Optional, Union
+from typing import Callable, Optional
 
 from video_tools.core.domain import (
     SizePlan, build_video_filter, calculate_expected_output_count, safe_prefix,
 )
-from video_tools.core.backend import OperationCancelled, VideoInfo, probe_video, publish_file, run_ffmpeg
+from video_tools.core.backend import OperationCancelled, probe_video, publish_file, run_ffmpeg
 from video_tools.core.limits import (
     DURATION_TOLERANCE, GRID_SIZES, IMAGE_FORMATS, MAX_OUTPUT_IMAGES, MAX_OUTPUT_MEGAPIXELS, MAX_OUTPUT_PIXELS,
 )
-
-
-@dataclass(frozen=True)
-class ProbeCompleted:
-    video_path: Path
-    duration: float
-    info: Optional[VideoInfo] = None
-
-
-@dataclass(frozen=True)
-class ProbeFailed:
-    video_path: Path
-    error: str
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -53,8 +40,6 @@ class ExtractionFinished:
     files: tuple[Path, ...] = ()
     generated: int = 0
 
-
-MediaEvent = Union[ProbeCompleted, ProbeFailed]
 
 
 def validate_request(request: ExtractionRequest) -> int:
