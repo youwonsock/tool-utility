@@ -1,5 +1,7 @@
 # 동봉 런타임 관리
 
+진행 중인 경량화의 상태와 남은 작업은 [경량화 작업 현황](slimming-status.md)에 있습니다.
+
 런타임 생성은 개발자가 Windows x64 또는 Mac Apple Silicon에서 수행합니다. CPython 3.14 이상의 빌드용 Python과 OS 기본 curl, Git이 필요합니다. Mac 생성에는 codesign이 사용됩니다. 사용자 실행에는 이 개발 환경이 필요하지 않습니다.
 
 ```bash
