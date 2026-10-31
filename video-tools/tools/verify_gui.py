@@ -18,7 +18,7 @@ for name in ("TCL_LIBRARY", "TK_LIBRARY"):
 
 from video_tools.core.probe import probe_image, probe_video
 from video_tools.gui import app as gui
-from video_tools.gui import mcp_dialog
+from video_tools.gui import mcp_dialog, options
 from video_tools.runtime import bundled_ffmpeg, require_runtime
 
 ffmpeg = str(bundled_ffmpeg())
@@ -91,14 +91,14 @@ def verify(work: Path) -> None:
     check("bundled_ffmpeg", Path(window.service.ffmpeg).resolve() == bundled_ffmpeg().resolve())
     check("video_probe", choose(window, source), window.info_var.get())
 
-    single, grid = gui.OUTPUT_MODE_LABELS["individual"], gui.OUTPUT_MODE_LABELS["grid"]
-    check("mode_labels_offered", set(window.output_mode_combo.cget("values")) == {single, grid}
-          and set(window.size_mode_combo.cget("values")) == set(gui.SIZE_MODE_LABELS.values()))
+    single, grid = options.OUTPUT_MODE_LABELS["individual"], options.OUTPUT_MODE_LABELS["grid"]
+    check("mode_labels_offered", set(window.extraction.output_mode_combo.cget("values")) == {single, grid}
+          and set(window.extraction.size_mode_combo.cget("values")) == set(options.SIZE_MODE_LABELS.values()))
     out = work / "out" / "png"
-    window.output_var.set(str(out)); window.output_mode_var.set(single); window.format_var.set("PNG"); window.interval_var.set("0.5")
-    window.size_mode_var.set(gui.SIZE_MODE_LABELS["final"]); window.size_preset_var.set(gui.PRESET_LABELS["custom"])
+    window.extraction.output_var.set(str(out)); window.extraction.output_mode_var.set(single); window.extraction.format_var.set("PNG"); window.interval_var.set("0.5")
+    window.extraction.size_mode_var.set(options.SIZE_MODE_LABELS["final"]); window.extraction.size_preset_var.set(options.PRESET_LABELS["custom"])
     window.update()
-    window.size_width_var.set("64"); window.size_height_var.set("36")
+    window.extraction.size_width_var.set("64"); window.extraction.size_height_var.set("36")
     window.update()
     kind, text = run(window)
     files = sorted(out.glob("*.png"))
@@ -108,10 +108,10 @@ def verify(work: Path) -> None:
     check("existing_png_skipped", kind == "showinfo" and len(sorted(out.glob("*.png"))) == 4, text.splitlines()[0])
 
     out = work / "out" / "grid"
-    window.output_var.set(str(out)); window.output_mode_var.set(grid); window.format_var.set("JPG")
-    window.grid_size_var.set("2 × 2"); window.update()
+    window.extraction.output_var.set(str(out)); window.extraction.output_mode_var.set(grid); window.extraction.format_var.set("JPG")
+    window.extraction.grid_size_var.set("2 × 2"); window.update()
     pump(window, lambda: False, .2)
-    check("preview_drawn", window.preview_canvas.find_all(), window.preview_info_var.get())
+    check("preview_drawn", window.extraction.preview_canvas.find_all(), window.extraction.preview_info_var.get())
     kind, text = run(window)
     files = sorted(out.glob("*.jpg"))
     check("jpg_grid", kind == "showinfo" and len(files) == 1 and files[0].read_bytes()[:3] == b"\xff\xd8\xff", text.splitlines()[0])
@@ -122,8 +122,8 @@ def verify(work: Path) -> None:
     window.interval_var.set("0.5")
 
     check("long_video_probe", choose(window, long_video), window.info_var.get())
-    window.output_var.set(str(work / "out" / "cancel")); window.output_mode_var.set(single); window.interval_var.set("0.04")
-    window.format_var.set("PNG"); window.size_width_var.set("1280"); window.size_height_var.set("720"); window.update()
+    window.extraction.output_var.set(str(work / "out" / "cancel")); window.extraction.output_mode_var.set(single); window.interval_var.set("0.04")
+    window.extraction.format_var.set("PNG"); window.extraction.size_width_var.set("1280"); window.extraction.size_height_var.set("720"); window.update()
     dialogs.clear(); window.start_button.invoke(); window.update()
     pump(window, lambda: False, .4)
     running = bool(window.current_job)
@@ -161,15 +161,15 @@ def verify(work: Path) -> None:
     check("rotated_mute_edit", kind == "showinfo" and info and info.display_size == (90, 160) and not info.has_audio,
           f"{kind}: {text.splitlines()[-1]}")
 
-    expected_grid, expected_output = window.grid_size_var.get(), window.output_var.get()
+    expected_grid, expected_output = window.extraction.grid_size_var.get(), window.extraction.output_var.get()
     check("window_closed", close(window))
     saved = json.loads(settings.read_text(encoding="utf-8")) if settings.is_file() else {}
     check("settings_store_modes_not_labels", saved.get("output_mode") == "individual" and saved.get("size_mode") == "final",
           (saved.get("output_mode"), saved.get("size_mode")))
     again = gui.VideoToolsApp(settings)
     again.update()
-    check("settings_restored", again.grid_size_var.get() == expected_grid and again.output_var.get() == expected_output
-          and again.editor.fields["mute"].get() is True, again.grid_size_var.get())
+    check("settings_restored", again.extraction.grid_size_var.get() == expected_grid and again.extraction.output_var.get() == expected_output
+          and again.editor.fields["mute"].get() is True, again.extraction.grid_size_var.get())
     close(again)
 
     # A settings file from before the modes were separated from their labels.
@@ -178,8 +178,8 @@ def verify(work: Path) -> None:
                                "prefix": "유지"}, ensure_ascii=False), encoding="utf-8")
     upgraded = gui.VideoToolsApp(old)
     upgraded.update()
-    check("old_settings_use_defaults", upgraded.output_mode_var.get() == grid and upgraded.size_mode_var.get() == gui.SIZE_MODE_LABELS["final"]
-          and upgraded.prefix_var.get() == "유지", upgraded.summary_var.get())
+    check("old_settings_use_defaults", upgraded.extraction.output_mode_var.get() == grid and upgraded.extraction.size_mode_var.get() == options.SIZE_MODE_LABELS["final"]
+          and upgraded.extraction.prefix_var.get() == "유지", upgraded.summary_var.get())
     close(upgraded)
 
 
@@ -193,36 +193,36 @@ def select(window, combo, variable, value):
 def verify_output_controls(work: Path) -> None:
     window = gui.VideoToolsApp(work / "control-settings.json")
     pump(window, lambda: False, .4)
-    cell, final = gui.SIZE_MODE_LABELS["cell"], gui.SIZE_MODE_LABELS["final"]
-    single, grid = gui.OUTPUT_MODE_LABELS["individual"], gui.OUTPUT_MODE_LABELS["grid"]
+    cell, final = options.SIZE_MODE_LABELS["cell"], options.SIZE_MODE_LABELS["final"]
+    single, grid = options.OUTPUT_MODE_LABELS["individual"], options.OUTPUT_MODE_LABELS["grid"]
 
-    select(window, window.size_mode_combo, window.size_mode_var, cell)
-    values = set(window.size_preset_combo.cget("values"))
-    check("cell_mode_presets", values == {gui.preset_label(preset) for preset in (*gui.CELL_SIZE_PRESETS, "custom")}, sorted(values))
-    select(window, window.size_preset_combo, window.size_preset_var, gui.PRESET_LABELS["original"])
-    check("original_size_clears_entries", window.size_width_var.get() == "" and str(window.size_width_entry.cget("state")) == "disabled")
+    select(window, window.extraction.size_mode_combo, window.extraction.size_mode_var, cell)
+    values = set(window.extraction.size_preset_combo.cget("values"))
+    check("cell_mode_presets", values == {options.preset_label(preset) for preset in (*options.CELL_SIZE_PRESETS, "custom")}, sorted(values))
+    select(window, window.extraction.size_preset_combo, window.extraction.size_preset_var, options.PRESET_LABELS["original"])
+    check("original_size_clears_entries", window.extraction.size_width_var.get() == "" and str(window.extraction.size_width_entry.cget("state")) == "disabled")
     check("original_size_summary", "원본 셀 크기" in window.summary_var.get(), window.summary_var.get())
-    select(window, window.size_preset_combo, window.size_preset_var, gui.PRESET_LABELS["custom"])
-    check("custom_size_enables_entries", str(window.size_width_entry.cget("state")) == "normal")
-    window.size_width_var.set("321"); window.size_height_var.set("123"); window.update()
+    select(window, window.extraction.size_preset_combo, window.extraction.size_preset_var, options.PRESET_LABELS["custom"])
+    check("custom_size_enables_entries", str(window.extraction.size_width_entry.cget("state")) == "normal")
+    window.extraction.size_width_var.set("321"); window.extraction.size_height_var.set("123"); window.update()
     check("custom_cell_summary", "셀 321 × 123" in window.summary_var.get(), window.summary_var.get())
-    select(window, window.size_mode_combo, window.size_mode_var, final)
-    check("final_mode_presets", set(window.size_preset_combo.cget("values")) == {*gui.FINAL_SIZE_PRESETS, gui.PRESET_LABELS["custom"]})
-    select(window, window.size_preset_combo, window.size_preset_var, "4096 × 4096")
-    check("preset_fills_entries", (window.size_width_var.get(), window.size_height_var.get()) == ("4096", "4096"))
-    select(window, window.output_mode_combo, window.output_mode_var, single)
-    check("individual_disables_grid", str(window.grid_size_combo.cget("state")) == "disabled")
+    select(window, window.extraction.size_mode_combo, window.extraction.size_mode_var, final)
+    check("final_mode_presets", set(window.extraction.size_preset_combo.cget("values")) == {*options.FINAL_SIZE_PRESETS, options.PRESET_LABELS["custom"]})
+    select(window, window.extraction.size_preset_combo, window.extraction.size_preset_var, "4096 × 4096")
+    check("preset_fills_entries", (window.extraction.size_width_var.get(), window.extraction.size_height_var.get()) == ("4096", "4096"))
+    select(window, window.extraction.output_mode_combo, window.extraction.output_mode_var, single)
+    check("individual_disables_grid", str(window.extraction.grid_size_combo.cget("state")) == "disabled")
     check("individual_summary", "개별 이미지" in window.summary_var.get(), window.summary_var.get())
-    select(window, window.output_mode_combo, window.output_mode_var, grid)
-    check("grid_enables_grid", str(window.grid_size_combo.cget("state")) == "readonly")
+    select(window, window.extraction.output_mode_combo, window.extraction.output_mode_var, grid)
+    check("grid_enables_grid", str(window.extraction.grid_size_combo.cget("state")) == "readonly")
 
     window.scroll_canvas.yview_moveto(0); window.update()
     window.scroll_canvas.yview_moveto(1)
     pump(window, lambda: False, .1)
     check("content_scrolls", window.scroll_canvas.yview()[0] > 0, window.scroll_canvas.yview())
     verify_mcp_dialog(window, work)
-    select(window, window.size_mode_combo, window.size_mode_var, cell)
-    select(window, window.size_preset_combo, window.size_preset_var, gui.PRESET_LABELS["original"])
+    select(window, window.extraction.size_mode_combo, window.extraction.size_mode_var, cell)
+    select(window, window.extraction.size_preset_combo, window.extraction.size_preset_var, options.PRESET_LABELS["original"])
     settings_path = work / "control-settings.json"
     check("controls_window_closed", close(window))
     saved = json.loads(settings_path.read_text(encoding="utf-8")) if settings_path.is_file() else {}

@@ -87,14 +87,14 @@ class EditingControls:
             widget.configure(state='normal' if enabled and self.fields['resize_enabled'].get() else 'disabled')
 
     def choose_output(self):
-        initial = self.fields['output'].get() or str(Path(self.app.output_var.get()) / 'edited.mp4')
+        initial = self.fields['output'].get() or str(Path(self.app.extraction.output_var.get()) / 'edited.mp4')
         chosen = filedialog.asksaveasfilename(parent=self.app, title='편집 영상 저장', defaultextension='.mp4',
                     filetypes=(('MP4 영상', '*.mp4'),), initialdir=str(Path(initial).parent), initialfile=Path(initial).name)
         if chosen: self.fields['output'].set(chosen)
 
     def source_changed(self, info):
         if not self.fields['output'].get():
-            self.fields['output'].set(str(Path(self.app.output_var.get()) / (info.path.stem + '_edited.mp4')))
+            self.fields['output'].set(str(Path(self.app.extraction.output_var.get()) / (info.path.stem + '_edited.mp4')))
         if not self.fields['crop_enabled'].get():
             self.fields['crop_width'].set(str(info.display_size[0]))
             self.fields['crop_height'].set(str(info.display_size[1]))
