@@ -9,8 +9,8 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Callable
 
-from video_tools.core.backend import OperationCancelled
 from video_tools.core.limits import MAX_ACTIVE_JOBS, MAX_JOB_HISTORY, MAX_PENDING_JOBS
+from video_tools.core.process import OperationCancelled
 
 Operation = Callable[[threading.Event, Callable[[float, int], None]], dict]
 TERMINAL = {"completed", "failed", "cancelled"}

@@ -12,11 +12,12 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 import tkinter.font as tkfont
 
-from video_tools.core.backend import OperationCancelled, VideoInfo
 from video_tools.core.domain import SIZE_MODE_FINAL, calculate_expected_output_count, resolve_size_plan, safe_prefix
 from video_tools.core.edit import validate_edit
 from video_tools.core.extraction import ExtractionRequest
 from video_tools.core.limits import DURATION_TOLERANCE, VIDEO_EXTENSIONS
+from video_tools.core.probe import VideoInfo
+from video_tools.core.process import OperationCancelled
 from video_tools.core.service import VideoService
 from video_tools.gui.editor import EditingControls
 from video_tools.gui.mcp_dialog import show_mcp_configuration
