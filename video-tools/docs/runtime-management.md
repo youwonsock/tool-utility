@@ -27,7 +27,7 @@ python tools/build_runtime.py --refresh --archive
 
 지원 코덱을 바꿔 샘플도 달라지면 libx265·libvpx·libaom 등을 갖춘 전체 기능 FFmpeg로 `tools/make_codec_samples.py <FFmpeg> <폴더> --archive codec-samples.tar.gz`를 실행합니다. 동봉 최소 빌드는 이 형식들을 디코딩만 할 수 있습니다. 결과를 새 GitHub Release에 올리고 URL과 SHA-256을 `tools/codec-samples.json`에 고정합니다.
 
-x264 소스는 stable 브랜치 커밋의 GitLab 아카이브입니다. 아카이브 바이트가 바뀌어 해시가 맞지 않으면 같은 커밋인지 확인한 뒤 새 해시로 다시 고정합니다.
+원본 주소의 다운로드가 실패하거나 해시가 다르면 `tools/ffmpeg-source-mirror.json`의 Release에서 같은 해시의 소스를 받습니다. 소스 고정을 바꾸면 새 소스를 올린 Release로 이 주소도 바꿉니다.
 
 GitHub Actions의 **Video tools distribution**을 refresh 옵션으로 실행하면 두 OS의 런타임 아카이브를 생성합니다. 아티팩트에서 받은 Windows와 Mac tar.gz를 다음 명령에 함께 전달합니다.
 

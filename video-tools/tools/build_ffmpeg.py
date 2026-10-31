@@ -19,6 +19,7 @@ from pathlib import Path
 from build_runtime import ROOT, TOOLS, download, native_profile, sha256
 
 SOURCES = TOOLS / "ffmpeg-sources.json"
+MIRROR = TOOLS / "ffmpeg-source-mirror.json"
 WORK = ROOT / ".build/ffmpeg"
 LISTINGS = {"protocol": "-protocols", "demuxer": "-demuxers", "muxer": "-muxers", "decoder": "-decoders",
             "encoder": "-encoders", "bsf": "-bsfs", "filter": "-filters", "indev": "-devices"}
@@ -45,6 +46,16 @@ def shell(script: str, cwd: Path, env: dict[str, str]) -> str:
     print("+", script, flush=True)
     return subprocess.run(command, cwd=cwd, env=env, check=True, text=True, encoding="utf-8",
                           stdout=subprocess.PIPE).stdout
+
+
+def fetch_source(item: dict) -> Path:
+    """Fall back to the released corresponding sources when upstream moves or rewrites an archive."""
+    try:
+        return download(item["url"], item["sha256"])
+    except (RuntimeError, subprocess.SubprocessError) as exc:
+        base = json.loads(MIRROR.read_text(encoding="utf-8"))["base_url"]
+        print(f"Using the source mirror after {item['url']} failed: {exc}", flush=True)
+        return download(base + item["url"].rsplit("/", 1)[-1], item["sha256"])
 
 
 def unpack(archive: Path, destination: Path) -> Path:
@@ -109,7 +120,7 @@ def build(profile: str) -> Path:
         shutil.rmtree(root)
     (root / "src").mkdir(parents=True)
     prefix = root / "prefix"
-    archives = {name: download(item["url"], item["sha256"]) for name, item in sources.items()}
+    archives = {name: fetch_source(item) for name, item in sources.items()}
     folders = {name: unpack(archive, root / "src") for name, archive in archives.items()}
     env = dict(os.environ)
     for key in ("CFLAGS", "LDFLAGS", "CPPFLAGS", "PKG_CONFIG_PATH"):
