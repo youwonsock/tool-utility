@@ -197,18 +197,20 @@ def codec_matrix(report: dict, samples: Path, workspace: Path, ffmpeg: str):
     from video_tools.core.backend import probe_video
     from video_tools.core.domain import SizePlan
     from video_tools.core.edit import EditRequest, edit_video
+    from video_tools.core.limits import VIDEO_EXTENSIONS
     from video_tools.core.media import ExtractionRequest, extract_images
     results = report.setdefault('codec_matrix', {})
     files = sorted(path for path in samples.iterdir()
-                   if path.suffix.lower() in {'.mp4', '.mov', '.m4v', '.mkv', '.webm', '.avi'})
+                   if path.suffix.lower() in VIDEO_EXTENSIONS)
     if not files:
         raise AssertionError(f'No sample videos in {samples}')
     for path in files:
         info = probe_video(ffmpeg, path)
         end = min(info.duration, 1.0)
-        frames = extract_images(ExtractionRequest(ffmpeg, path, workspace / path.stem, 'frame', 'png', 0, end, end / 2,
-                                                  False, False, (1, 1), SizePlan(None, None, None)))
-        edited = edit_video(EditRequest(ffmpeg, path, workspace / f'{path.stem}.mp4', 0, end))
+        frames = extract_images(ffmpeg, ExtractionRequest(
+            video_path=path, output_dir=workspace / path.stem, prefix='frame', extension='png', start=0, end=end,
+            interval=end / 2, overwrite=False, group_mode=False, grid_size=(1, 1), size_plan=SizePlan(None, None, None)))
+        edited = edit_video(ffmpeg, EditRequest(video_path=path, output_path=workspace / f'{path.stem}.mp4', start=0, end=end))
         assert frames.count >= 1 and edited['has_audio'] == info.has_audio, path.name
         results[path.name] = {'codec': info.video_codec, 'size': list(info.display_size), 'rotation': info.rotation,
                               'audio': info.has_audio, 'frames': frames.count, 'edited_size': [edited['width'], edited['height']]}

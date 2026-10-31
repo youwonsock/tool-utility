@@ -6,6 +6,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
 from video_tools.core.edit import EditRequest
+from video_tools.core.limits import MAX_CRF, MAX_SPEED, MIN_SPEED, ROTATIONS
 from video_tools.core.settings import EditingSettings
 from video_tools.runtime import configuration
 
@@ -38,7 +39,7 @@ class EditingControls:
 
         card = app._card(parent)
         ttk.Label(card, text="회전·반전", style='CardTitle.TLabel').grid(row=0, column=0, sticky='w')
-        self.rotation = ttk.Combobox(card, textvariable=self.fields['rotation'], values=('0', '90', '180', '270'), state='readonly', width=10)
+        self.rotation = ttk.Combobox(card, textvariable=self.fields['rotation'], values=tuple(map(str, ROTATIONS)), state='readonly', width=10)
         self.rotation.grid(row=1, column=0, sticky='w', pady=(8, 0))
         ttk.Label(card, text="시계 방향 (도)", style='CardText.TLabel').grid(row=1, column=1, sticky='w', padx=8)
         self.check(card, 'flip_horizontal', '가로 반전', 1, 2)
@@ -55,8 +56,8 @@ class EditingControls:
 
         card = app._card(parent)
         ttk.Label(card, text="속도·오디오·화질", style='CardTitle.TLabel').grid(row=0, column=0, columnspan=3, sticky='w')
-        self.entry(card, 'speed', '배속 (0.25~4)', 1, 0)
-        self.entry(card, 'crf', 'CRF (0~51, 낮을수록 고화질)', 1, 1)
+        self.entry(card, 'speed', f'배속 ({MIN_SPEED:g}~{MAX_SPEED:g})', 1, 0)
+        self.entry(card, 'crf', f'CRF (0~{MAX_CRF}, 낮을수록 고화질)', 1, 1)
         self.check(card, 'mute', '음소거', 2, 2)
         for c in range(3): card.columnconfigure(c, weight=1)
         for variable in self.fields.values(): variable.trace_add('write', self.changed)
@@ -105,9 +106,10 @@ class EditingControls:
         if not output: raise ValueError('편집 결과의 저장 경로를 지정하세요.')
         crop = tuple(int(f[key].get()) for key in ('crop_x', 'crop_y', 'crop_width', 'crop_height')) if f['crop_enabled'].get() else None
         width, height = (int(f['width'].get()), int(f['height'].get())) if f['resize_enabled'].get() else (None, None)
-        return EditRequest(self.app.service.ffmpeg, self.app.video_path, Path(output).expanduser().resolve(),
-            start, end, width, height, crop, int(f['rotation'].get()), f['flip_horizontal'].get(),
-            f['flip_vertical'].get(), float(f['speed'].get()), f['mute'].get(), f['overwrite'].get(), int(f['crf'].get()))
+        return EditRequest(video_path=self.app.video_path, output_path=Path(output).expanduser().resolve(),
+            start=start, end=end, width=width, height=height, crop=crop, rotation=int(f['rotation'].get()),
+            flip_horizontal=f['flip_horizontal'].get(), flip_vertical=f['flip_vertical'].get(),
+            speed=float(f['speed'].get()), mute=f['mute'].get(), overwrite=f['overwrite'].get(), crf=int(f['crf'].get()))
 
     def settings(self):
         return EditingSettings(**{key: value.get() for key, value in self.fields.items()})

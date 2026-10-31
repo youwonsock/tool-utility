@@ -16,8 +16,9 @@ from video_tools.gui.editor import EditingControls, show_mcp_configuration
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from video_tools.core.domain import APP_TITLE, CELL_SIZE_PRESETS, CUSTOM_SIZE_LABEL, FINAL_SIZE_PRESETS, GRID_OUTPUT_MODE, GRID_SIZE_PRESETS, OUTPUT_MODES, PREVIEW_CANVAS_HEIGHT, SIZE_MODES, calculate_expected_output_count, format_time, parse_grid_layout, parse_positive_float, parse_positive_int, parse_time, resolve_preview_plan, resolve_size_plan, safe_prefix
-from video_tools.core.backend import ProbeCancelled, terminate_all_processes
+from video_tools.core.domain import APP_TITLE, CELL_SIZE_PRESETS, CUSTOM_SIZE_LABEL, DEFAULT_CELL_SIZE, DEFAULT_FINAL_SIZE, FINAL_SIZE_PRESETS, GRID_OUTPUT_MODE, GRID_SIZE_PRESETS, OUTPUT_MODES, PREVIEW_CANVAS_HEIGHT, SIZE_MODES, calculate_expected_output_count, format_time, parse_grid_layout, parse_positive_float, parse_positive_int, parse_time, resolve_preview_plan, resolve_size_plan, safe_prefix
+from video_tools.core.backend import ProbeCancelled
+from video_tools.core.limits import DURATION_TOLERANCE, VIDEO_EXTENSIONS
 from video_tools.core.media import ExtractionRequest, MediaEvent, ProbeCompleted, ProbeFailed
 from video_tools.gui.preview import PreviewCanvasRenderer
 from video_tools.core.settings import AppSettings, load_settings, save_settings
@@ -39,7 +40,6 @@ class VideoToImageApp(tk.Tk):
 
         self.video_path: Optional[Path] = None
         self.duration: Optional[float] = None
-        self.ffmpeg_path: Optional[str] = None
         self.probe_worker: Optional[threading.Thread] = None
         self.probe_cancel_event = threading.Event()
         self.messages: queue.Queue[MediaEvent] = queue.Queue()
@@ -49,17 +49,18 @@ class VideoToImageApp(tk.Tk):
         self.info_var = tk.StringVar(value="동영상 파일을 선택해 주세요.")
         self.start_var = tk.StringVar(value="00:00:00")
         self.end_var = tk.StringVar()
-        self.interval_var = tk.StringVar(value="1")
-        self.output_var = tk.StringVar(value=str(Path.home() / "Desktop" / "추출이미지"))
-        self.prefix_var = tk.StringVar(value="frame")
-        self.format_var = tk.StringVar(value="PNG")
-        self.output_mode_var = tk.StringVar(value=GRID_OUTPUT_MODE)
-        self.grid_size_var = tk.StringVar(value="3 × 3")
-        self.size_mode_var = tk.StringVar(value=SIZE_MODES[0])
-        self.size_preset_var = tk.StringVar(value="1920 × 1080")
-        self.size_width_var = tk.StringVar(value="1920")
-        self.size_height_var = tk.StringVar(value="1080")
-        self.overwrite_var = tk.BooleanVar(value=False)
+        # _load_settings fills these before the window is built.
+        self.interval_var = tk.StringVar()
+        self.output_var = tk.StringVar()
+        self.prefix_var = tk.StringVar()
+        self.format_var = tk.StringVar()
+        self.output_mode_var = tk.StringVar()
+        self.grid_size_var = tk.StringVar()
+        self.size_mode_var = tk.StringVar()
+        self.size_preset_var = tk.StringVar()
+        self.size_width_var = tk.StringVar()
+        self.size_height_var = tk.StringVar()
+        self.overwrite_var = tk.BooleanVar()
         self.status_var = tk.StringVar(value="준비됨")
         self.progress_var = tk.DoubleVar(value=0)
         self.summary_var = tk.StringVar(value="출력 설정을 선택하면 예상 결과가 표시됩니다.")
@@ -411,7 +412,7 @@ class VideoToImageApp(tk.Tk):
         return {**CELL_SIZE_PRESETS, CUSTOM_SIZE_LABEL: None}
 
     def _default_size_preset(self) -> str:
-        return "1920 × 1080" if self.size_mode_var.get() == SIZE_MODES[0] else "원본"
+        return DEFAULT_FINAL_SIZE if self.size_mode_var.get() == SIZE_MODES[0] else DEFAULT_CELL_SIZE
 
     def _sync_output_controls(self) -> None:
         if not hasattr(self, "grid_size_combo"):
@@ -572,7 +573,7 @@ class VideoToImageApp(tk.Tk):
     def _choose_video(self) -> None:
         selected = filedialog.askopenfilename(
             title="동영상 선택",
-            filetypes=(("MP4 동영상", "*.mp4"), ("동영상 파일", ("*.mp4", "*.mov", "*.mkv", "*.avi", "*.webm", "*.m4v")), ("모든 파일", "*.*")),
+            filetypes=(("MP4 동영상", "*.mp4"), ("동영상 파일", tuple(f"*{extension}" for extension in VIDEO_EXTENSIONS)), ("모든 파일", "*.*")),
         )
         if not selected:
             return
@@ -580,7 +581,6 @@ class VideoToImageApp(tk.Tk):
         path = Path(selected)
         self.video_path = path
         self.duration = None
-        self.ffmpeg_path = None
         self.start_var.set("00:00:00")
         self.video_var.set(str(path))
         self.info_var.set("영상 정보를 분석하는 중...")
@@ -597,12 +597,10 @@ class VideoToImageApp(tk.Tk):
 
     def _probe_worker(self, path: Path, cancel_event: threading.Event) -> None:
         try:
-            ffmpeg = self.service.ffmpeg
             info = self.service.inspect(path, cancel_event)
-            duration = info.duration
             if cancel_event.is_set():
                 return
-            self.messages.put(ProbeCompleted(path, ffmpeg, duration, info))
+            self.messages.put(ProbeCompleted(path, info.duration, info))
         except ProbeCancelled:
             return
         except Exception as exc:
@@ -620,7 +618,7 @@ class VideoToImageApp(tk.Tk):
         if not self.video_path or not self.video_path.exists():
             messagebox.showwarning(APP_TITLE, "먼저 MP4 동영상 파일을 선택해 주세요.")
             return
-        if not self.ffmpeg_path or not self.duration:
+        if not self.duration:
             messagebox.showwarning(APP_TITLE, "동영상 정보를 아직 읽는 중입니다. 잠시 후 다시 시도해 주세요.")
             return
 
@@ -629,7 +627,7 @@ class VideoToImageApp(tk.Tk):
             end = parse_time(self.end_var.get())
             if start >= end:
                 raise ValueError("끝 시간은 시작 시간보다 커야 합니다.")
-            if end > self.duration + 0.05:
+            if end > self.duration + DURATION_TOLERANCE:
                 raise ValueError(f"끝 시간은 영상 길이({format_time(self.duration)})를 넘을 수 없습니다.")
             interval = parse_positive_float(self.interval_var.get(), "추출 간격")
             group_mode = self.output_mode_var.get() == GRID_OUTPUT_MODE
@@ -655,7 +653,6 @@ class VideoToImageApp(tk.Tk):
         extension = "png" if self.format_var.get().upper() == "PNG" else "jpg"
         expected = calculate_expected_output_count(start, end, interval, group_mode, effective_grid_size)
         request = ExtractionRequest(
-            ffmpeg_path=self.ffmpeg_path,
             video_path=self.video_path,
             output_dir=output_dir,
             prefix=prefix,
@@ -668,12 +665,6 @@ class VideoToImageApp(tk.Tk):
             grid_size=effective_grid_size,
             size_plan=size_plan,
         )
-        self.progress_var.set(0)
-        unit = "합성 이미지" if group_mode else "이미지"
-        suffix = f" · {self.grid_size_var.get()}" if group_mode else ""
-        self.status_var.set(f"추출 준비 중... 예상 {unit} {expected}장{suffix}")
-        self._set_controls("disabled")
-        self.cancel_button.configure(state="normal")
         self.current_job = self.service.start_extraction(request)['job_id']
         self.progress_var.set(0)
         self.status_var.set(f'이미지 추출 시작 · 예상 {expected}장')
@@ -686,7 +677,7 @@ class VideoToImageApp(tk.Tk):
             while True:
                 event = self.messages.get_nowait()
                 if isinstance(event, ProbeCompleted) and event.video_path == self.video_path:
-                    self.ffmpeg_path, self.duration, self.video_info = event.ffmpeg_path, event.duration, event.info
+                    self.duration, self.video_info = event.duration, event.info
                     self.end_var.set(format_time(event.duration))
                     self.prefix_var.set(f'{event.video_path.stem}_frame')
                     if event.info:
@@ -705,7 +696,7 @@ class VideoToImageApp(tk.Tk):
         except queue.Empty:
             pass
         if self.current_job:
-            job = self.service.jobs.get(self.current_job)
+            job = self.service.job(self.current_job)
             self.progress_var.set(job['progress_percent'])
             label = '영상 편집' if job['kind'] == 'edit_video' else '이미지 추출'
             self.status_var.set(f'{label} · {job["progress_percent"]:.0f}%')
@@ -765,7 +756,7 @@ class VideoToImageApp(tk.Tk):
 
     def _cancel(self) -> None:
         if self.current_job:
-            self.service.jobs.cancel(self.current_job)
+            self.service.cancel_job(self.current_job)
             self.cancel_button.configure(state='disabled')
             self.status_var.set('취소하는 중...')
 
@@ -774,8 +765,8 @@ class VideoToImageApp(tk.Tk):
             self._closing = True
             self.probe_cancel_event.set()
             self.service.close(wait=False)
-        terminate_all_processes()
-        running = any(job['status'] not in {'completed', 'failed', 'cancelled'} for job in self.service.jobs.list())
+        self.service.stop_processes()
+        running = any(job['status'] not in {'completed', 'failed', 'cancelled'} for job in self.service.list_jobs())
         if running or (self.probe_worker and self.probe_worker.is_alive()):
             self.after(100, self._close)
             return
