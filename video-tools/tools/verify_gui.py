@@ -18,6 +18,7 @@ for name in ("TCL_LIBRARY", "TK_LIBRARY"):
 
 from video_tools.core.backend import probe_image, probe_video
 from video_tools.gui import app as gui
+from video_tools.gui import mcp_dialog
 from video_tools.runtime import bundled_ffmpeg, require_runtime
 
 ffmpeg = str(bundled_ffmpeg())
@@ -180,7 +181,77 @@ def verify(work: Path) -> None:
     check("old_settings_use_defaults", upgraded.output_mode_var.get() == grid and upgraded.size_mode_var.get() == gui.SIZE_MODE_LABELS["final"]
           and upgraded.prefix_var.get() == "유지", upgraded.summary_var.get())
     close(upgraded)
-    check("no_callback_errors", not callback_errors, "\n".join(callback_errors)[-2000:])
+
+
+def select(window, combo, variable, value):
+    # Setting the variable alone does not run the handlers a real selection does.
+    variable.set(value)
+    combo.event_generate("<<ComboboxSelected>>")
+    pump(window, lambda: False, .15)
+
+
+def verify_output_controls(work: Path) -> None:
+    window = gui.VideoToolsApp(work / "control-settings.json")
+    pump(window, lambda: False, .4)
+    cell, final = gui.SIZE_MODE_LABELS["cell"], gui.SIZE_MODE_LABELS["final"]
+    single, grid = gui.OUTPUT_MODE_LABELS["individual"], gui.OUTPUT_MODE_LABELS["grid"]
+
+    select(window, window.size_mode_combo, window.size_mode_var, cell)
+    values = set(window.size_preset_combo.cget("values"))
+    check("cell_mode_presets", values == {*gui.CELL_SIZE_PRESETS, gui.CUSTOM_SIZE_LABEL}, sorted(values))
+    select(window, window.size_preset_combo, window.size_preset_var, gui.DEFAULT_CELL_SIZE)
+    check("original_size_clears_entries", window.size_width_var.get() == "" and str(window.size_width_entry.cget("state")) == "disabled")
+    check("original_size_summary", "원본 셀 크기" in window.summary_var.get(), window.summary_var.get())
+    select(window, window.size_preset_combo, window.size_preset_var, gui.CUSTOM_SIZE_LABEL)
+    check("custom_size_enables_entries", str(window.size_width_entry.cget("state")) == "normal")
+    window.size_width_var.set("321"); window.size_height_var.set("123"); window.update()
+    check("custom_cell_summary", "셀 321 × 123" in window.summary_var.get(), window.summary_var.get())
+    select(window, window.size_mode_combo, window.size_mode_var, final)
+    check("final_mode_presets", set(window.size_preset_combo.cget("values")) == {*gui.FINAL_SIZE_PRESETS, gui.CUSTOM_SIZE_LABEL})
+    select(window, window.size_preset_combo, window.size_preset_var, "4096 × 4096")
+    check("preset_fills_entries", (window.size_width_var.get(), window.size_height_var.get()) == ("4096", "4096"))
+    select(window, window.output_mode_combo, window.output_mode_var, single)
+    check("individual_disables_grid", str(window.grid_size_combo.cget("state")) == "disabled")
+    check("individual_summary", "개별 이미지" in window.summary_var.get(), window.summary_var.get())
+    select(window, window.output_mode_combo, window.output_mode_var, grid)
+    check("grid_enables_grid", str(window.grid_size_combo.cget("state")) == "readonly")
+
+    window.scroll_canvas.yview_moveto(0); window.update()
+    window.scroll_canvas.yview_moveto(1)
+    pump(window, lambda: False, .1)
+    check("content_scrolls", window.scroll_canvas.yview()[0] > 0, window.scroll_canvas.yview())
+    verify_mcp_dialog(window, work)
+    check("controls_window_closed", close(window))
+
+
+def verify_mcp_dialog(window, work: Path) -> None:
+    def walk(widget):
+        yield widget
+        for child in widget.winfo_children():
+            yield from walk(child)
+
+    mcp_dialog.show_mcp_configuration(window)
+    pump(window, lambda: False, .2)
+    dialog = next(child for child in window.winfo_children() if isinstance(child, tk.Toplevel))
+    widgets = list(walk(dialog))
+    buttons = {widget.cget("text"): widget for widget in widgets if widget.winfo_class() == "TButton"}
+    entry = next(widget for widget in widgets if widget.winfo_class() == "TEntry")
+    text = next(widget for widget in widgets if widget.winfo_class() == "Text")
+    dialogs.clear()
+    buttons["설정 생성"].invoke(); window.update()
+    check("mcp_dialog_requires_folder", dialogs and dialogs[-1][0] == "showerror")
+    workspace = work / "mcp 작업 폴더"
+    entry.insert(0, str(workspace))
+    buttons["설정 생성"].invoke(); window.update()
+    value = json.loads(text.get("1.0", "end"))
+    check("mcp_dialog_generates", value["mcpServers"]["video-tools"]["args"][-1] == str(workspace.resolve()))
+    buttons["복사"].invoke(); window.update()
+    check("mcp_dialog_copies", json.loads(window.clipboard_get()) == value)
+    saved = work / "mcp-config.json"
+    mcp_dialog.filedialog.asksaveasfilename = lambda **_: str(saved)
+    buttons["파일 저장"].invoke(); window.update()
+    check("mcp_dialog_saves", saved.is_file() and json.loads(saved.read_text(encoding="utf-8")) == value)
+    dialog.destroy()
 
 
 def main() -> int:
@@ -190,6 +261,8 @@ def main() -> int:
     tk.Tk.report_callback_exception = lambda _self, kind, value, _trace: callback_errors.append(f"{kind.__name__}: {value}")
     with tempfile.TemporaryDirectory(prefix="video gui 한글 ", ignore_cleanup_errors=True) as temporary:
         verify(Path(temporary))
+        verify_output_controls(Path(temporary))
+    check("no_callback_errors", not callback_errors, "\n".join(callback_errors)[-2000:])
     failed = [name for name, ok in results if not ok]
     print(json.dumps({"total": len(results), "failed": failed}, ensure_ascii=False))
     return 1 if failed else 0
