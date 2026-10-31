@@ -19,6 +19,7 @@ from video_tools.core.limits import DURATION_TOLERANCE, VIDEO_EXTENSIONS
 from video_tools.core.probe import VideoInfo
 from video_tools.core.process import OperationCancelled
 from video_tools.core.service import VideoService
+from video_tools.gui import theme
 from video_tools.gui.editor import EditingControls
 from video_tools.gui.mcp_dialog import show_mcp_configuration
 from video_tools.gui.options import APP_TITLE, CELL_SIZE_PRESETS, DEFAULT_CELL_SIZE, DEFAULT_FINAL_SIZE, FINAL_SIZE_PRESETS, GRID_SIZE_PRESETS, OUTPUT_MODE_GRID, OUTPUT_MODE_LABELS, PREVIEW_CANVAS_HEIGHT, PRESET_CUSTOM, PRESET_LABELS, SIZE_MODE_LABELS, format_time, mode_for_label, preset_label, parse_grid_layout, parse_positive_float, parse_positive_int, parse_time, resolve_preview_plan
@@ -88,55 +89,11 @@ class VideoToolsApp(tk.Tk):
         self.message_after_id: Optional[str] = None
 
         self._load_settings()
-        self._build_style()
+        theme.apply_style(self, self.font_family)
         self._build_ui()
         self.message_after_id = self.after(100, self._drain_messages)
         self.protocol("WM_DELETE_WINDOW", self._close)
         current.install_quit_handler(self, self._close)
-
-    def _build_style(self) -> None:
-        style = ttk.Style(self)
-        try:
-            style.theme_use(current.theme)
-        except tk.TclError:
-            pass
-        style.configure("App.TFrame", background="#eef2f7")
-        style.configure("Card.TFrame", background="#ffffff")
-        style.configure("Title.TLabel", background="#eef2f7", foreground="#142033", font=(self.font_family, 23, "bold"))
-        style.configure("Subtitle.TLabel", background="#eef2f7", foreground="#526174", font=(self.font_family, 10))
-        style.configure("CardTitle.TLabel", background="#ffffff", foreground="#142033", font=(self.font_family, 12, "bold"))
-        style.configure("CardText.TLabel", background="#ffffff", foreground="#475569", font=(self.font_family, 9))
-        style.configure("Card.TEntry", fieldbackground="#ffffff", padding=(8, 6))
-        style.configure("Card.TCombobox", padding=(6, 4))
-        style.configure("Card.TCheckbutton", background="#ffffff", foreground="#334155")
-        style.configure(
-            "Accent.TButton",
-            background="#2563eb",
-            foreground="#ffffff",
-            font=(self.font_family, 10, "bold"),
-            padding=(16, 8),
-        )
-        style.map(
-            "Accent.TButton",
-            background=[("disabled", "#cbd5e1"), ("pressed", "#1e40af"), ("active", "#1d4ed8")],
-            foreground=[("disabled", "#64748b"), ("!disabled", "#ffffff")],
-        )
-        style.configure("Secondary.TButton", padding=(12, 7))
-        style.configure("Status.TLabel", background="#eef2f7", foreground="#526174", font=(self.font_family, 9))
-        style.configure(
-            "Summary.TLabel",
-            background="#eff6ff",
-            foreground="#1d4ed8",
-            font=(self.font_family, 9, "bold"),
-            padding=(10, 8),
-        )
-        style.configure(
-            "SummaryError.TLabel",
-            background="#fff1f2",
-            foreground="#be123c",
-            font=(self.font_family, 9, "bold"),
-            padding=(10, 8),
-        )
 
     def _build_ui(self) -> None:
         root = ttk.Frame(self, style="App.TFrame")
@@ -239,15 +196,8 @@ class VideoToolsApp(tk.Tk):
         self.cancel_button.pack(side="right", padx=(0, 8), ipadx=8, ipady=4)
         self._schedule_preview_update()
 
-    def card(self, parent: ttk.Frame) -> ttk.Frame:
-        border = tk.Frame(parent, bg="#d8e1ec", bd=0, highlightthickness=0)
-        border.pack(fill="x", pady=(0, 10))
-        card = ttk.Frame(border, style="Card.TFrame", padding=(16, 12, 16, 14))
-        card.pack(fill="x", padx=1, pady=1)
-        return card
-
     def _build_file_card(self, parent: ttk.Frame) -> None:
-        card = self.card(parent)
+        card = theme.card(parent)
         ttk.Label(card, text="1. 동영상 파일", style="CardTitle.TLabel").grid(row=0, column=0, columnspan=2, sticky="w")
         ttk.Label(card, textvariable=self.info_var, style="CardText.TLabel").grid(
             row=1, column=0, columnspan=2, sticky="w", pady=(4, 9)
@@ -259,7 +209,7 @@ class VideoToolsApp(tk.Tk):
         card.columnconfigure(0, weight=1)
 
     def _build_range_card(self, parent: ttk.Frame) -> None:
-        card = self.card(parent)
+        card = theme.card(parent)
         ttk.Label(card, text="2. 처리 구간", style="CardTitle.TLabel").grid(row=0, column=0, columnspan=3, sticky="w")
         ttk.Label(
             card,
@@ -279,7 +229,7 @@ class VideoToolsApp(tk.Tk):
             card.columnconfigure(index, weight=1)
 
     def _build_output_card(self, parent: ttk.Frame) -> None:
-        card = self.card(parent)
+        card = theme.card(parent)
         ttk.Label(card, text="3. 저장 설정", style="CardTitle.TLabel").grid(row=0, column=0, columnspan=4, sticky="w")
         ttk.Label(card, text="같은 이름의 파일이 있을 때만 덮어쓰기를 선택할 수 있습니다.", style="CardText.TLabel").grid(
             row=1, column=0, columnspan=4, sticky="w", pady=(4, 9)
@@ -381,7 +331,7 @@ class VideoToolsApp(tk.Tk):
         self._sync_size_controls()
 
     def _build_preview_card(self, parent: ttk.Frame) -> None:
-        card = self.card(parent)
+        card = theme.card(parent)
         ttk.Label(card, text="4. 결과물 미리보기", style="CardTitle.TLabel").grid(
             row=0, column=0, columnspan=4, sticky="w"
         )
