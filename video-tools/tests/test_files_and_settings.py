@@ -6,6 +6,8 @@ from dataclasses import replace
 from pathlib import Path
 
 from video_tools.core.backend import publish_file
+from video_tools.core.domain import SIZE_MODES
+from video_tools.gui.options import OUTPUT_MODE_LABELS, OUTPUT_MODES, SIZE_MODE_LABELS, mode_for_label
 from video_tools.gui.settings import AppSettings, EditingSettings, load_settings, save_settings, settings_from_dict
 from video_tools.mcp.server import Workspace
 
@@ -98,6 +100,22 @@ class SettingsTest(TemporaryFolderTest):
                      "overwrite", "geometry", "prefix"):
             self.assertEqual(getattr(settings, name), getattr(defaults, name), name)
         self.assertEqual(settings.editing, EditingSettings())
+
+    def test_screen_labels_are_not_settings_values(self):
+        settings = settings_from_dict({"output_mode": "개별 이미지 저장", "size_mode": "격자 셀 이미지 크기", "size_preset": "원본", "prefix": "유지"})
+        defaults = AppSettings()
+        self.assertEqual((settings.output_mode, settings.size_mode, settings.size_preset, settings.prefix),
+                         (defaults.output_mode, defaults.size_mode, defaults.size_preset, "유지"))
+
+    def test_stored_modes_are_kept(self):
+        settings = settings_from_dict({"output_mode": "individual", "size_mode": "cell", "size_preset": "원본"})
+        self.assertEqual((settings.output_mode, settings.size_mode, settings.size_preset), ("individual", "cell", "원본"))
+
+    def test_every_mode_has_a_screen_label(self):
+        self.assertEqual(set(OUTPUT_MODE_LABELS), set(OUTPUT_MODES))
+        self.assertEqual(set(SIZE_MODE_LABELS), set(SIZE_MODES))
+        self.assertEqual(mode_for_label(SIZE_MODE_LABELS, SIZE_MODE_LABELS["cell"], "final"), "cell")
+        self.assertEqual(mode_for_label(SIZE_MODE_LABELS, "없음", "final"), "final")
 
     def test_preset_must_belong_to_the_mode(self):
         cell_only = settings_from_dict({"size_mode": AppSettings().size_mode, "size_preset": "원본"})

@@ -13,14 +13,14 @@ from tkinter import filedialog, messagebox, ttk
 import tkinter.font as tkfont
 
 from video_tools.core.backend import OperationCancelled, VideoInfo
-from video_tools.core.domain import SIZE_MODES, calculate_expected_output_count, resolve_size_plan, safe_prefix
+from video_tools.core.domain import SIZE_MODE_FINAL, calculate_expected_output_count, resolve_size_plan, safe_prefix
 from video_tools.core.edit import validate_edit
 from video_tools.core.extraction import ExtractionRequest
 from video_tools.core.limits import DURATION_TOLERANCE, VIDEO_EXTENSIONS
 from video_tools.core.service import VideoService
 from video_tools.gui.editor import EditingControls
 from video_tools.gui.mcp_dialog import show_mcp_configuration
-from video_tools.gui.options import APP_TITLE, CELL_SIZE_PRESETS, CUSTOM_SIZE_LABEL, DEFAULT_CELL_SIZE, DEFAULT_FINAL_SIZE, FINAL_SIZE_PRESETS, GRID_OUTPUT_MODE, GRID_SIZE_PRESETS, OUTPUT_MODES, PREVIEW_CANVAS_HEIGHT, format_time, parse_grid_layout, parse_positive_float, parse_positive_int, parse_time, resolve_preview_plan
+from video_tools.gui.options import APP_TITLE, CELL_SIZE_PRESETS, CUSTOM_SIZE_LABEL, DEFAULT_CELL_SIZE, DEFAULT_FINAL_SIZE, FINAL_SIZE_PRESETS, GRID_SIZE_PRESETS, OUTPUT_MODE_GRID, OUTPUT_MODE_LABELS, PREVIEW_CANVAS_HEIGHT, SIZE_MODE_LABELS, format_time, mode_for_label, parse_grid_layout, parse_positive_float, parse_positive_int, parse_time, resolve_preview_plan
 from video_tools.gui.preview import PreviewCanvasRenderer
 from video_tools.gui.settings import AppSettings, load_settings, save_settings
 from video_tools.platforms import current
@@ -314,7 +314,7 @@ class VideoToolsApp(tk.Tk):
         self.output_mode_combo = ttk.Combobox(
             card,
             textvariable=self.output_mode_var,
-            values=OUTPUT_MODES,
+            values=tuple(OUTPUT_MODE_LABELS.values()),
             state="readonly",
             style="Card.TCombobox",
         )
@@ -334,7 +334,7 @@ class VideoToolsApp(tk.Tk):
         self.size_mode_combo = ttk.Combobox(
             card,
             textvariable=self.size_mode_var,
-            values=SIZE_MODES,
+            values=tuple(SIZE_MODE_LABELS.values()),
             state="readonly",
             style="Card.TCombobox",
         )
@@ -424,26 +424,32 @@ class VideoToolsApp(tk.Tk):
         self.update_output_summary()
         self._schedule_preview_update()
 
+    def _output_mode(self) -> str:
+        return mode_for_label(OUTPUT_MODE_LABELS, self.output_mode_var.get(), OUTPUT_MODE_GRID)
+
+    def _size_mode(self) -> str:
+        return mode_for_label(SIZE_MODE_LABELS, self.size_mode_var.get(), SIZE_MODE_FINAL)
+
     def _available_size_presets(self) -> dict[str, Optional[tuple[int, int]]]:
-        if self.size_mode_var.get() == SIZE_MODES[0]:
+        if self._size_mode() == SIZE_MODE_FINAL:
             return {**FINAL_SIZE_PRESETS, CUSTOM_SIZE_LABEL: None}
         return {**CELL_SIZE_PRESETS, CUSTOM_SIZE_LABEL: None}
 
     def _default_size_preset(self) -> str:
-        return DEFAULT_FINAL_SIZE if self.size_mode_var.get() == SIZE_MODES[0] else DEFAULT_CELL_SIZE
+        return DEFAULT_FINAL_SIZE if self._size_mode() == SIZE_MODE_FINAL else DEFAULT_CELL_SIZE
 
     def _sync_output_controls(self) -> None:
         if not hasattr(self, "grid_size_combo"):
             return
-        state = "readonly" if self.output_mode_var.get() == GRID_OUTPUT_MODE else "disabled"
+        state = "readonly" if self._output_mode() == OUTPUT_MODE_GRID else "disabled"
         self.grid_size_combo.configure(state=state)
         self.update_output_summary()
 
     def _sync_size_controls(self) -> None:
         if not hasattr(self, "size_preset_combo"):
             return
-        if self.size_mode_var.get() not in SIZE_MODES:
-            self.size_mode_var.set(SIZE_MODES[0])
+        if self.size_mode_var.get() not in SIZE_MODE_LABELS.values():
+            self.size_mode_var.set(SIZE_MODE_LABELS[SIZE_MODE_FINAL])
         available = self._available_size_presets()
         self.size_preset_combo.configure(values=tuple(available.keys()), state="readonly")
         preset = self.size_preset_var.get()
@@ -489,13 +495,13 @@ class VideoToolsApp(tk.Tk):
         if not hasattr(self, "summary_label"):
             return
 
-        group_mode = self.output_mode_var.get() == GRID_OUTPUT_MODE
+        group_mode = self._output_mode() == OUTPUT_MODE_GRID
         grid_size = GRID_SIZE_PRESETS.get(self.grid_size_var.get(), (3, 3))
         effective_grid_size = grid_size if group_mode else (1, 1)
         try:
             requested_size = self._read_requested_size()
             size_plan = resolve_size_plan(
-                self.size_mode_var.get(),
+                self._size_mode(),
                 requested_size,
                 group_mode,
                 effective_grid_size,
@@ -548,12 +554,12 @@ class VideoToolsApp(tk.Tk):
         if not hasattr(self, "preview_canvas"):
             return
 
-        group_mode = self.output_mode_var.get() == GRID_OUTPUT_MODE
+        group_mode = self._output_mode() == OUTPUT_MODE_GRID
         grid_size = GRID_SIZE_PRESETS.get(self.grid_size_var.get(), (3, 3))
         try:
             requested_size = self._read_requested_size()
             preview_plan = resolve_preview_plan(
-                self.size_mode_var.get(),
+                self._size_mode(),
                 requested_size,
                 group_mode,
                 grid_size,
@@ -648,12 +654,12 @@ class VideoToolsApp(tk.Tk):
             if end > self.duration + DURATION_TOLERANCE:
                 raise ValueError(f"끝 시간은 영상 길이({format_time(self.duration)})를 넘을 수 없습니다.")
             interval = parse_positive_float(self.interval_var.get(), "추출 간격")
-            group_mode = self.output_mode_var.get() == GRID_OUTPUT_MODE
+            group_mode = self._output_mode() == OUTPUT_MODE_GRID
             grid_size = parse_grid_layout(self.grid_size_var.get())
             effective_grid_size = grid_size if group_mode else (1, 1)
             requested_size = self._read_requested_size()
             size_plan = resolve_size_plan(
-                self.size_mode_var.get(),
+                self._size_mode(),
                 requested_size,
                 group_mode,
                 effective_grid_size,
@@ -803,9 +809,9 @@ class VideoToolsApp(tk.Tk):
             (self.prefix_var, settings.prefix),
             (self.format_var, settings.format),
             (self.interval_var, settings.interval),
-            (self.output_mode_var, settings.output_mode),
+            (self.output_mode_var, OUTPUT_MODE_LABELS[settings.output_mode]),
             (self.grid_size_var, settings.grid_size),
-            (self.size_mode_var, settings.size_mode),
+            (self.size_mode_var, SIZE_MODE_LABELS[settings.size_mode]),
             (self.size_preset_var, settings.size_preset),
             (self.size_width_var, settings.size_width),
             (self.size_height_var, settings.size_height),
@@ -825,9 +831,9 @@ class VideoToolsApp(tk.Tk):
                 prefix=self.prefix_var.get(),
                 format=self.format_var.get(),
                 interval=self.interval_var.get(),
-                output_mode=self.output_mode_var.get(),
+                output_mode=self._output_mode(),
                 grid_size=self.grid_size_var.get(),
-                size_mode=self.size_mode_var.get(),
+                size_mode=self._size_mode(),
                 size_preset=self.size_preset_var.get(),
                 size_width=self.size_width_var.get(),
                 size_height=self.size_height_var.get(),

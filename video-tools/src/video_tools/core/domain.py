@@ -8,7 +8,9 @@ from dataclasses import dataclass
 from typing import Optional
 
 
-SIZE_MODES = ("최종 이미지 해상도", "격자 셀 이미지 크기")
+SIZE_MODE_FINAL = "final"  # The requested size is the whole output image.
+SIZE_MODE_CELL = "cell"  # The requested size is one grid cell.
+SIZE_MODES = (SIZE_MODE_FINAL, SIZE_MODE_CELL)
 GRID_PADDING = 6
 GRID_MARGIN = 6
 GRID_COLOR = "0xeeeeee"
@@ -72,7 +74,7 @@ def resolve_size_plan(
     if not group_mode:
         return SizePlan(requested_size, None, requested_size)
 
-    if size_mode == SIZE_MODES[0]:
+    if size_mode == SIZE_MODE_FINAL:
         if requested_size is None:
             raise ValueError("최종 이미지 해상도를 선택해 주세요.")
         cell_size, tiled_size = calculate_final_grid_geometry(requested_size, grid_size)

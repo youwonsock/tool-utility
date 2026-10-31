@@ -15,7 +15,7 @@ from mcp.server.fastmcp import FastMCP, Image
 from mcp.types import ToolAnnotations
 from mcp.server.stdio import stdio_server
 
-from video_tools.core.domain import SIZE_MODES, resolve_size_plan
+from video_tools.core.domain import SIZE_MODE_CELL, SIZE_MODE_FINAL, resolve_size_plan
 from video_tools.core.edit import EditRequest
 from video_tools.core.service import VideoService
 from video_tools.core.limits import (
@@ -150,7 +150,7 @@ def create_server(workspace: Path, ffmpeg_path: str | None = None) -> FastMCP:
         output = scope.resolve(output_directory)
         if (width is None) != (height is None):
             raise ValueError("width와 height를 함께 지정하세요.")
-        plan = resolve_size_plan(SIZE_MODES[0] if width is not None else SIZE_MODES[1],
+        plan = resolve_size_plan(SIZE_MODE_FINAL if width is not None else SIZE_MODE_CELL,
                                  (width, height) if width is not None and height is not None else None,
                                  grid_size > 1, (grid_size, grid_size))
 

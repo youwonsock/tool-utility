@@ -6,13 +6,16 @@ import math
 from dataclasses import dataclass
 from typing import Optional
 
-from video_tools.core.domain import calculate_sheet_size, resolve_size_plan
+from video_tools.core.domain import SIZE_MODE_CELL, SIZE_MODE_FINAL, calculate_sheet_size, resolve_size_plan
 from video_tools.core.limits import GRID_SIZES
 
 APP_TITLE = "영상 이미지 추출 · 편집"
-INDIVIDUAL_OUTPUT_MODE = "개별 이미지 저장"
-GRID_OUTPUT_MODE = "격자 합치기"
-OUTPUT_MODES = (INDIVIDUAL_OUTPUT_MODE, GRID_OUTPUT_MODE)
+OUTPUT_MODE_INDIVIDUAL = "individual"
+OUTPUT_MODE_GRID = "grid"
+OUTPUT_MODES = (OUTPUT_MODE_INDIVIDUAL, OUTPUT_MODE_GRID)
+# Settings store the modes; only the screen uses these labels.
+OUTPUT_MODE_LABELS = {OUTPUT_MODE_INDIVIDUAL: "개별 이미지 저장", OUTPUT_MODE_GRID: "격자 합치기"}
+SIZE_MODE_LABELS = {SIZE_MODE_FINAL: "최종 이미지 해상도", SIZE_MODE_CELL: "격자 셀 이미지 크기"}
 GRID_SIZE_PRESETS: dict[str, tuple[int, int]] = {f"{size} × {size}": (size, size) for size in GRID_SIZES}
 DEFAULT_GRID_SIZE = "3 × 3"
 CUSTOM_SIZE_LABEL = "사용자 지정"
@@ -44,6 +47,12 @@ PREVIEW_SAMPLE_COLORS: tuple[tuple[str, str], ...] = (
     ("#475569", "#94a3b8"),
     ("#be123c", "#fb7185"),
 )
+
+
+def mode_for_label(labels: dict[str, str], label: str, default: str) -> str:
+    """화면 문구에 해당하는 내부 값을 찾는다."""
+
+    return next((mode for mode, text in labels.items() if text == label), default)
 
 
 @dataclass(frozen=True)
