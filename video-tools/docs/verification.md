@@ -110,10 +110,7 @@ macOS 26.6.2 ARM64에서 원격 저장소를 한글·공백이 포함된 경로�
 
 ### 남은 개선 후보
 
-- **FFmpeg 재빌드:** 커밋된 런타임이 최소 빌드가 되어 CI의 샘플 생성 단계가 더 이상 동작하지 않는다. 다음 재빌드 전에 샘플을 저장소 밖에 보관하거나 전체 기능 FFmpeg를 지정해야 한다.
 - **Windows 경로 길이:** 저장소의 최장 경로가 181자여서 clone 위치가 깊으면 Git의 경로 길이 제한에 걸릴 수 있다. 배포하지 않는 pip의 고지가 `licenses/python-build-standalone/install` 아래에 중복되어 있어 줄일 수 있다.
-- **Mac 동기화:** Mac에서 `sync_runtime.py`를 실행하면 Windows 실행 파일 5개의 작업 폴더 권한이 Git 기록과 달라진다. Git에 기록되는 값은 정상이다.
 - **`path-analysis-tools` 경량화:** 동봉 런타임이 234MB로 clone 크기의 가장 큰 부분이다. Pillow를 실제로 사용하므로 별도 측정이 필요하다.
 - **Git 기록 용량:** `.git`이 130MB다. 기록을 다시 쓰지 않으면 줄지 않는다.
-- **CI 정비:** Node 20 사용 중단 경고가 나오는 `checkout@v4`, `setup-python@v5`, `upload-artifact@v4`를 갱신한다.
 - **FFmpeg 소스 고정:** GitLab의 x264 아카이브는 바이트가 바뀔 수 있고, `zlib.net`은 새 버전이 나오면 이전 URL을 옮길 수 있다. 다운로드가 실패하면 같은 소스인지 확인한 뒤 다시 고정한다.

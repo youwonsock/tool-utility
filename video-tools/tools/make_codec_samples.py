@@ -1,13 +1,16 @@
 """Write short sample videos covering the supported input codecs.
 
 Encoding them needs a full-featured FFmpeg (libx265, libvpx, libaom, libopus,
-libvorbis, libmp3lame), such as the build the runtime bundled before
-tools/build_ffmpeg.py; the minimal build only decodes these formats.
+libvorbis, libmp3lame); the bundled minimal build only decodes these formats.
+The results are published as a release archive pinned in codec-samples.json, so
+this only runs when the sample set changes.
 """
 from __future__ import annotations
 
 import argparse
+import gzip
 import subprocess
+import tarfile
 from pathlib import Path
 
 SOURCE = ["-f", "lavfi", "-i", "testsrc2=size=160x90:rate=24:duration=2",
@@ -29,10 +32,22 @@ SAMPLES = {
 }
 
 
+def write_archive(samples: Path, archive: Path) -> None:
+    """Write a byte-reproducible archive: sorted names and no timestamps or owners."""
+    with archive.open("wb") as raw, gzip.GzipFile(filename="", fileobj=raw, mode="wb", mtime=0) as compressed, \
+            tarfile.open(fileobj=compressed, mode="w", format=tarfile.PAX_FORMAT) as stream:
+        for path in sorted(samples.iterdir()):
+            info = tarfile.TarInfo(path.name)
+            info.size, info.mode = path.stat().st_size, 0o644
+            with path.open("rb") as source:
+                stream.addfile(info, source)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("ffmpeg", type=Path, help="Full-featured FFmpeg used only to encode the samples")
     parser.add_argument("output", type=Path)
+    parser.add_argument("--archive", type=Path, help="Also write the samples to this .tar.gz for publishing")
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     # Windows does not resolve a relative executable path written with slashes.
@@ -42,6 +57,8 @@ def main():
     # Display-matrix rotation exercises probe rotation and FFmpeg's autorotate filters.
     subprocess.run(base + ["-display_rotation:v", "90", "-i", str(args.output / "h264_aac.mp4"), "-c", "copy",
                            str(args.output / "rotated_h264.mov")], check=True)
+    if args.archive:
+        write_archive(args.output, args.archive)
 
 
 if __name__ == "__main__":

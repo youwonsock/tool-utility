@@ -30,8 +30,8 @@ jobs:
       run:
         working-directory: video-tools
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.14"
       - name: Install MSYS2 MINGW64 build tools
@@ -54,7 +54,7 @@ jobs:
         run: python tools/build_ffmpeg.py
       # Upload before the codec check so a failed check keeps the build for diagnosis.
       - name: Preserve FFmpeg archive and its corresponding sources
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: video-ffmpeg-${{ matrix.os }}
           path: |
@@ -63,8 +63,6 @@ jobs:
             video-tools/.build/artifacts/ffmpeg-sources/
           if-no-files-found: error
       - name: Run the smoke checks and every supported codec with the new FFmpeg
-        # Samples are encoded with the committed full FFmpeg, so this check needs
-        # a runtime that predates the minimal build (or another full FFmpeg).
         shell: bash
         run: |
           set -e
@@ -73,15 +71,15 @@ jobs:
           mkdir -p "$work/new"
           tar -xzf .build/artifacts/ffmpeg-*.tar.gz -C "$work/new"
           if [ "$RUNNER_OS" = "Windows" ]; then
-            py=portable/windows-x64/python/python.exe; old=portable/windows-x64/media/ffmpeg.exe; new="$work/new/ffmpeg.exe"
+            py=portable/windows-x64/python/python.exe; new="$work/new/ffmpeg.exe"
           else
-            py=portable/macos-arm64/python/bin/python3.14; old=portable/macos-arm64/media/ffmpeg; new="$work/new/ffmpeg"
+            py=portable/macos-arm64/python/bin/python3.14; new="$work/new/ffmpeg"
           fi
-          "$py" -I -B -X utf8 tools/make_codec_samples.py "$old" "$work/samples"
+          python tools/fetch_codec_samples.py "$work/samples"
           "$py" -I -B -X utf8 tools/verify_smoke.py --codec-matrix "$work/samples" --ffmpeg "$new" --report "$work/report.json"
       - name: Preserve codec check report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: video-ffmpeg-check-${{ matrix.os }}
           path: ${{ runner.temp }}/ffmpeg-check/report.json
@@ -97,8 +95,8 @@ jobs:
       run:
         working-directory: video-tools
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.14"
       - name: Prepare native runtime distribution
@@ -115,14 +113,14 @@ jobs:
           python -c "import os,pathlib,subprocess,sys; runtime='portable/windows-x64/python/python.exe' if sys.platform=='win32' else 'portable/macos-arm64/python/bin/python3.14'; report=pathlib.Path(os.environ['RUNNER_TEMP'])/'video-tools-smoke'/'report.json'; subprocess.run([runtime,'-I','-B','-X','utf8','tools/verify_smoke.py','--report',str(report)],check=True)"
       - name: Preserve media regression diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: video-smoke-${{ matrix.os }}
           path: ${{ runner.temp }}/video-tools-smoke/report.json
           if-no-files-found: warn
       - name: Preserve runtime artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: video-runtime-${{ matrix.os }}
           path: |
