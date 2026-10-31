@@ -14,7 +14,7 @@ Python·FFmpeg 설치, pip 실행, 가상환경 생성이나 최초 실행 다�
 
 Mac에서 최초 실행 시 보안 승인을 요구하면 시스템 설정 → 개인정보 보호 및 보안에서 해당 실행을 승인합니다. 프로그램은 내부용 ad-hoc 서명을 사용합니다.
 
-지원 입력은 mp4·mov·m4v·mkv·webm·avi입니다. 영상 코덱은 H.264·HEVC·VP8·VP9·AV1·MPEG-4 Part 2·MPEG-1/2·MJPEG·ProRes, 오디오 코덱은 AAC·MP3·Opus·Vorbis·AC-3·E-AC-3·FLAC·ALAC·PCM을 지원합니다. 이 밖의 코덱으로 만든 영상은 열 수 없습니다. 출력은 PNG·JPG 이미지와 H.264·AAC MP4입니다.
+지원 입력은 mp4·mov·m4v·mkv·webm·avi입니다. 영상 코덱은 H.264·HEVC·VP8·VP9·AV1·MPEG-4 Part 2·MPEG-1/2·MJPEG·ProRes, 오디오 코덱은 AAC·MP2·MP3·Opus·Vorbis·AC-3·E-AC-3·FLAC·ALAC·PCM을 지원합니다. 이 밖의 코덱으로 만든 영상은 열 수 없습니다. 출력은 PNG·JPG 이미지와 H.264·AAC MP4입니다.
 
 ## GUI
 

@@ -64,7 +64,7 @@ jobs:
             video-tools/.build/artifacts/ffmpeg-*.tar.gz.sha256
             video-tools/.build/artifacts/ffmpeg-sources/
           if-no-files-found: error
-      - name: Decode, extract and re-encode every supported codec with the new FFmpeg
+      - name: Run the smoke checks and every supported codec with the new FFmpeg
         # Samples are encoded with the committed full FFmpeg, so this check needs
         # a runtime that predates the minimal build (or another full FFmpeg).
         shell: bash
@@ -80,7 +80,7 @@ jobs:
             py=portable/macos-arm64/python/bin/python3.14; old=portable/macos-arm64/media/ffmpeg; new="$work/new/ffmpeg"
           fi
           "$py" -I -B -X utf8 tools/make_codec_samples.py "$old" "$work/samples"
-          "$py" -I -B -X utf8 tools/verify_smoke.py --codec-matrix "$work/samples" --matrix-ffmpeg "$new" --report "$work/report.json"
+          "$py" -I -B -X utf8 tools/verify_smoke.py --codec-matrix "$work/samples" --ffmpeg "$new" --report "$work/report.json"
       - name: Preserve codec check report
         if: always()
         uses: actions/upload-artifact@v4

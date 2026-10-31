@@ -16,12 +16,12 @@ python tools/build_runtime.py --refresh --archive
 
 동봉 FFmpeg는 `tools/build_ffmpeg.py`가 `tools/ffmpeg-sources.json`에 고정된 FFmpeg·x264·dav1d·zlib 소스로 정적 빌드합니다. 필요한 프로토콜·디먹서·먹서·코덱·필터만 활성화하며, 빌드 후 FFmpeg 목록 출력으로 구성 요소를 확인하고 시스템 라이브러리 외 링크가 없는지 검사합니다.
 
-- 입력: mp4·mov·m4v·mkv·webm·avi 컨테이너, H.264·HEVC·VP8·VP9·AV1(dav1d)·MPEG-4 Part 2·MPEG-1/2·MJPEG·ProRes 영상, AAC·MP3·Opus·Vorbis·AC-3·E-AC-3·FLAC·ALAC·PCM 오디오, PNG·JPG 이미지
+- 입력: mp4·mov·m4v·mkv·webm·avi 컨테이너, H.264·HEVC·VP8·VP9·AV1(dav1d)·MPEG-4 Part 2·MPEG-1/2·MJPEG·ProRes 영상, AAC·MP2·MP3·Opus·Vorbis·AC-3·E-AC-3·FLAC·ALAC·PCM 오디오, PNG·JPG 이미지
 - 출력: PNG·JPG 이미지, H.264(libx264)·AAC MP4
 
 목록 밖 코덱이나 컨테이너의 영상은 열 수 없습니다. 지원 범위를 바꾸면 `components`를 수정하고 두 FFmpeg와 두 런타임을 함께 다시 생성합니다.
 
-1. GitHub Actions의 **Video tools distribution**을 ffmpeg 옵션으로 실행합니다. Windows는 MSYS2 MINGW64, Mac은 Xcode와 Homebrew의 nasm·meson·ninja·pkg-config로 빌드합니다. 이 작업은 `tools/make_codec_samples.py`로 지원 코덱마다 샘플 영상을 만들고, `verify_smoke.py --codec-matrix <폴더> --matrix-ffmpeg <새 FFmpeg>`로 새 빌드의 조회·추출·재인코딩과 회전 인식을 검사합니다. 샘플 인코딩에는 libx265·libvpx·libaom 등을 갖춘 전체 기능 FFmpeg가 필요하므로, 커밋된 런타임이 이미 최소 빌드라면 다른 전체 기능 FFmpeg를 지정합니다.
+1. GitHub Actions의 **Video tools distribution**을 ffmpeg 옵션으로 실행합니다. Windows는 MSYS2 MINGW64, Mac은 Xcode와 Homebrew의 nasm·meson·ninja·pkg-config로 빌드합니다. 이 작업은 `tools/make_codec_samples.py`로 지원 코덱마다 샘플 영상을 만들고, `verify_smoke.py --codec-matrix <폴더> --ffmpeg <새 FFmpeg>`로 새 빌드의 smoke 검사 전체와 코덱별 조회·추출·재인코딩, 회전 인식을 검사합니다. 샘플 인코딩에는 libx265·libvpx·libaom 등을 갖춘 전체 기능 FFmpeg가 필요하므로, 커밋된 런타임이 이미 최소 빌드라면 다른 전체 기능 FFmpeg를 지정합니다.
 2. `video-ffmpeg-*` 아티팩트의 `ffmpeg-windows-x64.tar.gz`, `ffmpeg-macos-arm64.tar.gz`와 `ffmpeg-sources/`의 원본 소스 아카이브를 하나의 GitHub Release에 함께 올립니다. 소스 아카이브는 GPL 대응 소스로 바이너리와 함께 게시합니다.
 3. 두 아카이브의 URL과 SHA-256을 `tools/runtime-assets.json`의 각 프로필 `ffmpeg_url`, `ffmpeg_sha256`에 고정한 뒤 아래 refresh로 런타임을 생성합니다. 로컬 개발에서는 같은 해시의 파일을 `--ffmpeg <tar.gz>`로 전달할 수 있습니다.
 

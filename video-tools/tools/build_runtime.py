@@ -324,7 +324,7 @@ r.destroy(); print(json.dumps(data))
     ffmpeg, ffmpeg_build = install_ffmpeg(product, profile, source, ffmpeg_archive)
     version = run([str(ffmpeg), "-version"], capture_output=True).stdout
     encoders = run([str(ffmpeg), "-hide_banner", "-encoders"], capture_output=True).stdout
-    if not all(name in encoders for name in ("libx264", "libx264rgb", "aac", "mjpeg", "png")):
+    if not all(name in encoders for name in ("libx264", "aac", "mjpeg", "png")):
         raise RuntimeError("FFmpeg lacks a required encoder.")
     metadata_archive = download(source["metadata_url"], source["metadata_sha256"])
     metadata = provider_notices(product, metadata_archive)
