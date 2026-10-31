@@ -1,14 +1,12 @@
-"""Shared Tk editing controls and portable MCP configuration dialog."""
+"""Tk controls for the video editing tab."""
 from dataclasses import asdict
-import json
 from pathlib import Path
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import ttk, filedialog
 
 from video_tools.core.edit import EditRequest
 from video_tools.core.limits import MAX_CRF, MAX_SPEED, MIN_SPEED, ROTATIONS
-from video_tools.core.settings import EditingSettings
-from video_tools.runtime import configuration
+from video_tools.gui.settings import EditingSettings
 
 
 class EditingControls:
@@ -17,7 +15,7 @@ class EditingControls:
         self.widgets = []
         self.fields = {key: (tk.BooleanVar(app, value=value) if isinstance(value, bool) else tk.StringVar(app, value=value))
                        for key, value in asdict(settings).items()}
-        card = app._card(parent)
+        card = app.card(parent)
         ttk.Label(card, text="3. 편집 결과", style="CardTitle.TLabel").grid(row=0, column=0, columnspan=4, sticky='w')
         ttk.Label(card, text="H.264 / AAC MP4로 저장합니다. 원본과 다른 경로를 선택하세요.",
                   style='CardText.TLabel', wraplength=600).grid(row=1, column=0, columnspan=4, sticky='w', pady=(5, 10))
@@ -29,7 +27,7 @@ class EditingControls:
         self.check(card, 'overwrite', '기존 결과 덮어쓰기', 3, 0)
         for c in range(4): card.columnconfigure(c, weight=1)
 
-        card = app._card(parent)
+        card = app.card(parent)
         self.check(card, 'crop_enabled', '크롭 사용', 0, 0)
         ttk.Label(card, text="자동 회전 적용 후 영상의 픽셀 좌표입니다. X·Y는 왼쪽 위에서 시작합니다.",
                   style='CardText.TLabel', wraplength=600).grid(row=1, column=0, columnspan=4, sticky='w', pady=(4, 8))
@@ -37,7 +35,7 @@ class EditingControls:
             [('crop_x', 'X'), ('crop_y', 'Y'), ('crop_width', '너비'), ('crop_height', '높이')])]
         for c in range(4): card.columnconfigure(c, weight=1)
 
-        card = app._card(parent)
+        card = app.card(parent)
         ttk.Label(card, text="회전·반전", style='CardTitle.TLabel').grid(row=0, column=0, sticky='w')
         self.rotation = ttk.Combobox(card, textvariable=self.fields['rotation'], values=tuple(map(str, ROTATIONS)), state='readonly', width=10)
         self.rotation.grid(row=1, column=0, sticky='w', pady=(8, 0))
@@ -47,14 +45,14 @@ class EditingControls:
         self.widgets.append(self.rotation)
         for c in range(4): card.columnconfigure(c, weight=1)
 
-        card = app._card(parent)
+        card = app.card(parent)
         self.check(card, 'resize_enabled', '출력 크기 지정', 0, 0)
         ttk.Label(card, text="비율을 유지하고 남는 공간은 여백으로 채웁니다. 너비·높이는 짝수로 입력하세요.",
                   style='CardText.TLabel', wraplength=600).grid(row=1, column=0, columnspan=4, sticky='w', pady=(4, 8))
         self.resize_entries = [self.entry(card, 'width', '너비(px)', 2, 0), self.entry(card, 'height', '높이(px)', 2, 1)]
         for c in range(2): card.columnconfigure(c, weight=1)
 
-        card = app._card(parent)
+        card = app.card(parent)
         ttk.Label(card, text="속도·오디오·화질", style='CardTitle.TLabel').grid(row=0, column=0, columnspan=3, sticky='w')
         self.entry(card, 'speed', f'배속 ({MIN_SPEED:g}~{MAX_SPEED:g})', 1, 0)
         self.entry(card, 'crf', f'CRF (0~{MAX_CRF}, 낮을수록 고화질)', 1, 1)
@@ -77,7 +75,7 @@ class EditingControls:
 
     def changed(self, *_):
         self.sync(enabled=not self.app.current_job)
-        self.app._update_output_summary()
+        self.app.update_output_summary()
 
     def sync(self, enabled=True):
         for widget in self.widgets: widget.configure(state='normal' if enabled else 'disabled')
@@ -100,60 +98,16 @@ class EditingControls:
             self.fields['crop_width'].set(str(info.display_size[0]))
             self.fields['crop_height'].set(str(info.display_size[1]))
 
-    def request(self, start, end):
+    def request(self, video_path, start, end):
         f = self.fields
         output = f['output'].get().strip()
         if not output: raise ValueError('편집 결과의 저장 경로를 지정하세요.')
         crop = tuple(int(f[key].get()) for key in ('crop_x', 'crop_y', 'crop_width', 'crop_height')) if f['crop_enabled'].get() else None
         width, height = (int(f['width'].get()), int(f['height'].get())) if f['resize_enabled'].get() else (None, None)
-        return EditRequest(video_path=self.app.video_path, output_path=Path(output).expanduser().resolve(),
+        return EditRequest(video_path=video_path, output_path=Path(output).expanduser().resolve(),
             start=start, end=end, width=width, height=height, crop=crop, rotation=int(f['rotation'].get()),
             flip_horizontal=f['flip_horizontal'].get(), flip_vertical=f['flip_vertical'].get(),
             speed=float(f['speed'].get()), mute=f['mute'].get(), overwrite=f['overwrite'].get(), crf=int(f['crf'].get()))
 
     def settings(self):
         return EditingSettings(**{key: value.get() for key, value in self.fields.items()})
-
-
-def show_mcp_configuration(app):
-    dialog = tk.Toplevel(app)
-    dialog.title('MCP 연결 설정')
-    dialog.geometry('760x510')
-    dialog.minsize(600, 430)
-    dialog.transient(app)
-    body = ttk.Frame(dialog, padding=20)
-    body.pack(fill='both', expand=True)
-    body.columnconfigure(0, weight=1)
-    body.rowconfigure(5, weight=1)
-    workspace = tk.StringVar(dialog)
-    ttk.Label(body, text='영상 작업 폴더를 선택한 뒤 생성한 JSON을 MCP 클라이언트 설정에 등록하세요.', wraplength=660).grid(row=0, column=0, columnspan=2, sticky='w')
-    ttk.Entry(body, textvariable=workspace).grid(row=1, column=0, sticky='ew', pady=12)
-    def choose_workspace():
-        path = filedialog.askdirectory(parent=dialog, title='MCP 작업 폴더')
-        if path: workspace.set(path)
-    ttk.Button(body, text='작업 폴더 선택', command=choose_workspace).grid(row=1, column=1, padx=(10, 0))
-    ttk.Label(body, text='생성한 설정은 현재 도구 폴더를 사용합니다. 폴더를 옮겼다면 설정을 다시 생성하세요.', wraplength=660).grid(row=2, column=0, columnspan=2, sticky='w')
-    ttk.Label(body, text='클라이언트 연결 설정은 사용하는 앱에 별도로 등록해야 합니다.', wraplength=660).grid(row=4, column=0, columnspan=2, sticky='w')
-    text = tk.Text(body, wrap='word', font='TkFixedFont', height=10)
-    text.grid(row=5, column=0, columnspan=2, sticky='nsew', pady=12)
-    def generate():
-        try:
-            if not workspace.get().strip(): raise ValueError('MCP 작업 폴더를 선택하세요.')
-            value = configuration(Path(workspace.get()))
-            content = json.dumps(value, ensure_ascii=False, indent=2)
-            text.delete('1.0', 'end'); text.insert('1.0', content)
-            return content
-        except (ValueError, OSError) as exc:
-            messagebox.showerror('MCP 연결 설정', str(exc), parent=dialog)
-    def copy():
-        content = generate()
-        if content:
-            dialog.clipboard_clear(); dialog.clipboard_append(content)
-    def save():
-        content = generate()
-        if content:
-            path = filedialog.asksaveasfilename(parent=dialog, defaultextension='.json', initialfile='mcp-config.local.json')
-            if path: Path(path).write_text(content + '\n', encoding='utf-8')
-    buttons = ttk.Frame(body); buttons.grid(row=6, column=0, columnspan=2, sticky='e')
-    for label, command in [('설정 생성', generate), ('복사', copy), ('파일 저장', save)]:
-        ttk.Button(buttons, text=label, command=command).pack(side='left', padx=4)

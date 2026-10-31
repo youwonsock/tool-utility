@@ -84,7 +84,7 @@ def verify(work: Path) -> None:
     subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-display_rotation:v", "90", "-i", str(source),
                     "-c", "copy", str(rotated)], check=True)
 
-    window = gui.VideoToImageApp(settings)
+    window = gui.VideoToolsApp(settings)
     window.update()
     check("window_opened", window.winfo_exists() and window.winfo_width() > 0, f"{window.winfo_width()}x{window.winfo_height()}")
     check("bundled_ffmpeg", Path(window.service.ffmpeg).resolve() == bundled_ffmpeg().resolve())
@@ -161,7 +161,7 @@ def verify(work: Path) -> None:
     expected_grid, expected_output = window.grid_size_var.get(), window.output_var.get()
     check("window_closed", close(window))
     check("settings_saved", settings.is_file())
-    again = gui.VideoToImageApp(settings)
+    again = gui.VideoToolsApp(settings)
     again.update()
     check("settings_restored", again.grid_size_var.get() == expected_grid and again.output_var.get() == expected_output
           and again.editor.fields["mute"].get() is True, again.grid_size_var.get())

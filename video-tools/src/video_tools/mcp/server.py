@@ -22,7 +22,7 @@ from video_tools.core.limits import (
     GRID_SIZES, IMAGE_EXTENSIONS, IMAGE_FORMATS, MAX_ACTIVE_JOBS, MAX_OUTPUT_IMAGES, MAX_OUTPUT_MEGAPIXELS,
     MAX_OUTPUT_PIXELS, MAX_PENDING_JOBS, ROTATIONS, VIDEO_EXTENSIONS,
 )
-from video_tools.core.media import ExtractionRequest
+from video_tools.core.extraction import ExtractionRequest
 
 MEDIA_EXTENSIONS = {*VIDEO_EXTENSIONS, *IMAGE_EXTENSIONS}
 GridSize = Literal[(1, *GRID_SIZES)]
