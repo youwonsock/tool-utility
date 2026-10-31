@@ -15,7 +15,7 @@ class EditTest(unittest.TestCase):
         self.source = self.root / "source.mp4"
         self.source.touch()
         self.info = VideoInfo(self.source, 10, 1280, 720, 30, True, "h264")
-        self.request = EditRequest("ffmpeg", self.source, self.root / "out.mp4")
+        self.request = EditRequest(video_path=self.source, output_path=self.root / "out.mp4")
 
     def rejected(self, **changes):
         with self.assertRaises((ValueError, FileExistsError)):
@@ -86,7 +86,7 @@ class EditTest(unittest.TestCase):
         self.assertEqual(_tempo_chain(.25), "atempo=0.5,atempo=0.5")
 
     def command(self, **changes):
-        return build_edit_command(replace(self.request, **changes), self.info, self.root / "staged.mp4")
+        return build_edit_command("ffmpeg", replace(self.request, **changes), self.info, self.root / "staged.mp4")
 
     def video_filter(self, **changes):
         command = self.command(**changes)
@@ -108,7 +108,7 @@ class EditTest(unittest.TestCase):
         self.assertIn("aac", self.command())
         self.assertIn("-an", self.command(mute=True))
         self.assertNotIn("-an", self.command())
-        silent = build_edit_command(self.request, replace(self.info, has_audio=False), self.root / "staged.mp4")
+        silent = build_edit_command("ffmpeg", self.request, replace(self.info, has_audio=False), self.root / "staged.mp4")
         self.assertIn("-an", silent)
 
     def test_output_duration_and_target(self):

@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from video_tools.core.backend import OperationCancelled
+from video_tools.core.limits import MAX_ACTIVE_JOBS, MAX_JOB_HISTORY, MAX_PENDING_JOBS
 
 Operation = Callable[[threading.Event, Callable[[float, int], None]], dict]
 TERMINAL = {"completed", "failed", "cancelled"}
@@ -29,7 +30,8 @@ class Job:
 
 
 class JobManager:
-    def __init__(self, workers: int = 2, max_pending: int = 8, max_history: int = 100) -> None:
+    def __init__(self, workers: int = MAX_ACTIVE_JOBS, max_pending: int = MAX_PENDING_JOBS,
+                 max_history: int = MAX_JOB_HISTORY) -> None:
         self._executor = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="video-job")
         self._jobs: dict[str, Job] = {}
         self._lock = threading.RLock()
@@ -42,7 +44,7 @@ class JobManager:
             if self._closed:
                 raise RuntimeError("서버가 종료 중입니다.")
             if sum(job.status not in TERMINAL for job in self._jobs.values()) >= self._max_pending:
-                raise ValueError("대기/실행 작업이 8개입니다. 기존 작업이 끝난 뒤 다시 요청하세요.")
+                raise ValueError(f"대기/실행 작업이 {self._max_pending}개입니다. 기존 작업이 끝난 뒤 다시 요청하세요.")
             while len(self._jobs) >= self._max_history:
                 old = next((key for key, job in self._jobs.items() if job.status in TERMINAL), None)
                 if old is None:

@@ -7,12 +7,9 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Any
 
-from video_tools.core.domain import CELL_SIZE_PRESETS, CUSTOM_SIZE_LABEL, FINAL_SIZE_PRESETS, GRID_OUTPUT_MODE, GRID_SIZE_PRESETS, OUTPUT_MODES, parse_positive_float, SIZE_MODES
-
-
+from video_tools.core.domain import CELL_SIZE_PRESETS, CUSTOM_SIZE_LABEL, DEFAULT_CELL_SIZE, DEFAULT_FINAL_SIZE, DEFAULT_GRID_SIZE, FINAL_SIZE_PRESETS, GRID_OUTPUT_MODE, GRID_SIZE_PRESETS, OUTPUT_MODES, parse_positive_float, SIZE_MODES
+from video_tools.core.limits import ROTATIONS
 from video_tools.runtime import default_settings_path
-
-SETTINGS_PATH = default_settings_path()
 
 
 @dataclass(frozen=True)
@@ -42,7 +39,7 @@ def editing_from_dict(raw):
     for key, default in defaults.items():
         value = raw.get(key, default)
         normalized[key] = value if isinstance(value, type(default)) else default
-    if normalized['rotation'] not in ('0', '90', '180', '270'):
+    if normalized['rotation'] not in tuple(map(str, ROTATIONS)):
         normalized['rotation'] = '0'
     return EditingSettings(**normalized)
 
@@ -56,9 +53,9 @@ class AppSettings:
     format: str = "PNG"
     interval: str = "1"
     output_mode: str = GRID_OUTPUT_MODE
-    grid_size: str = "3 × 3"
+    grid_size: str = DEFAULT_GRID_SIZE
     size_mode: str = SIZE_MODES[0]
-    size_preset: str = "1920 × 1080"
+    size_preset: str = DEFAULT_FINAL_SIZE
     size_width: str = "1920"
     size_height: str = "1080"
     overwrite: bool = False
@@ -78,7 +75,7 @@ def _size_settings(raw: dict[str, Any]) -> tuple[str, str]:
     if size_mode not in SIZE_MODES:
         size_mode = SIZE_MODES[0]
     available = FINAL_SIZE_PRESETS if size_mode == SIZE_MODES[0] else CELL_SIZE_PRESETS
-    default = "1920 × 1080" if size_mode == SIZE_MODES[0] else "원본"
+    default = DEFAULT_FINAL_SIZE if size_mode == SIZE_MODES[0] else DEFAULT_CELL_SIZE
     preset = _text_value(raw, "size_preset", default)
     if preset not in available and preset != CUSTOM_SIZE_LABEL:
         preset = default
@@ -103,9 +100,9 @@ def settings_from_dict(raw: dict[str, Any]) -> AppSettings:
     """Read current fields; invalid or missing values use defaults."""
 
     size_mode, size_preset = _size_settings(raw)
-    grid_size = _text_value(raw, "grid_size", "3 × 3")
+    grid_size = _text_value(raw, "grid_size", DEFAULT_GRID_SIZE)
     if grid_size not in GRID_SIZE_PRESETS:
-        grid_size = "3 × 3"
+        grid_size = DEFAULT_GRID_SIZE
     overwrite = raw.get("overwrite")
     geometry = raw.get("geometry")
     return AppSettings(
