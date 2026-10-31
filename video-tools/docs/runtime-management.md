@@ -45,7 +45,11 @@ python tools/build_runtime.py --audit --git
 
 런타임 입력 해시는 생성 코드·런타임 출처·패키지 잠금·휠 출처·FFmpeg 소스 고정만 포함합니다. GUI·MCP·공용 처리 소스의 기능 변경에는 런타임을 다시 생성하지 않습니다. 의존성을 바꾸면 두 런타임을 함께 갱신하고 검증한 뒤 병합합니다.
 
-상시 CI는 배포 생성·완전성 감사와 `tools/verify_smoke.py`의 핵심 기능 검사를 실행합니다. 테스트 영상은 동봉 FFmpeg로 임시 폴더에 생성합니다. 실제 stdio MCP 연결로 9개 도구, PNG/JPG 격자 추출, 구간·크기·음소거 편집, 원본·기존 출력 보존, 경로 경계와 동기화된 대기 작업 취소를 확인합니다. GUI 창 조작은 이 검사에 포함하지 않습니다.
+상시 CI는 배포 생성·완전성 감사와 다음 세 검사를 실행합니다. 테스트 영상은 동봉 FFmpeg로 임시 폴더에 생성합니다.
+
+- `tools/verify_smoke.py`: 실제 stdio MCP 연결로 9개 도구, PNG/JPG 격자 추출, 구간·크기·음소거 편집, 원본·기존 출력 보존, 경로 경계와 동기화된 대기 작업 취소를 확인합니다.
+- `tools/run_tests.py`: `tests`의 단위 테스트로 크기 계산, FFmpeg 필터와 명령, 입력 검증, 작업 관리, 파일 게시, 경로 경계, 설정을 확인합니다. FFmpeg와 창을 사용하지 않습니다.
+- `tools/verify_gui.py`: 실제 창의 위젯을 코드로 조작해 추출, 격자, 취소, 편집, 회전 영상, 창 닫기, 설정 복원을 확인합니다. 파일 선택 창과 알림 창은 코드로 대체합니다. 실행 중 창이 잠시 표시됩니다.
 
 Mac에서 수동 실행:
 
@@ -53,10 +57,26 @@ Mac에서 수동 실행:
 ./portable/macos-arm64/python/bin/python3.14 -I -B -X utf8 tools/verify_smoke.py --report /tmp/video-tools-smoke.json
 ```
 
+```bash
+./portable/macos-arm64/python/bin/python3.14 -I -B -X utf8 tools/run_tests.py
+```
+
+```bash
+./portable/macos-arm64/python/bin/python3.14 -I -B -X utf8 tools/verify_gui.py
+```
+
 Windows PowerShell에서 수동 실행:
 
 ```powershell
 ./portable/windows-x64/python/python.exe -I -B -X utf8 tools/verify_smoke.py --report "$env:TEMP/video-tools-smoke.json"
+```
+
+```powershell
+./portable/windows-x64/python/python.exe -I -B -X utf8 tools/run_tests.py
+```
+
+```powershell
+./portable/windows-x64/python/python.exe -I -B -X utf8 tools/verify_gui.py
 ```
 
 보고서는 제품 폴더 밖에 저장해야 하며 실패 시 비정상 종료 코드와 MCP stderr·오류 정보를 포함합니다. CI는 두 OS의 보고서를 `video-smoke-*` 아티팩트로 보관합니다. 임시 미디어는 검사 종료 시 정리합니다. 실제 GUI, 새 clone, 오프라인 격리 검증은 기능 변경 범위에 맞춰 별도로 수행하고 커밋·OS·해시·결과를 기록합니다. 기존 날짜의 완료 검증 기록은 당시 실행의 증거로 유지합니다.
