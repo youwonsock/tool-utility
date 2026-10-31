@@ -198,7 +198,7 @@ def codec_matrix(report: dict, samples: Path, workspace: Path, ffmpeg: str):
     from video_tools.core.domain import SizePlan
     from video_tools.core.edit import EditRequest, edit_video
     from video_tools.core.limits import VIDEO_EXTENSIONS
-    from video_tools.core.media import ExtractionRequest, extract_images
+    from video_tools.core.extraction import ExtractionRequest, extract_images
     results = report.setdefault('codec_matrix', {})
     files = sorted(path for path in samples.iterdir()
                    if path.suffix.lower() in VIDEO_EXTENSIONS)

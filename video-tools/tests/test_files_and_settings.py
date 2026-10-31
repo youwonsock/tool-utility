@@ -6,7 +6,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from video_tools.core.backend import publish_file
-from video_tools.core.settings import AppSettings, EditingSettings, load_settings, save_settings, settings_from_dict
+from video_tools.gui.settings import AppSettings, EditingSettings, load_settings, save_settings, settings_from_dict
 from video_tools.mcp.server import Workspace
 
 

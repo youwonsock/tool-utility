@@ -1,30 +1,48 @@
-"""동영상의 지정 구간을 일정한 간격의 이미지로 추출하는 GUI 프로그램."""
+"""영상 이미지 추출·편집 GUI."""
 
 from __future__ import annotations
 
+import argparse
+from dataclasses import dataclass
 import queue
 import threading
 from pathlib import Path
-from typing import Optional
-import argparse
-import tkinter.font as tkfont
-from video_tools.platforms import current
-from video_tools.core.service import VideoService
-from video_tools.core.edit import validate_edit
-from video_tools.gui.editor import EditingControls, show_mcp_configuration
-
+from typing import Optional, Union
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+import tkinter.font as tkfont
 
-from video_tools.core.domain import APP_TITLE, CELL_SIZE_PRESETS, CUSTOM_SIZE_LABEL, DEFAULT_CELL_SIZE, DEFAULT_FINAL_SIZE, FINAL_SIZE_PRESETS, GRID_OUTPUT_MODE, GRID_SIZE_PRESETS, OUTPUT_MODES, PREVIEW_CANVAS_HEIGHT, SIZE_MODES, calculate_expected_output_count, format_time, parse_grid_layout, parse_positive_float, parse_positive_int, parse_time, resolve_preview_plan, resolve_size_plan, safe_prefix
-from video_tools.core.backend import ProbeCancelled
+from video_tools.core.backend import OperationCancelled, VideoInfo
+from video_tools.core.domain import SIZE_MODES, calculate_expected_output_count, resolve_size_plan, safe_prefix
+from video_tools.core.edit import validate_edit
+from video_tools.core.extraction import ExtractionRequest
 from video_tools.core.limits import DURATION_TOLERANCE, VIDEO_EXTENSIONS
-from video_tools.core.media import ExtractionRequest, MediaEvent, ProbeCompleted, ProbeFailed
+from video_tools.core.service import VideoService
+from video_tools.gui.editor import EditingControls
+from video_tools.gui.mcp_dialog import show_mcp_configuration
+from video_tools.gui.options import APP_TITLE, CELL_SIZE_PRESETS, CUSTOM_SIZE_LABEL, DEFAULT_CELL_SIZE, DEFAULT_FINAL_SIZE, FINAL_SIZE_PRESETS, GRID_OUTPUT_MODE, GRID_SIZE_PRESETS, OUTPUT_MODES, PREVIEW_CANVAS_HEIGHT, format_time, parse_grid_layout, parse_positive_float, parse_positive_int, parse_time, resolve_preview_plan
 from video_tools.gui.preview import PreviewCanvasRenderer
-from video_tools.core.settings import AppSettings, load_settings, save_settings
+from video_tools.gui.settings import AppSettings, load_settings, save_settings
+from video_tools.platforms import current
 
 
-class VideoToImageApp(tk.Tk):
+@dataclass(frozen=True)
+class ProbeCompleted:
+    video_path: Path
+    duration: float
+    info: VideoInfo
+
+
+@dataclass(frozen=True)
+class ProbeFailed:
+    video_path: Path
+    error: str
+
+
+ProbeEvent = Union[ProbeCompleted, ProbeFailed]
+
+
+class VideoToolsApp(tk.Tk):
     def __init__(self, settings_path: Path | None = None) -> None:
         super().__init__()
         self._settings_path = settings_path
@@ -42,7 +60,7 @@ class VideoToImageApp(tk.Tk):
         self.duration: Optional[float] = None
         self.probe_worker: Optional[threading.Thread] = None
         self.probe_cancel_event = threading.Event()
-        self.messages: queue.Queue[MediaEvent] = queue.Queue()
+        self.messages: queue.Queue[ProbeEvent] = queue.Queue()
         self._closing = False
 
         self.video_var = tk.StringVar()
@@ -190,7 +208,7 @@ class VideoToImageApp(tk.Tk):
         progress_area.pack(fill="x")
         self.summary_label = ttk.Label(progress_area, textvariable=self.summary_var, style="Summary.TLabel", anchor="w", wraplength=690)
         self.summary_label.pack(fill="x", pady=(0, 7))
-        self._update_output_summary()
+        self.update_output_summary()
         ttk.Label(progress_area, textvariable=self.status_var, style="Status.TLabel").pack(anchor="w")
         self.progress = ttk.Progressbar(progress_area, variable=self.progress_var, maximum=100)
         self.progress.pack(fill="x", pady=(7, 10))
@@ -220,7 +238,7 @@ class VideoToImageApp(tk.Tk):
         self.cancel_button.pack(side="right", padx=(0, 8), ipadx=8, ipady=4)
         self._schedule_preview_update()
 
-    def _card(self, parent: ttk.Frame) -> ttk.Frame:
+    def card(self, parent: ttk.Frame) -> ttk.Frame:
         border = tk.Frame(parent, bg="#d8e1ec", bd=0, highlightthickness=0)
         border.pack(fill="x", pady=(0, 10))
         card = ttk.Frame(border, style="Card.TFrame", padding=(16, 12, 16, 14))
@@ -228,7 +246,7 @@ class VideoToImageApp(tk.Tk):
         return card
 
     def _build_file_card(self, parent: ttk.Frame) -> None:
-        card = self._card(parent)
+        card = self.card(parent)
         ttk.Label(card, text="1. 동영상 파일", style="CardTitle.TLabel").grid(row=0, column=0, columnspan=2, sticky="w")
         ttk.Label(card, textvariable=self.info_var, style="CardText.TLabel").grid(
             row=1, column=0, columnspan=2, sticky="w", pady=(4, 9)
@@ -240,7 +258,7 @@ class VideoToImageApp(tk.Tk):
         card.columnconfigure(0, weight=1)
 
     def _build_range_card(self, parent: ttk.Frame) -> None:
-        card = self._card(parent)
+        card = self.card(parent)
         ttk.Label(card, text="2. 처리 구간", style="CardTitle.TLabel").grid(row=0, column=0, columnspan=3, sticky="w")
         ttk.Label(
             card,
@@ -260,7 +278,7 @@ class VideoToImageApp(tk.Tk):
             card.columnconfigure(index, weight=1)
 
     def _build_output_card(self, parent: ttk.Frame) -> None:
-        card = self._card(parent)
+        card = self.card(parent)
         ttk.Label(card, text="3. 저장 설정", style="CardTitle.TLabel").grid(row=0, column=0, columnspan=4, sticky="w")
         ttk.Label(card, text="같은 이름의 파일이 있을 때만 덮어쓰기를 선택할 수 있습니다.", style="CardText.TLabel").grid(
             row=1, column=0, columnspan=4, sticky="w", pady=(4, 9)
@@ -362,7 +380,7 @@ class VideoToImageApp(tk.Tk):
         self._sync_size_controls()
 
     def _build_preview_card(self, parent: ttk.Frame) -> None:
-        card = self._card(parent)
+        card = self.card(parent)
         ttk.Label(card, text="4. 결과물 미리보기", style="CardTitle.TLabel").grid(
             row=0, column=0, columnspan=4, sticky="w"
         )
@@ -403,7 +421,7 @@ class VideoToImageApp(tk.Tk):
         self._sync_size_controls()
 
     def _on_summary_variable_changed(self, *_args: object) -> None:
-        self._update_output_summary()
+        self.update_output_summary()
         self._schedule_preview_update()
 
     def _available_size_presets(self) -> dict[str, Optional[tuple[int, int]]]:
@@ -419,7 +437,7 @@ class VideoToImageApp(tk.Tk):
             return
         state = "readonly" if self.output_mode_var.get() == GRID_OUTPUT_MODE else "disabled"
         self.grid_size_combo.configure(state=state)
-        self._update_output_summary()
+        self.update_output_summary()
 
     def _sync_size_controls(self) -> None:
         if not hasattr(self, "size_preset_combo"):
@@ -437,7 +455,7 @@ class VideoToImageApp(tk.Tk):
         if preset == CUSTOM_SIZE_LABEL:
             self.size_width_entry.configure(state="normal")
             self.size_height_entry.configure(state="normal")
-            self._update_output_summary()
+            self.update_output_summary()
             return
 
         self.size_width_entry.configure(state="disabled")
@@ -449,7 +467,7 @@ class VideoToImageApp(tk.Tk):
             width, height = selected_size
             self.size_width_var.set(str(width))
             self.size_height_var.set(str(height))
-        self._update_output_summary()
+        self.update_output_summary()
 
     def _read_requested_size(self) -> Optional[tuple[int, int]]:
         preset = self.size_preset_var.get()
@@ -463,7 +481,7 @@ class VideoToImageApp(tk.Tk):
             )
         return available[preset]
 
-    def _update_output_summary(self) -> None:
+    def update_output_summary(self) -> None:
         if self.mode_var.get() == 'edit' and hasattr(self, 'editor'):
             f = self.editor.fields
             self.summary_var.set(f'영상 편집 · {f["rotation"].get()}도 회전 · {f["speed"].get()}배속 · CRF {f["crf"].get()} · MP4')
@@ -601,7 +619,7 @@ class VideoToImageApp(tk.Tk):
             if cancel_event.is_set():
                 return
             self.messages.put(ProbeCompleted(path, info.duration, info))
-        except ProbeCancelled:
+        except OperationCancelled:
             return
         except Exception as exc:
             if not cancel_event.is_set():
@@ -616,7 +634,7 @@ class VideoToImageApp(tk.Tk):
         if self.current_job:
             return
         if not self.video_path or not self.video_path.exists():
-            messagebox.showwarning(APP_TITLE, "먼저 MP4 동영상 파일을 선택해 주세요.")
+            messagebox.showwarning(APP_TITLE, "먼저 동영상 파일을 선택해 주세요.")
             return
         if not self.duration:
             messagebox.showwarning(APP_TITLE, "동영상 정보를 아직 읽는 중입니다. 잠시 후 다시 시도해 주세요.")
@@ -826,7 +844,7 @@ class VideoToImageApp(tk.Tk):
         self.start_button.configure(text='영상 편집 시작' if self.mode_var.get() == 'edit' else '이미지 추출 시작')
         self.interval_entry.configure(state='disabled' if self.mode_var.get() == 'edit' else 'normal')
         self.scroll_canvas.yview_moveto(0)
-        self._update_output_summary()
+        self.update_output_summary()
 
     def _start(self):
         if self.mode_var.get() == 'edit': self._start_edit()
@@ -838,7 +856,7 @@ class VideoToImageApp(tk.Tk):
             messagebox.showwarning(APP_TITLE, '먼저 동영상 파일을 선택하고 정보 조회가 끝날 때까지 기다리세요.')
             return
         try:
-            request = self.editor.request(parse_time(self.start_var.get()), parse_time(self.end_var.get()))
+            request = self.editor.request(self.video_path, parse_time(self.start_var.get()), parse_time(self.end_var.get()))
             validate_edit(request, self.video_info)
             self.current_job = self.service.start_edit(request)['job_id']
         except (ValueError, OSError) as exc:
@@ -855,7 +873,7 @@ def main():
     parser.add_argument('--settings', type=Path, help='Optional isolated settings file')
     args = parser.parse_args()
     try:
-        app = VideoToImageApp(args.settings)
+        app = VideoToolsApp(args.settings)
         app.mainloop()
     except Exception as exc:
         messagebox.showerror(APP_TITLE, str(exc))
