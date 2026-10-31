@@ -6,6 +6,7 @@ from tkinter import ttk, filedialog
 
 from video_tools.core.edit import EditRequest
 from video_tools.core.limits import MAX_CRF, MAX_SPEED, MIN_SPEED, ROTATIONS
+from video_tools.gui import theme
 from video_tools.gui.settings import EditingSettings
 
 
@@ -15,7 +16,7 @@ class EditingControls:
         self.widgets = []
         self.fields = {key: (tk.BooleanVar(app, value=value) if isinstance(value, bool) else tk.StringVar(app, value=value))
                        for key, value in asdict(settings).items()}
-        card = app.card(parent)
+        card = theme.card(parent)
         ttk.Label(card, text="3. 편집 결과", style="CardTitle.TLabel").grid(row=0, column=0, columnspan=4, sticky='w')
         ttk.Label(card, text="H.264 / AAC MP4로 저장합니다. 원본과 다른 경로를 선택하세요.",
                   style='CardText.TLabel', wraplength=600).grid(row=1, column=0, columnspan=4, sticky='w', pady=(5, 10))
@@ -27,7 +28,7 @@ class EditingControls:
         self.check(card, 'overwrite', '기존 결과 덮어쓰기', 3, 0)
         for c in range(4): card.columnconfigure(c, weight=1)
 
-        card = app.card(parent)
+        card = theme.card(parent)
         self.check(card, 'crop_enabled', '크롭 사용', 0, 0)
         ttk.Label(card, text="자동 회전 적용 후 영상의 픽셀 좌표입니다. X·Y는 왼쪽 위에서 시작합니다.",
                   style='CardText.TLabel', wraplength=600).grid(row=1, column=0, columnspan=4, sticky='w', pady=(4, 8))
@@ -35,7 +36,7 @@ class EditingControls:
             [('crop_x', 'X'), ('crop_y', 'Y'), ('crop_width', '너비'), ('crop_height', '높이')])]
         for c in range(4): card.columnconfigure(c, weight=1)
 
-        card = app.card(parent)
+        card = theme.card(parent)
         ttk.Label(card, text="회전·반전", style='CardTitle.TLabel').grid(row=0, column=0, sticky='w')
         self.rotation = ttk.Combobox(card, textvariable=self.fields['rotation'], values=tuple(map(str, ROTATIONS)), state='readonly', width=10)
         self.rotation.grid(row=1, column=0, sticky='w', pady=(8, 0))
@@ -45,14 +46,14 @@ class EditingControls:
         self.widgets.append(self.rotation)
         for c in range(4): card.columnconfigure(c, weight=1)
 
-        card = app.card(parent)
+        card = theme.card(parent)
         self.check(card, 'resize_enabled', '출력 크기 지정', 0, 0)
         ttk.Label(card, text="비율을 유지하고 남는 공간은 여백으로 채웁니다. 너비·높이는 짝수로 입력하세요.",
                   style='CardText.TLabel', wraplength=600).grid(row=1, column=0, columnspan=4, sticky='w', pady=(4, 8))
         self.resize_entries = [self.entry(card, 'width', '너비(px)', 2, 0), self.entry(card, 'height', '높이(px)', 2, 1)]
         for c in range(2): card.columnconfigure(c, weight=1)
 
-        card = app.card(parent)
+        card = theme.card(parent)
         ttk.Label(card, text="속도·오디오·화질", style='CardTitle.TLabel').grid(row=0, column=0, columnspan=3, sticky='w')
         self.entry(card, 'speed', f'배속 ({MIN_SPEED:g}~{MAX_SPEED:g})', 1, 0)
         self.entry(card, 'crf', f'CRF (0~{MAX_CRF}, 낮을수록 고화질)', 1, 1)
