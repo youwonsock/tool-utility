@@ -96,7 +96,7 @@ def verify(work: Path) -> None:
           and set(window.size_mode_combo.cget("values")) == set(gui.SIZE_MODE_LABELS.values()))
     out = work / "out" / "png"
     window.output_var.set(str(out)); window.output_mode_var.set(single); window.format_var.set("PNG"); window.interval_var.set("0.5")
-    window.size_mode_var.set(gui.SIZE_MODE_LABELS["final"]); window.size_preset_var.set(gui.CUSTOM_SIZE_LABEL)
+    window.size_mode_var.set(gui.SIZE_MODE_LABELS["final"]); window.size_preset_var.set(gui.PRESET_LABELS["custom"])
     window.update()
     window.size_width_var.set("64"); window.size_height_var.set("36")
     window.update()
@@ -174,7 +174,7 @@ def verify(work: Path) -> None:
 
     # A settings file from before the modes were separated from their labels.
     old = work / "old-settings.json"
-    old.write_text(json.dumps({"output_mode": "개별 이미지 저장", "size_mode": "격자 셀 이미지 크기", "size_preset": "원본",
+    old.write_text(json.dumps({"output_mode": "개별 이미지 저장", "size_mode": "격자 셀 이미지 크기", "size_preset": "사용자 지정",
                                "prefix": "유지"}, ensure_ascii=False), encoding="utf-8")
     upgraded = gui.VideoToolsApp(old)
     upgraded.update()
@@ -198,16 +198,16 @@ def verify_output_controls(work: Path) -> None:
 
     select(window, window.size_mode_combo, window.size_mode_var, cell)
     values = set(window.size_preset_combo.cget("values"))
-    check("cell_mode_presets", values == {*gui.CELL_SIZE_PRESETS, gui.CUSTOM_SIZE_LABEL}, sorted(values))
-    select(window, window.size_preset_combo, window.size_preset_var, gui.DEFAULT_CELL_SIZE)
+    check("cell_mode_presets", values == {gui.preset_label(preset) for preset in (*gui.CELL_SIZE_PRESETS, "custom")}, sorted(values))
+    select(window, window.size_preset_combo, window.size_preset_var, gui.PRESET_LABELS["original"])
     check("original_size_clears_entries", window.size_width_var.get() == "" and str(window.size_width_entry.cget("state")) == "disabled")
     check("original_size_summary", "원본 셀 크기" in window.summary_var.get(), window.summary_var.get())
-    select(window, window.size_preset_combo, window.size_preset_var, gui.CUSTOM_SIZE_LABEL)
+    select(window, window.size_preset_combo, window.size_preset_var, gui.PRESET_LABELS["custom"])
     check("custom_size_enables_entries", str(window.size_width_entry.cget("state")) == "normal")
     window.size_width_var.set("321"); window.size_height_var.set("123"); window.update()
     check("custom_cell_summary", "셀 321 × 123" in window.summary_var.get(), window.summary_var.get())
     select(window, window.size_mode_combo, window.size_mode_var, final)
-    check("final_mode_presets", set(window.size_preset_combo.cget("values")) == {*gui.FINAL_SIZE_PRESETS, gui.CUSTOM_SIZE_LABEL})
+    check("final_mode_presets", set(window.size_preset_combo.cget("values")) == {*gui.FINAL_SIZE_PRESETS, gui.PRESET_LABELS["custom"]})
     select(window, window.size_preset_combo, window.size_preset_var, "4096 × 4096")
     check("preset_fills_entries", (window.size_width_var.get(), window.size_height_var.get()) == ("4096", "4096"))
     select(window, window.output_mode_combo, window.output_mode_var, single)
@@ -221,7 +221,12 @@ def verify_output_controls(work: Path) -> None:
     pump(window, lambda: False, .1)
     check("content_scrolls", window.scroll_canvas.yview()[0] > 0, window.scroll_canvas.yview())
     verify_mcp_dialog(window, work)
+    select(window, window.size_mode_combo, window.size_mode_var, cell)
+    select(window, window.size_preset_combo, window.size_preset_var, gui.PRESET_LABELS["original"])
+    settings_path = work / "control-settings.json"
     check("controls_window_closed", close(window))
+    saved = json.loads(settings_path.read_text(encoding="utf-8")) if settings_path.is_file() else {}
+    check("settings_store_preset_value", saved.get("size_preset") == "original", saved.get("size_preset"))
 
 
 def verify_mcp_dialog(window, work: Path) -> None:

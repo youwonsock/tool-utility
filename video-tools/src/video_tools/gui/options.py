@@ -18,7 +18,9 @@ OUTPUT_MODE_LABELS = {OUTPUT_MODE_INDIVIDUAL: "개별 이미지 저장", OUTPUT_
 SIZE_MODE_LABELS = {SIZE_MODE_FINAL: "최종 이미지 해상도", SIZE_MODE_CELL: "격자 셀 이미지 크기"}
 GRID_SIZE_PRESETS: dict[str, tuple[int, int]] = {f"{size} × {size}": (size, size) for size in GRID_SIZES}
 DEFAULT_GRID_SIZE = "3 × 3"
-CUSTOM_SIZE_LABEL = "사용자 지정"
+PRESET_ORIGINAL = "original"
+PRESET_CUSTOM = "custom"
+PRESET_LABELS = {PRESET_ORIGINAL: "원본", PRESET_CUSTOM: "사용자 지정"}
 FINAL_SIZE_PRESETS: dict[str, tuple[int, int]] = {
     "1920 × 1080": (1920, 1080),
     "2048 × 2048": (2048, 2048),
@@ -26,13 +28,13 @@ FINAL_SIZE_PRESETS: dict[str, tuple[int, int]] = {
 }
 DEFAULT_FINAL_SIZE = "1920 × 1080"
 CELL_SIZE_PRESETS: dict[str, Optional[tuple[int, int]]] = {
-    "원본": None,
+    PRESET_ORIGINAL: None,
     "1920 × 1080": (1920, 1080),
     "1280 × 720": (1280, 720),
     "854 × 480": (854, 480),
     "640 × 360": (640, 360),
 }
-DEFAULT_CELL_SIZE = "원본"
+DEFAULT_CELL_SIZE = PRESET_ORIGINAL
 PREVIEW_SAMPLE_CELL_SIZE = (320, 180)
 PREVIEW_CANVAS_HEIGHT = 260
 PREVIEW_INSET = 16
@@ -53,6 +55,12 @@ def mode_for_label(labels: dict[str, str], label: str, default: str) -> str:
     """화면 문구에 해당하는 내부 값을 찾는다."""
 
     return next((mode for mode, text in labels.items() if text == label), default)
+
+
+def preset_label(preset: str) -> str:
+    """크기 프리셋의 화면 문구. 크기 값은 그대로 표시한다."""
+
+    return PRESET_LABELS.get(preset, preset)
 
 
 @dataclass(frozen=True)

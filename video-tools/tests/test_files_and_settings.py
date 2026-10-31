@@ -7,7 +7,7 @@ from pathlib import Path
 
 from video_tools.core.backend import publish_file
 from video_tools.core.domain import SIZE_MODES
-from video_tools.gui.options import OUTPUT_MODE_LABELS, OUTPUT_MODES, SIZE_MODE_LABELS, mode_for_label
+from video_tools.gui.options import OUTPUT_MODE_LABELS, OUTPUT_MODES, SIZE_MODE_LABELS, mode_for_label, preset_label
 from video_tools.gui.settings import AppSettings, EditingSettings, load_settings, save_settings, settings_from_dict
 from video_tools.mcp.server import Workspace
 
@@ -108,8 +108,8 @@ class SettingsTest(TemporaryFolderTest):
                          (defaults.output_mode, defaults.size_mode, defaults.size_preset, "유지"))
 
     def test_stored_modes_are_kept(self):
-        settings = settings_from_dict({"output_mode": "individual", "size_mode": "cell", "size_preset": "원본"})
-        self.assertEqual((settings.output_mode, settings.size_mode, settings.size_preset), ("individual", "cell", "원본"))
+        settings = settings_from_dict({"output_mode": "individual", "size_mode": "cell", "size_preset": "original"})
+        self.assertEqual((settings.output_mode, settings.size_mode, settings.size_preset), ("individual", "cell", "original"))
 
     def test_every_mode_has_a_screen_label(self):
         self.assertEqual(set(OUTPUT_MODE_LABELS), set(OUTPUT_MODES))
@@ -117,8 +117,19 @@ class SettingsTest(TemporaryFolderTest):
         self.assertEqual(mode_for_label(SIZE_MODE_LABELS, SIZE_MODE_LABELS["cell"], "final"), "cell")
         self.assertEqual(mode_for_label(SIZE_MODE_LABELS, "없음", "final"), "final")
 
+    def test_preset_labels_are_only_for_the_screen(self):
+        self.assertEqual(preset_label("original"), "원본")
+        self.assertEqual(preset_label("custom"), "사용자 지정")
+        self.assertEqual(preset_label("1920 × 1080"), "1920 × 1080")
+        for label in ("원본", "사용자 지정"):
+            self.assertEqual(settings_from_dict({"size_mode": "cell", "size_preset": label}).size_preset, "original")
+
+    def test_custom_preset_is_kept(self):
+        settings = settings_from_dict({"size_preset": "custom", "size_width": "321", "size_height": "123"})
+        self.assertEqual((settings.size_preset, settings.size_width, settings.size_height), ("custom", "321", "123"))
+
     def test_preset_must_belong_to_the_mode(self):
-        cell_only = settings_from_dict({"size_mode": AppSettings().size_mode, "size_preset": "원본"})
+        cell_only = settings_from_dict({"size_mode": AppSettings().size_mode, "size_preset": "original"})
         self.assertEqual(cell_only.size_preset, AppSettings().size_preset)
 
     def test_unknown_keys_are_ignored(self):

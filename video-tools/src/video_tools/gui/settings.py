@@ -9,7 +9,7 @@ from typing import Any
 
 from video_tools.core.domain import SIZE_MODE_FINAL, SIZE_MODES
 from video_tools.core.limits import ROTATIONS
-from video_tools.gui.options import CELL_SIZE_PRESETS, CUSTOM_SIZE_LABEL, DEFAULT_CELL_SIZE, DEFAULT_FINAL_SIZE, DEFAULT_GRID_SIZE, FINAL_SIZE_PRESETS, GRID_SIZE_PRESETS, OUTPUT_MODE_GRID, OUTPUT_MODES, parse_positive_float
+from video_tools.gui.options import CELL_SIZE_PRESETS, DEFAULT_CELL_SIZE, DEFAULT_FINAL_SIZE, DEFAULT_GRID_SIZE, FINAL_SIZE_PRESETS, GRID_SIZE_PRESETS, OUTPUT_MODE_GRID, OUTPUT_MODES, PRESET_CUSTOM, parse_positive_float
 from video_tools.runtime import default_settings_path
 
 
@@ -78,7 +78,7 @@ def _size_settings(raw: dict[str, Any]) -> tuple[str, str]:
     available = FINAL_SIZE_PRESETS if size_mode == SIZE_MODE_FINAL else CELL_SIZE_PRESETS
     default = DEFAULT_FINAL_SIZE if size_mode == SIZE_MODE_FINAL else DEFAULT_CELL_SIZE
     preset = _text_value(raw, "size_preset", default)
-    if preset not in available and preset != CUSTOM_SIZE_LABEL:
+    if preset not in available and preset != PRESET_CUSTOM:
         preset = default
     return size_mode, preset
 
