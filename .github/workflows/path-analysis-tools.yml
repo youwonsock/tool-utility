@@ -5,10 +5,41 @@ on:
   pull_request:
     paths: ["path-analysis-tools/**", ".github/workflows/path-analysis-tools.yml"]
   workflow_dispatch:
+    inputs:
+      refresh:
+        description: "Regenerate both runtime archives for tools/sync_runtime.py"
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
+  refresh:
+    if: ${{ inputs.refresh }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-15]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: path-analysis-tools
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+      - name: Regenerate the native runtime
+        run: python tools/build_runtime.py --refresh --archive
+      - name: Preserve the runtime archive
+        uses: actions/upload-artifact@v7
+        with:
+          name: path-analysis-runtime-${{ matrix.os }}
+          path: |
+            path-analysis-tools/.build/artifacts/windows-x64.tar.gz*
+            path-analysis-tools/.build/artifacts/macos-arm64.tar.gz*
+          if-no-files-found: error
   portable:
+    if: ${{ !inputs.refresh }}
     strategy:
       fail-fast: false
       matrix:
@@ -24,9 +55,9 @@ jobs:
         run: |
           $runtime = if ($IsWindows) { 'portable/windows-x64/python/python.exe' } else { 'portable/macos-arm64/python/bin/python3.14' }
           "PAT_PYTHON=$runtime" >> $env:GITHUB_ENV
-      - name: Audit both runtime profiles
+      - name: Audit the native runtime
         shell: pwsh
-        run: '& $env:PAT_PYTHON -I -B -X utf8 tools/build_runtime.py --audit'
+        run: '& $env:PAT_PYTHON -I -B -X utf8 tools/build_runtime.py --audit --git'
       - name: Validate exported schemas
         shell: pwsh
         run: '& $env:PAT_PYTHON -I -B -X utf8 tools/export_contracts.py --check'

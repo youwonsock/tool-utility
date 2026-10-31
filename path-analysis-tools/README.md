@@ -54,6 +54,8 @@ CLI는 `--input`을 생략하면 stdin에서 같은 JSON 요청을 읽습니다.
 ./portable/macos-arm64/python/bin/python3.14 -I -B -X utf8 tools/verify_portable.py --output "/path/to/new-portable-check"
 ```
 
-Windows의 인터프리터 위치는 `portable/windows-x64/python/python.exe`입니다. 각 런타임의 manifest에 고정 버전·공급자·배포 파일 해시가 있고 licenses에 고지가 있습니다. 개발용 `build_runtime.py --seed <검증된 런타임 폴더>`는 파일을 검증한 뒤 제품 안에 별도 복사본을 만들며, 실행 시 원본 폴더를 사용하지 않습니다. 코어 배포에는 FFmpeg 실행 파일이 포함되지 않습니다.
+Windows의 인터프리터 위치는 `portable/windows-x64/python/python.exe`입니다. 각 런타임의 manifest에 고정 버전·공급자·배포 파일 해시가 있고 licenses에 고지가 있습니다. 런타임에는 GUI용 Tcl/Tk와 FFmpeg가 포함되지 않습니다.
+
+런타임을 다시 만들 때는 GitHub Actions의 **Path analysis tools**를 refresh 옵션으로 실행하고, 두 OS의 아티팩트를 `python tools/sync_runtime.py <windows-x64.tar.gz> <macos-arm64.tar.gz> --stage`로 반영합니다. `tools`의 `runtime-assets.json`, `requirements-runtime.lock`, `wheel-sources.json`에 고정 입력이 있습니다. 입력을 바꾸면 두 런타임을 함께 다시 만듭니다.
 
 선택적으로 `pip install .`로 개발용 Python 패키지를 설치할 수 있습니다. CLI는 entry point, MCP는 `python -m path_analysis_tools.mcp_server --workspace ...`로 실행합니다. 폴더 배포의 기본 실행은 항상 동봉 런타임입니다.
