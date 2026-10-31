@@ -2,16 +2,15 @@
 
 기록일: 2026-10-31. 대상 브랜치: `video-tools-slim`(기준 `main` `e9c57da`, 구현 커밋 `0616b84`).
 
-설치 없이 `run.bat`·`run_mac.command`로 실행하는 방식은 유지하고 런타임과 내려받는 양을 줄이는 작업입니다. **아직 진행 중이며 커밋된 `portable/` 런타임은 줄어들지 않았습니다.** 이 문서는 작업이 끝나면 결과를 [완료 검증 기록](verification.md)에 옮기고 삭제합니다.
+설치 없이 `run.bat`·`run_mac.command`로 실행하는 방식은 유지하고 런타임과 내려받는 양을 줄이는 작업입니다. **두 런타임을 재생성해 반영했고, 완료 검증이 남아 있습니다.** 이 문서는 작업이 끝나면 결과를 [완료 검증 기록](verification.md)에 옮기고 삭제합니다.
 
 ## 현재 상태
 
-- 소스, 빌드 스크립트, CI, 문서 변경은 커밋되어 있습니다.
-- 런타임 입력이 바뀌어 `build_runtime.py --audit`은 런타임을 다시 만들기 전까지 `Runtime inputs changed`로 실패합니다. push 실행 [40720460586](https://github.com/youwonsock/tool-utility/actions/runs/40720460586)의 실패도 이 단계에서 났습니다.
+- 소스, 빌드 스크립트, CI, 문서, 재생성한 런타임은 커밋되어 있습니다.
 - 최소 FFmpeg는 [Release `video-tools-ffmpeg-7.1.5-1`](https://github.com/youwonsock/tool-utility/releases/tag/video-tools-ffmpeg-7.1.5-1)에 게시했고, 원본 소스도 함께 올렸습니다. URL과 SHA-256은 `runtime-assets.json`에 고정되어 있습니다.
 - README는 작업 완료 후의 배포 방식과 코덱 범위를 설명합니다. 앱 ZIP Release는 아직 없습니다.
 
-**런타임을 다시 만들기 전에는 `main`에 병합하지 않습니다.** 병합하면 `main`의 CI가 실패하고 README가 아직 없는 배포물을 안내하게 됩니다.
+**완료 검증 전에는 `main`에 병합하지 않습니다.** README가 안내하는 배포물은 병합 후 태그로 게시합니다.
 
 ## 완료한 작업
 
@@ -34,14 +33,13 @@
 
 | 항목 | 결과 | 조건 |
 | --- | --- | --- |
-| Windows 런타임 | 182MB → 139MB | 현재 런타임 사본에 패키지 정리만 적용. FFmpeg는 기존 84MB |
-| Windows ZIP | 68 MiB | 정리하지 않은 현재 런타임으로 생성 |
+| Windows 런타임 | 182MB → 68MB, 파일 1,631개 | CI 재생성 결과를 저장소에 반영 |
+| Mac 런타임 | 146MB → 80MB, 파일 1,714개 | CI 재생성 결과를 저장소에 반영 |
 | Mac FFmpeg 빌드 | 작업 전체 3분 5초 | Release 아카이브 4,268,958바이트 |
 | Windows FFmpeg 빌드 | 작업 전체 13분 41초 | Release 아카이브 5,176,512바이트 |
-| Mac 런타임 | 146MB → 80MB, FFmpeg 47MiB → 9MiB | 저장소 복사본에서 Release의 FFmpeg로 재생성한 사전 점검 결과 |
-| Mac ZIP | 31,195,536바이트(약 30MiB) | 같은 사전 점검 런타임으로 생성 |
+| Mac ZIP | 31,195,536바이트(약 30MiB) | 저장소 복사본에서 같은 입력으로 재생성한 사전 점검 런타임으로 생성 |
 
-최소 FFmpeg를 넣은 Windows 런타임과 ZIP의 최종 크기는 아직 측정하지 않았습니다.
+Windows ZIP의 최종 크기는 아직 측정하지 않았습니다. 푸시 후 CI의 `video-release-*` 아티팩트로 확인합니다.
 
 ## 검증 범위
 
@@ -53,8 +51,9 @@
 - `install_ffmpeg()`: 대체 아카이브 설치, 해시 불일치와 고정값 누락 거부
 - 구성 요소 이름: 7.1.5 소스와 대조. 기존 빌드 목록과 비교하면 의도한 `libdav1d`만 다름
 
-로컬 Mac(macOS 26.6.2 ARM64)의 저장소 복사본에서 확인했습니다. 저장소의 `portable/`은 아직 바꾸지 않았습니다.
+로컬 Mac(macOS 26.6.2 ARM64)에서 확인했습니다. 첫 항목은 반영한 저장소 런타임, 나머지는 저장소 복사본의 사전 점검 결과입니다.
 
+- 저장소 런타임의 `--audit --git`, smoke 검사. 두 런타임의 Git 항목과 모드가 manifest와 일치하는 것
 - 게시된 Release의 FFmpeg를 내려받은 `--refresh`와 `--audit`, smoke 검사, 샘플 14개의 코덱 검사
 - ZIP을 `ditto`로 한글·공백 경로에 푼 뒤 실행 권한, FFmpeg 서명, 심볼릭 링크 4개, smoke 검사
 - 크롭·회전 3종·반전·배속 2종·크기 조절·전체 조합 편집
@@ -64,20 +63,20 @@
 CI에서 확인했습니다.
 
 - [Run #55](https://github.com/youwonsock/tool-utility/actions/runs/41170129103): Windows Server 2025와 macOS 15.8.2에서 새 FFmpeg로 빌드, smoke 검사 18개 항목, 코덱 샘플 14개 통과
+- [런타임 재생성](https://github.com/youwonsock/tool-utility/actions/runs/41171551818): 두 OS의 `--refresh`와 smoke 검사 17개 항목 통과
 
 아직 확인하지 못했습니다.
 
-- Windows 런타임의 `--refresh`·`--audit`, 최소 FFmpeg를 넣은 두 OS의 GUI 조작
+- 커밋된 런타임의 두 OS CI `--audit --git`, 최소 FFmpeg를 넣은 두 OS의 GUI 조작
 - 브라우저로 받은 Mac ZIP의 격리 속성과 보안 승인 동작, 앱 ZIP Release 게시 작업
 - JPEG 품질 설정이 Pillow 85에서 FFmpeg `-q:v 4`로 바뀌어 달라진 결과 바이트의 화질
 
 ## 남은 작업
 
-순서대로 진행합니다. `ffmpeg-sources.json`을 바꾸면 게시한 아카이브가 거부되므로 코덱 목록을 바꾸려면 FFmpeg 빌드와 Release부터 다시 진행합니다.
+순서대로 진행합니다. `ffmpeg-sources.json`을 바꾸면 게시한 아카이브가 거부되므로 코덱 목록을 바꾸려면 FFmpeg 빌드, Release, 런타임 재생성을 다시 진행합니다.
 
-1. **런타임 한 번 재생성.** refresh 옵션으로 실행하고 `sync_runtime.py --stage`로 반영해 한 커밋으로 만듭니다. 재생성은 Git 기록을 늘리므로 한 번만 실행합니다.
-2. **완료 검증.** 두 OS CI의 `--audit --git`·smoke 검사, Windows GUI, Mac ZIP(사람이 Mac에서 확인), 크기 전후를 `verification.md`에 새 날짜로 기록하고 이 문서를 삭제합니다.
-3. **병합과 배포.** PR로 `main`에 병합한 뒤 `video-tools-v*` 태그로 OS별 ZIP을 게시하고 브랜치를 삭제합니다. 태그 전에 workflow의 Release 설명 문구에 코덱 범위 변경을 추가합니다.
+1. **완료 검증.** 두 OS CI의 `--audit --git`·smoke 검사, Windows GUI, Mac ZIP(사람이 Mac에서 확인), 크기 전후를 `verification.md`에 새 날짜로 기록하고 이 문서를 삭제합니다.
+2. **병합과 배포.** PR로 `main`에 병합한 뒤 `video-tools-v*` 태그로 OS별 ZIP을 게시하고 브랜치를 삭제합니다. 태그 전에 workflow의 Release 설명 문구에 코덱 범위 변경을 추가합니다.
 
 재생성 후에는 저장소의 FFmpeg가 최소 빌드가 되어 샘플을 만들 수 없습니다. 이후 FFmpeg를 다시 빌드할 때는 샘플을 보관해 두거나 다른 전체 기능 FFmpeg를 지정해야 합니다.
 
