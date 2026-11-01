@@ -11,7 +11,13 @@ export type Observation = {
   reply_confirmations?: string[];
 };
 export type Answer = { decision: InputDecision; answers?: string[][] };
-export type BackendContext = { spec: WorkerSpec; state: WorkerState; save: () => void };
+export type BackendContext = {
+  spec: WorkerSpec;
+  state: WorkerState;
+  save: () => void;
+  // For periodic refreshes: writes a real change at once and otherwise at a bounded rate.
+  refresh?: () => void;
+};
 export interface WorkerBackend {
   start(): Promise<void>;
   createSession(): Promise<void>;

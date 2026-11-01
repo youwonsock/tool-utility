@@ -49,12 +49,34 @@ export async function worker(jobDir: string) {
     inputs: [],
     replies: {},
   };
+  // policy-hook reads scope_guard.checked_at from this file and rejects it after 10 seconds.
+  const refreshInterval = 2000;
+  const changeKey = () =>
+    JSON.stringify({ ...state, updated: 0, scope_guard: state.scope_guard && { ...state.scope_guard, checked_at: 0 } });
+  let savedAt = 0,
+    savedKey = '';
   const save = () => {
     state.updated = Date.now();
     writeJson(path.join(jobDir, 'worker.json'), state);
+    savedAt = Date.now();
+    savedKey = changeKey();
+  };
+  const refresh = () => {
+    if (changeKey() !== savedKey || Date.now() - savedAt >= refreshInterval) save();
+  };
+  let transcript: string | undefined,
+    transcriptWritten: string | undefined,
+    transcriptAt = 0;
+  const writeTranscript = (force = false) => {
+    if (transcript === undefined || transcript === transcriptWritten) return;
+    if (!force && Date.now() - transcriptAt < refreshInterval) return;
+    durableWrite(path.join(jobDir, 'transcript.json'), transcript);
+    transcriptWritten = transcript;
+    transcriptAt = Date.now();
+    state.transcript = 'transcript.json';
   };
   save();
-  const context = { spec, state, save };
+  const context = { spec, state, save, refresh };
   const guard = spec.diagnostic
     ? undefined
     : new ScopeGuard(context, async () => {
@@ -137,15 +159,15 @@ export async function worker(jobDir: string) {
         const observed = await backend.observe();
         guard?.assertHealthy();
         for (const id of observed.reply_confirmations ?? []) if (state.replies[id]) state.replies[id] = 'sent';
-        durableWrite(path.join(jobDir, 'transcript.json'), JSON.stringify(observed.transcript));
-        state.transcript = 'transcript.json';
+        transcript = JSON.stringify(observed.transcript);
+        writeTranscript(observed.complete || observed.error !== undefined || observed.inputs.length > 0);
         state.prompt_accepted ||= observed.accepted;
         state.inputs = observed.inputs;
         if (state.inputs.length && state.phase !== 'needs_input') {
           resumePhase = state.phase;
           moveWorker(state, 'needs_input');
         } else if (!state.inputs.length && state.phase === 'needs_input') moveWorker(state, resumePhase);
-        save();
+        refresh();
         for (const input of state.inputs) {
           guard?.assertHealthy();
           const answer =
@@ -216,6 +238,7 @@ export async function worker(jobDir: string) {
     save();
   } catch (e) {
     e = guard?.fault() ?? e;
+    writeTranscript(true);
     moveWorker(state, cancelledNow() ? 'cancelled' : 'failed');
     state.error = e instanceof Fault ? `${e.code}: ${e.message}` : (e as Error).message;
     if (e instanceof Fault) {

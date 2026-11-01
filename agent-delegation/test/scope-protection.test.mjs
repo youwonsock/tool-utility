@@ -10,11 +10,12 @@ import {
   ScopeGuard,
   awaitGuardedTermination,
   hash,
+  readJson,
   sleep,
   git,
   resultCommit,
 } from '../dist/index.mjs';
-import { fixture } from './helpers.mjs';
+import { fixture, submit, task, until } from './helpers.mjs';
 
 test('common scope semantics and direct mutation policy cover every edit, delete, rename and patch endpoint', async (t) => {
   const f = await fixture(t);
@@ -295,6 +296,22 @@ test('monitor detects ignored protected context and freezes all source during de
   await g.guard.check();
   assert.equal(g.guard.fault().code, 'CONTEXT_CHANGED');
 });
+test('source snapshots hash unchanged files once and still see every rewrite', async (t) => {
+  const f = await monitored(t, ['**']);
+  fs.writeFileSync(path.join(f.repo, 'big.txt'), 'one');
+  await f.guard.beginVerification();
+  await f.guard.check();
+  assert.equal(f.guard.fault(), undefined);
+  const known = f.guard.digests.get('base.txt');
+  assert.ok(known);
+  await f.guard.check();
+  assert.equal(f.guard.digests.get('base.txt'), known);
+  const original = fs.statSync(path.join(f.repo, 'big.txt'));
+  fs.writeFileSync(path.join(f.repo, 'big.txt'), 'two');
+  fs.utimesSync(path.join(f.repo, 'big.txt'), original.atime, original.mtime);
+  await f.guard.check();
+  assert.equal(f.guard.fault().code, 'VERIFICATION_CHANGED');
+});
 test('evidence publication failure still records the original scope violation and stops the runtime', async (t) => {
   const f = await monitored(t),
     rename = fs.renameSync;
@@ -343,4 +360,28 @@ test('independent heartbeat stops owned execution while an inspection is held wi
   release();
   await checking;
   assert.equal(f.state.scope_guard.status, 'unknown');
+});
+
+test('a running worker does not rewrite its state and transcript on every poll', async (t) => {
+  const f = await fixture(t);
+  const started = await submit(f, [task('a', { files: { 'a.txt': 'x' }, delay: 7000 })]);
+  const attempt = (await until(f, started.run_id, (run) => fs.existsSync(run.tasks[0].attempts[0]?.job_dir ?? '')))
+    .tasks[0].attempts[0];
+  const report = path.join(attempt.job_dir, 'worker.json');
+  for (let i = 0; i < 200 && readJson(report)?.phase !== 'implementing'; i++) await sleep(50);
+  const writes = { 'worker.json': new Set(), 'transcript.json': new Set() };
+  const watcher = fs.watch(attempt.job_dir, (_event, name) => {
+    for (const file of Object.keys(writes)) if (String(name).startsWith(`${file}.`)) writes[file].add(String(name));
+  });
+  t.after(() => watcher.close());
+  await sleep(4000);
+  watcher.close();
+  assert.ok(writes['worker.json'].size >= 1, 'The monitor must still refresh its durable state.');
+  assert.ok(writes['worker.json'].size <= 6, `worker.json was written ${writes['worker.json'].size} times.`);
+  assert.ok(
+    writes['transcript.json'].size <= 3,
+    `transcript.json was written ${writes['transcript.json'].size} times.`,
+  );
+  const finished = await until(f, started.run_id, (run) => run.tasks[0].state === 'needs_review', 60000);
+  assert.ok(fs.existsSync(path.join(finished.tasks[0].attempts[0].job_dir, 'transcript.json')));
 });
