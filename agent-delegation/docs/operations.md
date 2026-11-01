@@ -94,7 +94,7 @@ journal은 256개 레코드 또는 `max(32 MiB, 최신 레코드 바이트 수 �
 
 `export-host <opencode|codex|claude-code|kilo> <새 출력 경로>`는 MCP 설정과 delegate-agents 스킬·도구 계약을 생성하며 전역 설정을 등록하지 않습니다. Kilo는 CLI/runtime용 kilo.json과 IDE용 ide-mcp.json을 구분합니다. 같은 데이터 폴더에 연결하면 같은 서비스가 작업과 자원을 관리합니다.
 
-자동화된 16개 조합은 네 지시자 설정과 모의 네이티브 워커를 사용하는 MCP 계약 검사입니다. 실제 CLI/SDK 연결 검사는 별도 임시 경로에 준비한 테스트 설치본을 사용합니다. 실제 모델 작업과 IDE·데스크톱 GUI는 확인하지 않았다면 미확인으로 유지합니다. macOS에서 충돌 수정부터 `finalize_run`까지 실제 모델로 확인한 조합은 Codex 0.162.1, OpenCode 1.19.0 + SDK 1.19.5, Claude Code 2.1.316 + SDK 0.3.316, Kilo 7.4.23 + SDK 7.8.18입니다. GUI 구현자 자동 제어는 제공하지 않습니다. Codex app-server는 실험 연동입니다. SDK·CLI 버전 일치 대신 필수 API·권한 정책·세션 연결을 검사합니다. `doctor.compatible`은 초기화 검사와 종료 확인 결과이며 유료 모델 작업의 성공을 보장하지 않습니다. `backend_version`은 실제 CLI 버전이고 `runtime`은 SDK와 CLI의 식별 정보입니다.
+자동화된 16개 조합은 네 지시자 설정과 모의 네이티브 워커를 사용하는 MCP 계약 검사입니다. 실제 CLI/SDK 연결 검사는 별도 임시 경로에 준비한 테스트 설치본을 사용합니다. 실제 모델 작업과 IDE·데스크톱 GUI는 확인하지 않았다면 미확인으로 유지합니다. `npm run e2e -- <플랫폼> [모델]`은 임시 저장소에서 병렬 작업, 충돌, 수정 지시, 최종 반영을 실제 모델로 실행합니다. 모델 비용이 들어 `npm run check`에는 포함하지 않습니다. 실패하면 로그 경로를 출력하고 임시 폴더를 남기며, `--installed`를 붙이면 빌드 대신 설치본을 검사합니다. OpenCode와 Kilo 모델은 `공급자/모델` 형식입니다. macOS에서 충돌 수정부터 `finalize_run`까지 실제 모델로 확인한 조합은 Codex 0.162.1, OpenCode 1.19.0 + SDK 1.19.5, Claude Code 2.1.316 + SDK 0.3.316, Kilo 7.4.23 + SDK 7.8.18입니다. GUI 구현자 자동 제어는 제공하지 않습니다. Codex app-server는 실험 연동입니다. SDK·CLI 버전 일치 대신 필수 API·권한 정책·세션 연결을 검사합니다. `doctor.compatible`은 초기화 검사와 종료 확인 결과이며 유료 모델 작업의 성공을 보장하지 않습니다. `backend_version`은 실제 CLI 버전이고 `runtime`은 SDK와 CLI의 식별 정보입니다.
 
 ## 외부 설치본과 재시도
 

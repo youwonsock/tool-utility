@@ -16,7 +16,8 @@
     "validate:plugin": "node scripts/validate-plugin.mjs",
     "check": "npm run format:check && npm run typecheck && npm test && npm run validate:plugin",
     "install:local": "npm run build && node scripts/install.mjs",
-    "check:connections": "node scripts/connection-check.mjs"
+    "check:connections": "node scripts/connection-check.mjs",
+    "e2e": "npm run build && node scripts/e2e.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",

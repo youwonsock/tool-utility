@@ -8,8 +8,14 @@ const session=argv[argv.indexOf('--session-id')+1]??'mock-session';
 const send=frame=>process.stdout.write(`${JSON.stringify(frame)}\n`);
 const audit=event=>{if(process.env.FAKE_AUDIT)fs.appendFileSync(process.env.FAKE_AUDIT,`${JSON.stringify({...event,cwd:process.cwd(),platform:'claude-code',pid:process.pid})}\n`);};
 let action={},timer,pending;
-const finish=()=>{
-  for(const [file,data]of Object.entries(action.files??{})){fs.mkdirSync(path.dirname(path.resolve(file)),{recursive:true});fs.writeFileSync(file,data);}
+// Saves like the real CLI: a sibling temporary file is visible to watchers before the rename.
+const save=async(file,data)=>{
+  fs.mkdirSync(path.dirname(path.resolve(file)),{recursive:true});
+  const temporary=`${file}.tmp.${process.pid}.78d4486ba9cb`;
+  fs.writeFileSync(temporary,data);await new Promise(resolve=>setTimeout(resolve,50));fs.renameSync(temporary,file);
+};
+const finish=async()=>{
+  for(const [file,data]of Object.entries(action.files??{}))await save(file,data);
   send({type:'assistant',session_id:session,parent_tool_use_id:null,uuid:'reply_mock',message:{role:'assistant',model:'fake-model',content:[{type:'text',text:action.summary??'Mock implementation finished.'}],usage:{input_tokens:1,output_tokens:1}}});
   send({type:'result',subtype:'success',session_id:session,is_error:false,result:action.summary??'Mock implementation finished.',num_turns:1,duration_ms:1,duration_api_ms:0,total_cost_usd:0,usage:{input_tokens:1,output_tokens:1}});audit({event:'finished'});
 };
