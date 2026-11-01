@@ -121,13 +121,14 @@ test('Codex owned question tools pass the trusted hook and retain native questio
   const observed=await codexInput(backend);assert.equal(observed.complete,true);assert.ok(observed.reply_confirmations.includes(pending.inputs[0].id));
 });
 test('Codex rejects stale-turn, foreign-thread, unknown and malformed dynamic calls without an approval',async t=>{
-  const {backend,state,spec}=await native(t,'codex');await backend.createSession();
+  // A backend owns one turn: reusing it can observe the previous turn's completion.
   for(const change of [{turnId:'old-turn'},{threadId:'foreign-thread'},{namespace:'foreign'},{callId:''},{callId:null},{tool:'unknown'}]) {
+    const {backend,state,spec}=await native(t,'codex');await backend.createSession();
     const params={namespace:null,callId:'call_scoped',tool:'delegate_run_command',arguments:{command:'node harmless'},...change};
     await backend.dispatch(`FAKE_ACTION:${JSON.stringify({permission:{method:'item/tool/call',params},files:{'a.txt':'must not run'}})}`,state.prompt_id);
     const observed=await codexInput(backend);assert.equal(observed.complete,true);assert.deepEqual(observed.inputs,[]);assert.equal(fs.existsSync(path.join(spec.directory,'a.txt')),false);
+    assert.equal(fs.readdirSync(spec.job_dir).some(name=>name.startsWith('supervised-')),false);
   }
-  assert.equal(fs.readdirSync(spec.job_dir).some(name=>name.startsWith('supervised-')),false);
 });
 test('Codex dynamic shell waits for a grant, preserves its server, confirms the receipt and never replays',async t=>{
   const {backend,state,spec}=await native(t,'codex');await backend.createSession();const root={...state.server};
