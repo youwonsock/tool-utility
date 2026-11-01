@@ -29,6 +29,7 @@ worktrees. Keep this division when changing either platform.
    commit, bounded diff, observed exit codes, context and acceptance criteria.
    A model report is not verification evidence. Use approve_task for
    that exact commit or request_changes with concrete correction instructions.
+   A conflict_unresolved attempt cannot be approved; request a correction.
 7. After a correction, its old result cannot be approved, including before
    dispatch and after restart. Keep the selected worker/profile/model for the
    correction. Integrated tasks are immutable. There are no autonomous retries.
@@ -69,7 +70,4 @@ declared verification. It survives service disconnection, preserves violation
 files/evidence, stops owned execution and keeps leases until confirmed stopped.
 Missing or stale monitor health fails closed; scope_or_context_error cannot be
 approved. Do not describe these guards as OS isolation for arbitrary supervisor-
-approved programs. Only storage/submission format 4, RPC 1 and worker format 2
-are supported; the 12 MCP inputs remain unchanged. Old formats and unfinished
-migration records are preserved and rejected without conversion. Use operations
-for whole-root backup/restore or starting a separate empty current data root.
+approved programs. Use operations for whole-root backup and restore.

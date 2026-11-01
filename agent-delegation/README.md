@@ -59,7 +59,7 @@ Windows PowerShell:
 
 개발 저장소를 옮기거나 삭제해도 도구 설치본은 독립적으로 동작합니다. 선택한 사용자 CLI와 SDK는 외부 설치 경로에 유지해야 합니다. 플랫폼 SDK와 네이티브 CLI는 배포물에 포함하지 않습니다. 소스 플러그인의 `runtime/`은 설치 때 채우므로 설치 스크립트를 사용하세요.
 
-MCP 브리지는 도구 호출마다 같은 설치 폴더의 `current.json`을 확인합니다. 새 배포물이 선택되면 기존 대화의 stdio 연결을 유지하고 새 설치본의 MCP로 호출을 전달합니다. 새 설치본이 RPC·저장 형식·워커 형식을 검사하며, 실패한 호출을 자동으로 재전송하지 않습니다. `doctor.deployment.version`과 `doctor.deployment.executable`에서 실제 서비스의 설치 버전·실행 경로를 확인할 수 있습니다.
+재설치한 뒤 이미 열려 있는 대화의 MCP 프로세스는 이전 설치본을 계속 사용합니다. 새 설치본을 쓰려면 MCP를 다시 연결하거나 대화를 새로 시작합니다. `doctor.deployment.version`과 `doctor.deployment.executable`에서 실제 서비스의 설치 버전·실행 경로를 확인할 수 있습니다.
 
 등록 없이 배포물만 생성하려면 `sh install.sh --no-register` 또는 `./install.ps1 -NoRegister`를 사용합니다. 설치 결과 JSON에 실제 배포 경로와 CLI 경로가 표시됩니다.
 
@@ -82,12 +82,13 @@ MCP가 처음 호출될 때 서비스가 시작됩니다. 지시자 대화 종�
 
 ## 작업 제출
 
-전체 예제와 도구 계약은 [Skill 참조](plugins/agent-delegation/skills/delegate-agents/references/contract.md)에 있습니다.
+`create_run`으로 실행을 만듭니다. 저장소, 구현자, 최종 검증 명령과 작업별 검증 명령이 필수입니다. 전체 예제와 도구 계약은 [Skill 참조](plugins/agent-delegation/skills/delegate-agents/references/contract.md)에 있습니다.
 
 ```json
 {
   "request_id": "feature-001",
   "repo": "/absolute/project",
+  "worker": {"platform": "codex"},
   "context_files": ["AGENTS.md", ".specs/feature/spec.md"],
   "tasks": [{
     "id": "parser",
@@ -111,11 +112,13 @@ MCP가 처음 호출될 때 서비스가 시작됩니다. 지시자 대화 종�
 | 도구 | 역할 |
 | --- | --- |
 | `doctor` | 선택한 런타임의 설치·버전·초기화·정책·자원 등록 확인 |
-| `submit_tasks` | 새 실행 생성 또는 기존 실행에 작업 추가 |
+| `create_run` | 저장소·구현자·최종 검증을 지정해 새 실행 생성 |
+| `add_tasks` | 기존 실행에 작업 추가. 구현자·설정·자원·공유 문맥은 바꿀 수 없음 |
 | `list_runs`, `get_run` | 실행 발견, 작업·검수·입력 대기 조회 |
 | `wait_run` | 최대 30초 대기 후 이벤트 변경분 반환 |
 | `get_artifact` | diff·실제 검증 결과·모델 보고·로그 페이지 조회 |
-| `review_task` | 특정 시도와 커밋의 승인 또는 수정 지시 |
+| `approve_task` | 특정 시도와 커밋을 승인하고 통합 |
+| `request_changes` | 최신 시도를 거절하고 수정 지시로 새 시도 시작 |
 | `respond_to_request` | 워커 질문·권한 요청과 supported_decisions에 맞춰 응답 |
 | `reconcile_run` | 실제 프로세스·세션·Git 상태와 기록 대조 |
 | `cancel_run` | 취소 요청 및 종료 확인 추적 |
@@ -124,13 +127,11 @@ MCP가 처음 호출될 때 서비스가 시작됩니다. 지시자 대화 종�
 
 변경 요청에는 `request_id`가 필요합니다. 같은 ID·내용은 진행 상태 또는 완료된 응답을 반환하고 다른 내용은 거부합니다. 1초 이상 걸리는 변경은 `{in_progress:true, operation_id, operation_status:"running", run_id?}`로 먼저 응답할 수 있습니다. 같은 ID와 내용으로 결과를 다시 확인하고 `get_run.operations`로 진행 상태를 조회합니다. 완료 전에는 완료 응답을 저장하지 않습니다. 이전 요청의 실행 여부가 불확실하면 `REQUEST_UNCERTAIN`을 반환하므로 기록을 대조한 뒤 현재 상태에 맞는 다음 동작을 결정합니다.
 
-제출 전에 자원 참조와 모든 문맥을 검증하고, 준비한 작업 묶음을 한 번에 등록합니다. 준비 중 오류는 빈 실행이나 일부 작업을 등록하지 않습니다. 저장 결과가 불확실하면 새 dispatch를 중단하며, 재시작 시 journal과 현행 형식의 제출 준비 기록을 대조합니다. 공통 상태 규칙의 오류는 `STATE_TRANSITION`, 알 수 없는 저장 상태는 `STATE_CORRUPT`입니다. MCP·서비스 RPC는 **1**, 저장·제출 준비 형식은 **4**, 워커 기록은 **2**만 지원합니다. 구형 저장 형식과 중단된 이전 기록은 자동 변환하지 않고 시작·설치 전환을 거절합니다. 기존 데이터의 보존과 새 데이터 폴더 사용, 현행 백업 복원은 [운영 문서](docs/operations.md#데이터-보존과-백업-복원)를 따릅니다.
+제출 전에 자원 참조와 모든 문맥을 검증하고, 준비한 작업 묶음을 한 번에 등록합니다. 준비 중 오류는 빈 실행이나 일부 작업을 등록하지 않습니다. 저장 결과가 불확실하면 새 dispatch를 중단하며, 재시작 시 journal과 현행 형식의 제출 준비 기록을 대조합니다. 공통 상태 규칙의 오류는 `STATE_TRANSITION`, 알 수 없는 저장 상태는 `STATE_CORRUPT`입니다. 저장 형식이 다른 데이터는 시작·설치 전환을 거절합니다. 백업과 복원은 [운영 문서](docs/operations.md#백업과-복원)를 따릅니다.
 
 기본 상태는 변경분과 요청 응답·이벤트를 같은 트랜잭션으로 journal에 동기화합니다. 전체 상태는 매 저장 대신 주기적 체크포인트에서 생성합니다. 체크포인트와 큰 보관 직렬화는 별도 작업 스레드에서 수행하고, 세대별 journal을 보존한 뒤 새 manifest를 원자적으로 게시합니다. 산출물은 요청한 바이트 구간만 읽고, 신규 보관 상세·이벤트는 청크로 조회합니다.
 
 완료·취소 실행과 완료된 요청 응답은 각각 종료·응답 완료 후 7일이 지나면 `archives/`에 별도 보관합니다. 서비스 시작과 매시간 대상을 검색해 한 건씩 처리하며, 프로세스·자원 잠금·미해결 제출 준비가 있는 실행은 보류합니다. `list_runs`·`get_run`은 보관 기록도 포함하고 `archived`, `archived_at`, `ended_at`을 표시합니다. 상세·이벤트·증거 조회와 `cleanup`은 계속 사용할 수 있고, 새 상태 변경은 `RUN_ARCHIVED`입니다. 같은 요청 ID·내용의 재전송은 보관된 응답을 반환합니다. 보관 기록·증거·로그·사용자 파일은 자동 삭제하지 않습니다.
-
-실행 보관은 형식 4의 `chunked-run` manifest만 지원합니다. 기본 상태가 형식 4여도 과거 이전으로 남은 단일 파일 보관은 자동 변환하지 않습니다. 그 요약은 목록에 남을 수 있지만 상세·이벤트 조회는 `STATE_CORRUPT`로 거절합니다.
 
 기본 응답은 MCP JSON 포장을 포함해 4 KiB, 산출물 응답은 16 KiB 이내입니다. `next_cursor`, `after`, `next_offset`을 따라 조회합니다. 큰 구조화 응답은 JSON을 잘라내지 않고 전체 응답을 가리키는 `artifact_id`를 반환합니다. `get_artifact`로 해당 JSON 전체를 이어 읽을 수 있습니다. 모델의 요약과 관찰된 명령·종료 코드는 별도 필드입니다. `unknown`, 미실행, 중단은 성공으로 승인할 수 없습니다.
 
@@ -138,12 +139,14 @@ MCP가 처음 호출될 때 서비스가 시작됩니다. 지시자 대화 종�
 
 1. 독립 작업은 최대 동시 실행 수 안에서 실행합니다. 후속 작업은 선행 작업의 **검수·통합 완료**를 기다립니다.
 2. 구현자와 검증 프로세스의 정지가 확인되면 범위와 문맥을 검사하고 불변 결과 커밋을 만듭니다.
-3. 지시자가 diff와 실제 명령 증거를 읽고 정확한 시도 ID·커밋으로 승인합니다. 통합 충돌은 증거와 함께 반환하며 지시자의 수정 지시를 기다립니다.
+3. 지시자가 diff와 실제 명령 증거를 읽고 `approve_task`로 정확한 시도 ID·커밋을 승인합니다. 통합 충돌은 증거와 함께 반환하며 지시자의 수정 지시를 기다립니다.
 4. 모든 작업을 통합한 후 `validate_run`으로 별도 검증 worktree를 만듭니다. 검증 중 추가 제출은 차단하며 소스가 변경되면 검증을 실패 처리합니다.
 5. 검증 산출물을 검수한 지시자가 현재 검증 ID·커밋·작업 버전으로 `finalize_run`을 호출합니다. 작업을 추가했다면 이전 검증은 무효입니다.
 6. 원래 브랜치·기준 HEAD·소스 상태를 재확인하고 `git merge --ff-only --no-overwrite-ignore`로 반영한 뒤 실제 HEAD와 작업폴더를 확인합니다. 사용자 변경이나 ignored 파일 충돌을 자동 삭제·되돌림하지 않습니다.
 
-통합된 작업은 수정하지 않고 후속 작업을 추가합니다. 아직 통합하지 않은 결과에 대한 수정 요청은 현재 통합 기준에 이전 결과 전체를 적용한 새 시도로 실행합니다.
+통합된 작업은 수정하지 않고 후속 작업을 추가합니다. 아직 통합하지 않은 결과에 대한 수정 요청은 현재 통합 기준에 커밋이 있는 가장 최근 시도의 결과를 적용한 새 시도로 실행합니다.
+
+이 적용에서 충돌이 나면 충돌 파일을 기록하고 프롬프트로 구현자에게 해결을 지시합니다. 완료 시 충돌 표식이 남았거나 파일이 그대로라면(바이너리 충돌에는 표식이 없습니다) 시도는 `conflict_unresolved`가 되어 승인이 `UNRESOLVED_CONFLICT`로 거절되고, `request_changes`로 그 커밋부터 이어갑니다. 적용 자체가 실패하면 `CORRECTION_APPLY_FAILED`로 모델을 호출하지 않고 중단하며 수정 횟수도 쓰지 않습니다.
 
 수정 지시가 수락되면 이전 결과는 즉시 검수 대상에서 제외됩니다. 새 시도의 시작 전이나 재시작 후에도 이전 결과의 승인은 차단됩니다. 취소 의도는 늦은 검증 완료 기록보다 우선하며, 종료 확인 전에는 `cancelling`과 자원 잠금을 유지합니다. 취소된 검증은 `cancelled`로 표시합니다.
 
@@ -190,38 +193,24 @@ node "<installed-cli-path>" cleanup run_id
 
 업데이트 전에 이전 설치본으로 작업을 완료/취소하고 서비스를 종료합니다. 새 배포물을 준비한 뒤 등록을 전환하며 실패하면 이전 등록을 복구합니다. 서비스가 살아 있거나 종료가 불확실한 시도가 있으면 `UPDATE_PENDING`으로 전환을 보류합니다. 기록과 사용자 설치본은 보존합니다. 자세한 복구 판단은 [운영 문서](docs/operations.md)에 있습니다.
 
-## 개발과 검증
-
-```sh
-npm ci
-npm run check
-```
-
-네 플랫폼의 모의 네이티브 프로토콜, 실제 임시 Git 저장소·프로세스, 16개 지시자 설정/구현자 조합으로 MCP 계약을 검증합니다. `npm run check:connections`는 실제 CLI·SDK 초기화와 연결을 모델 호출 없이 별도 검사합니다. 모델 작업과 IDE·데스크톱 GUI를 실제 확인하지 않았다면 미확인으로 표시합니다. 전용 GitHub Actions는 Windows·macOS의 Node 22에서 타입 검사, 자동 테스트, 플러그인 검사를 실행합니다. 로컬 형식 검사는 `plugin-creator`와 `skill-creator`의 공식 검증기로도 수행했습니다.
-
-CI의 실제 연결 검사만 별도 임시 경로에 테스트용 CLI·SDK를 설치합니다. 이 준비는 일반 설치·빌드·업데이트에서 실행하지 않습니다. 수동 테스트 환경은 `node scripts/prepare-connections.mjs <절대-임시-경로>`로 준비하고 `npm run check:connections -- <같은-경로>`로 검사합니다. 인수를 생략한 연결 검사는 사용자의 현재 설치본을 검사합니다.
-
-CI는 Windows·macOS 회귀 검사와 네이티브 초기화 검사 네 작업을 유지합니다. `scripts/ci-check.mjs`는 실제 명령·종료 코드와 크기를 제한한 정제 로그를 별도 임시 폴더에 남기며, 실패 시 이 진단만 7일 보관 아티팩트로 올립니다. 원본 job/spec·연결 암호·사용자 인증·네이티브 로그는 업로드하지 않습니다. 네이티브 초기화 검사에는 모델 요청이 없습니다.
-
-
-구현 근거: [확정 스펙](docs/spec.md), [OpenCode 서버 API](https://opencode.ai/docs/server/), [OpenCode 설정](https://opencode.ai/docs/config/), [OpenCode 1.18.30 SDK](https://www.npmjs.com/package/@opencode-ai/sdk/v/1.18.30), [Codex 플러그인 문서](https://developers.openai.com/plugins/build/plugins).
-
 ## 다중 구현자 선택
 
-실행 기본값은 `submit_tasks.worker`, 작업별 전체 재정의는 `tasks[].worker`입니다.
+실행 기본값은 `create_run.worker`(필수), 작업별 전체 재정의는 `tasks[].worker`입니다.
 형식은 `{platform, model?, profile?}`이고 플랫폼은 `opencode`, `codex`,
 `claude-code`, `kilo`입니다. OpenCode·Kilo 모델은 `{providerID, modelID}`,
-Codex·Claude 모델은 문자열입니다. 선택이 없으면 OpenCode를 사용합니다. 실행 기본값은 추가 제출에서 바꿀 수 없으며 수정
+Codex·Claude 모델은 문자열입니다. 실행 기본값은 `add_tasks`에서 바꿀 수 없으며 수정
 시도는 고정한 플랫폼·프로필·모델을 유지합니다.
 
 ```json
 {
   "worker": {"platform": "codex"},
+  "final_verification": [{"command": "npm test"}],
   "tasks": [{
     "id": "parser",
     "goal": "지정한 파서를 구현한다",
     "scope": ["src/parser/**"],
     "acceptance": ["명세의 입력을 처리한다"],
+    "verification": [{"command": "npm test -- parser"}],
     "worker": {"platform": "claude-code", "profile": "local-claude"}
   }]
 }
@@ -230,9 +219,7 @@ Codex·Claude 모델은 문자열입니다. 선택이 없으면 OpenCode를 사�
 로컬 profiles.json 예제와 세부 계약은 Skill 참조에 있습니다. 인증 파일을
 복사하지 않으며 env_refs는 기존 환경 변수 이름을 참조합니다.
 
-저장·제출 준비 형식은 4, 워커 기록은 2, 서비스 RPC는 1입니다. 형식이 다르거나 누락된 기록은 거절하며 구형 형식의 호환 reader나 자동 이전은 제공하지 않습니다.
-
-실행 설정은 `AGENT_DELEGATION_{OPENCODE,CODEX,CLAUDE,KILO}_EXECUTABLE`과 `_EXECUTABLE_ARGS`로 지정합니다. 이전 도구의 환경변수·모델 입력·스킬 별칭은 지원하지 않습니다. 모델은 `worker.model`에 지정하세요.
+실행 설정은 `AGENT_DELEGATION_{OPENCODE,CODEX,CLAUDE,KILO}_EXECUTABLE`과 `_EXECUTABLE_ARGS`로 지정합니다. 모델은 `worker.model`에 지정합니다.
 
 ## 외부 SDK 설정과 초기화
 
@@ -255,3 +242,18 @@ Windows 경로는 JSON에서 역슬래시를 이스케이프하거나 `C:/Users/
 `doctor`는 `SDK_NOT_FOUND`, `SDK_INCOMPATIBLE`, `CLI_NOT_FOUND`, `CLI_INCOMPATIBLE`과 설정 안내를 반환합니다. `runtime`에는 실제 CLI·SDK 경로, 버전과 식별 정보가 포함됩니다. 성공은 모델 요청 없이 초기화·필수 정책·세션 연결·종료를 확인했다는 뜻이며 공급자 인증이나 모델 작업 성공을 보장하지 않습니다.
 
 제출 전에는 사용할 구현자의 설치 경로를 검사하고 모델 전달 전에는 필수 API를 검사합니다. 진행 중인 시도의 설치본이 삭제·교체되면 `RUNTIME_CHANGED` 증거를 남기고 기존 요청을 재전송하지 않습니다. 새로운 수정 시도에서는 현재 설치본을 다시 검사합니다. SDK가 없어도 MCP 연결, 기록 조회·검수, 소유 프로세스 취소와 최종 명령 검증은 가능합니다.
+
+## 개발과 검증
+
+```sh
+npm ci
+npm run check
+```
+
+네 플랫폼의 모의 네이티브 프로토콜, 실제 임시 Git 저장소·프로세스, 16개 지시자 설정/구현자 조합으로 MCP 계약을 검증합니다. `npm run check:connections`는 실제 CLI·SDK 초기화와 연결을 모델 호출 없이 별도 검사합니다. 모델 작업과 IDE·데스크톱 GUI를 실제 확인하지 않았다면 미확인으로 표시합니다. 전용 GitHub Actions는 Windows·macOS의 Node 22에서 타입 검사, 자동 테스트, 플러그인 검사를 실행합니다. 로컬 형식 검사는 `plugin-creator`와 `skill-creator`의 공식 검증기로도 수행했습니다.
+
+CI의 실제 연결 검사만 별도 임시 경로에 테스트용 CLI·SDK를 설치합니다. 이 준비는 일반 설치·빌드·업데이트에서 실행하지 않습니다. 수동 테스트 환경은 `node scripts/prepare-connections.mjs <절대-임시-경로>`로 준비하고 `npm run check:connections -- <같은-경로>`로 검사합니다. 인수를 생략한 연결 검사는 사용자의 현재 설치본을 검사합니다.
+
+CI는 Windows·macOS 회귀 검사와 네이티브 초기화 검사 네 작업을 유지합니다. `scripts/ci-check.mjs`는 실제 명령·종료 코드와 크기를 제한한 정제 로그를 별도 임시 폴더에 남기며, 실패 시 이 진단만 7일 보관 아티팩트로 올립니다. 원본 job/spec·연결 암호·사용자 인증·네이티브 로그는 업로드하지 않습니다. 네이티브 초기화 검사에는 모델 요청이 없습니다.
+
+구현 근거: [확정 스펙](docs/spec.md), [OpenCode 서버 API](https://opencode.ai/docs/server/), [OpenCode 설정](https://opencode.ai/docs/config/), [OpenCode 1.18.30 SDK](https://www.npmjs.com/package/@opencode-ai/sdk/v/1.18.30), [Codex 플러그인 문서](https://developers.openai.com/plugins/build/plugins).
