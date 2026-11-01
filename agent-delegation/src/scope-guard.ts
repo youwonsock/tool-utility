@@ -3,7 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { Fault, invariant } from './types.js';
 import { digest, writeJson, sleep } from './io.js';
-import { git, head, checkContext, status } from './git.js';
+import { git, head, checkContext, ignoredPaths, status } from './git.js';
 import { checkedMutationPath, scopeAllows, workerPolicyHash } from './scope.js';
 import type { BackendContext } from './backends/contract.js';
 
@@ -23,6 +23,24 @@ function savingInScope(scope: string[], file: string) {
   const target = atomicWriteTemp.exec(file)?.[1];
   return target !== undefined && scopeAllows(scope, target);
 }
+const notificationLimit = 4096;
+const parentOf = (file: string) => {
+  const end = file.lastIndexOf('/');
+  return end < 0 ? undefined : file.slice(0, end);
+};
+function ancestors(file: string) {
+  const result: string[] = [];
+  for (let parent = parentOf(file); parent !== undefined; parent = parentOf(parent)) result.push(parent);
+  return result;
+}
+const coveredBy = (directories: Set<string>, file: string) =>
+  directories.size > 0 && (directories.has(file) || ancestors(file).some((parent) => directories.has(parent)));
+const scopeCoversDirectory = (scope: string[], directory: string) =>
+  scope.some(
+    (entry) =>
+      entry === '**' ||
+      (entry.endsWith('/**') && (directory === entry.slice(0, -3) || directory.startsWith(entry.slice(0, -2)))),
+  );
 
 // The worker owns this monitor: service/MCP disconnects do not disable it.
 // Notifications provide prompt checks; periodic Git/context checks cover missed
@@ -33,6 +51,11 @@ export class ScopeGuard {
   private watchdog?: NodeJS.Timeout;
   private lastHealthyAt = Date.now();
   private pending = new Set<string>();
+  // Directories whose individual notifications no longer fit the bounded backlog.
+  private collapsed = new Set<string>();
+  // Verdicts are cached so a build writing thousands of ignored files asks Git once.
+  private ignoredDirectories = new Set<string>();
+  private plainDirectories = new Set<string>();
   private checking?: Promise<void>;
   private initialHead = '';
   private initialRef = '';
@@ -60,11 +83,7 @@ export class ScopeGuard {
         }
         const relative = String(file).split(path.sep).join('/');
         if (relative === '.git' || relative.startsWith('.git/')) return;
-        this.pending.add(relative);
-        if (this.pending.size > 4096) {
-          this.fail(new Fault('SCOPE_GUARD_UNKNOWN', 'Scope notification backlog exceeded its bounded capacity.'));
-          return;
-        }
+        this.record(relative);
         void this.check();
       });
       this.watcher.on('error', (error) =>
@@ -79,6 +98,82 @@ export class ScopeGuard {
       this.fail(error instanceof Fault ? error : new Fault('SCOPE_GUARD_UNKNOWN', (error as Error).message));
       this.assertHealthy();
     }
+  }
+  private record(relative: string) {
+    if (relative === '.gitignore' || relative.endsWith('/.gitignore')) {
+      this.ignoredDirectories.clear();
+      this.plainDirectories.clear();
+    }
+    if (coveredBy(this.ignoredDirectories, relative) || coveredBy(this.collapsed, relative)) return;
+    this.pending.add(relative);
+    while (this.pending.size + this.collapsed.size > notificationLimit) {
+      const before = this.pending.size + this.collapsed.size;
+      const folded = this.pending.size ? [...this.pending] : [...this.collapsed];
+      if (!this.pending.size) this.collapsed.clear();
+      this.pending.clear();
+      for (const file of folded) {
+        const parent = parentOf(file);
+        if (parent === undefined) this.pending.add(file);
+        else this.collapsed.add(parent);
+      }
+      if (this.pending.size + this.collapsed.size >= before) {
+        this.fail(new Fault('SCOPE_GUARD_UNKNOWN', 'Scope notification backlog exceeded its bounded capacity.'));
+        return;
+      }
+    }
+  }
+  private async learnIgnoredDirectories(paths: string[], directories: string[]) {
+    const { spec } = this.context;
+    const unknown = new Set<string>();
+    for (const directory of directories) unknown.add(directory);
+    for (const file of paths) for (const parent of ancestors(file)) unknown.add(parent);
+    for (const directory of [...unknown])
+      if (this.ignoredDirectories.has(directory) || this.plainDirectories.has(directory)) unknown.delete(directory);
+    const ignored = await ignoredPaths(
+      spec.directory,
+      [...unknown].map((directory) => `${directory}/`),
+    );
+    for (const directory of unknown)
+      (ignored.has(`${directory}/`) ? this.ignoredDirectories : this.plainDirectories).add(directory);
+  }
+  private async checkNotifications() {
+    const { spec } = this.context;
+    const notifications = [...this.pending],
+      folded = [...this.collapsed];
+    this.pending.clear();
+    this.collapsed.clear();
+    const undecided: string[] = [],
+      directories = [...folded];
+    for (const file of notifications) {
+      if (spec.context.some((c) => c.path.toLowerCase() === file.toLowerCase())) {
+        checkContext(spec.directory, spec.context);
+        continue;
+      }
+      if (scopeAllows(spec.scope, file) || savingInScope(spec.scope, file)) continue;
+      try {
+        if (fs.lstatSync(path.join(spec.directory, file)).isDirectory()) {
+          const key = file.normalize('NFC').toLowerCase();
+          if (spec.scope.some((entry) => entry === '**' || entry.normalize('NFC').toLowerCase().startsWith(`${key}/`)))
+            continue;
+          directories.push(file);
+        }
+      } catch {
+        /* Removed paths still require a policy check. */
+      }
+      undecided.push(file);
+    }
+    await this.learnIgnoredDirectories(undecided, directories);
+    const remaining = undecided.filter((file) => !coveredBy(this.ignoredDirectories, file));
+    const ignored = await ignoredPaths(spec.directory, remaining);
+    for (const file of remaining)
+      invariant(ignored.has(file), 'SCOPE_VIOLATION', 'Changes exceed the declared scope.', [
+        { path: file, notification: true },
+      ]);
+    for (const directory of folded)
+      if (!coveredBy(this.ignoredDirectories, directory) && !scopeCoversDirectory(spec.scope, directory))
+        throw new Fault('SCOPE_GUARD_UNKNOWN', 'Scope notification backlog exceeded its bounded capacity.', {
+          directory,
+        });
   }
   private fail(error: Fault) {
     if (this.failure || this.closed) return;
@@ -205,35 +300,7 @@ export class ScopeGuard {
         spec.scope,
         spec.context.map((c) => c.path),
       );
-    const notifications = [...this.pending];
-    this.pending.clear();
-    for (const file of notifications) {
-      if (spec.context.some((c) => c.path.toLowerCase() === file.toLowerCase())) {
-        checkContext(spec.directory, spec.context);
-        continue;
-      }
-      if (scopeAllows(spec.scope, file) || savingInScope(spec.scope, file)) continue;
-      try {
-        if (
-          fs.lstatSync(path.join(spec.directory, file)).isDirectory() &&
-          spec.scope.some(
-            (entry) =>
-              entry === '**' ||
-              entry
-                .normalize('NFC')
-                .toLowerCase()
-                .startsWith(`${file.normalize('NFC').toLowerCase()}/`),
-          )
-        )
-          continue;
-      } catch {
-        /* Removed paths still require a policy check. */
-      }
-      const ignored = await git(spec.directory, ['check-ignore', '--quiet', '--', file], true);
-      invariant(ignored.code === 0, 'SCOPE_VIOLATION', 'Changes exceed the declared scope.', [
-        { path: file, notification: true },
-      ]);
-    }
+    await this.checkNotifications();
     if (this.verification) {
       const observed = await this.sourceSnapshot();
       invariant(

@@ -11,6 +11,18 @@ export async function git(cwd: string, args: string[], allowFailure = false) {
     throw new Fault('GIT', result.stderr || result.stdout || 'Git failed', { args, code: result.code });
   return result;
 }
+// One Git process answers for any number of paths. A tracked path is never reported as ignored.
+export async function ignoredPaths(cwd: string, paths: string[]) {
+  if (!paths.length) return new Set<string>();
+  const result = await exec('git', ['-c', 'core.quotepath=false', 'check-ignore', '-z', '--stdin'], {
+    cwd,
+    timeout: 120000,
+    input: `${paths.join('\0')}\0`,
+  });
+  if (result.code !== 0 && result.code !== 1)
+    throw new Fault('GIT', result.stderr || 'Git check-ignore failed', { code: result.code });
+  return new Set(result.stdout.split('\0').filter(Boolean));
+}
 export const head = async (cwd: string) => (await git(cwd, ['rev-parse', 'HEAD'])).stdout.trim();
 export const branch = async (cwd: string) =>
   (await git(cwd, ['symbolic-ref', '--quiet', '--short', 'HEAD'], true)).stdout.trim();

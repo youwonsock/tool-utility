@@ -46,6 +46,7 @@ function prepare() {
   git('config', 'user.name', 'e2e');
   git('config', 'user.email', 'e2e@localhost');
   fs.writeFileSync(path.join(repo, 'greeting.txt'), 'first\nsecond\nthird\n');
+  fs.writeFileSync(path.join(repo, '.gitignore'), 'out/\n');
   fs.writeFileSync(
     path.join(repo, 'check.js'),
     [
@@ -53,6 +54,9 @@ function prepare() {
       "if (/^(<{7}|={7}|>{7})/m.test(text)) { console.error('conflict markers'); process.exit(1); }",
       "const lines = text.trimEnd().split('\\n');",
       "if (lines.length !== 3 || lines[0] !== 'first' || lines[2] !== 'third') { console.error('other lines changed'); process.exit(1); }",
+      '// Build output: thousands of ignored files must not trip the scope monitor.',
+      "require('fs').mkdirSync('out', { recursive: true });",
+      "for (let i = 0; i < 5000; i++) require('fs').writeFileSync('out/f' + i + '.js', 'x');",
       'console.log(lines[1]);',
       '',
     ].join('\n'),
