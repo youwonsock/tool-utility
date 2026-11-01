@@ -21,6 +21,13 @@ import { recoverSubmissions } from './submission.js';
 import { confirmedStopped } from './process.js';
 import { EngineBase } from './engine-base.js';
 import { EffectRunner } from './effects.js';
+type OperationScope = {
+  operation: DurableOperation;
+  args: any;
+  isolated: ReturnType<typeof effectStore>;
+  actor: EffectRunner;
+  cancellationObserved: boolean;
+};
 export class Engine extends EngineBase {
   private queue = new ControlQueue();
   private operations = new Map<string, Promise<unknown>>();
@@ -348,311 +355,322 @@ export class Engine extends EngineBase {
       isolated.store.state.requests[operation.request_id] = JSON.parse(
         JSON.stringify(this.store.state.requests[operation.request_id]),
       );
-    let cancellationObserved = false;
-    const verify = () => {
-      invariant(
-        !this.stopping,
-        'REQUEST_UNCERTAIN',
-        'Service shutdown fenced the external completion; reconcile on restart.',
-      );
-      const live = this.store.state.operations[operation.id];
-      invariant(live?.status === 'running', 'REQUEST_UNCERTAIN', 'Operation ownership changed.');
-      const run = operation.run_id ? this.store.state.runs.find((value) => value.id === operation.run_id) : undefined;
-      invariant(
-        !run ||
-          (run.control_generation === operation.generation && run.revision === operation.expected_revision) ||
-          run.state === 'cancelling',
-        'STALE_OPERATION',
-        'Run generation or revision changed.',
-      );
-      return { live, run };
+    const scope: OperationScope = {
+      operation,
+      args,
+      isolated,
+      cancellationObserved: false,
+      actor: new EffectRunner(isolated.store, this.executableFile, this.options, {
+        checkpoint: () => this.checkpointOperation(scope),
+        bindRepository: (commonDir) => this.bindOperationRepository(operation, commonDir),
+        reserveResume: (snapshot, attempt) => this.reserveOperationResume(operation, snapshot, attempt),
+      }),
     };
-    const bindRepository = async (commonDir: string) =>
-      this.serial(async () => {
-        verify();
-        const key = this.repositoryKey(commonDir);
-        invariant(
-          !this.activeOperations().some((other) => other.id !== operation.id && other.reservations.repository === key),
-          'REPOSITORY_BUSY',
-          'Another operation owns this canonical repository.',
-        );
-        const live = this.store.state.operations[operation.id]!;
-        live.repository_key = key;
-        live.reservations.repository = key;
-        operation.repository_key = key;
-        this.store.save();
-      });
-    const reserveResume = async (snapshot: Run, attempt: Attempt) =>
-      this.serial(async () => {
-        verify();
-        const run = this.store.state.runs.find((value) => value.id === snapshot.id);
-        invariant(run, 'NOT_FOUND', 'Run not found.');
-        invariant(run.state !== 'cancelling', 'CANCELLED', 'Cancellation prevents a resource resume.');
-        const waiting = this.allAttempts(run).find((value) => value.id === attempt.id);
-        invariant(
-          waiting?.state === 'resource_wait',
-          'STALE_OPERATION',
-          'The waiting attempt changed before resource admission.',
-        );
-        this.assertCapacity(
-          run,
-          attempt.resources,
-          attempt.id,
-          (other) => other.id === operation.id || (other.run_id === run.id && other.status === 'uncertain'),
-        );
-        const live = this.store.state.operations[operation.id]!;
-        live.reservations.slot = true;
-        live.reservations.attempt_id = attempt.id;
-        live.reservations.resources = [...attempt.resources];
-        live.updated = this.store.clock();
-        this.store.save();
-      });
-    const publish = (final = false) => {
-      const { live, run } = verify();
-      const cancelling = run?.state === 'cancelling';
-      const cancelledAttempts = new Set(
-        run && cancelling
-          ? this.allAttempts(run)
-              .filter(holdsResources)
-              .map((attempt) => attempt.id)
-          : [],
-      );
-      const cancelledTasks = new Set(
-        run && cancelling ? run.tasks.filter((task) => task.state === 'cancelled').map((task) => task.spec.id) : [],
-      );
-      const batch = isolated.drain();
-      if (!final && cancelling && operation.kind === 'submit')
-        throw new Fault('CANCELLED', 'Cancellation rejected unpublished submission metadata.');
-      if (
-        !final &&
-        cancelling &&
-        batch.changes.some(
-          (change) => change.path.length === 1 && change.path[0] === 'state' && change.value === 'finalizing',
-        )
-      )
-        throw new Fault('CANCELLED', 'Cancellation won the finalization admission barrier.');
-      publishChanges(this.store, batch.changes);
-      if (!operation.run_id && operation.kind === 'submit') {
-        const created = batch.changes.find((change) => change.path.length === 0);
-        if (created) {
-          operation.run_id = created.run_id;
-          live.run_id = created.run_id;
-          const published = this.getRun(created.run_id);
-          operation.generation = published.control_generation;
-          live.generation = operation.generation;
-        }
-      }
-      const updated = operation.run_id
-        ? this.store.state.runs.find((value) => value.id === operation.run_id)
-        : undefined;
-      if (cancelling || updated?.state === 'cancelling') {
-        // A worker may finish while cancellation is waiting for this publication barrier.
-        // Its stopped outcome is evidence, not authority to revive a task/validation.
-        if (updated) {
-          for (const task of updated.tasks) {
-            const latest = task.attempts.at(-1);
-            if (latest && cancelledAttempts.has(latest.id) && !holdsResources(latest)) {
-              latest.state = 'cancelled';
-              task.state = 'cancelled';
-            } else if (cancelledTasks.has(task.spec.id)) task.state = 'cancelled';
-          }
-          const validation = updated.validation;
-          if (validation && cancelledAttempts.has(validation.attempt.id) && !holdsResources(validation.attempt)) {
-            validation.attempt.state = 'cancelled';
-            validation.state = 'cancelled';
-          }
-        }
-        const canFinish =
-          updated?.state === 'cancelled' &&
-          ['collect', 'reconcile_run'].includes(operation.kind) &&
-          !this.allAttempts(updated).some(holdsResources);
-        if (updated) {
-          updated.state = canFinish ? 'cancelled' : 'cancelling';
-          if (!canFinish) updated.ended_at = undefined;
-          for (const task of updated.tasks) if (task.state === 'queued') task.state = 'cancelled';
-        }
-        const detached = operation.run_id ? actor.getRun(operation.run_id) : undefined;
-        if (detached) detached.state = canFinish ? 'cancelled' : 'cancelling';
-      }
-      for (const event of batch.events) {
-        this.store.state.events.push({ seq: ++this.store.state.event_seq, ...event });
-      }
-      if (['launch', 'validate_run'].includes(operation.kind) && updated) {
-        const latest =
-          operation.kind === 'launch'
-            ? updated.tasks.find((task) => task.spec.id === args.task_id)?.attempts.at(-1)
-            : updated.validation?.attempt;
-        if (latest) live.reservations.attempt_id = latest.id;
-      }
-      live.updated = this.store.clock();
-      if (updated) {
-        operation.expected_revision = updated.revision;
-        live.expected_revision = updated.revision;
-      }
-      if (operation.request_id && actor.publicationResult !== undefined)
-        this.finishRequest(operation.request_id, actor.publicationResult);
-      return (
-        !final &&
-        !cancellationObserved &&
-        updated?.state === 'cancelling' &&
-        ['launch', 'validate_run', 'submit'].includes(operation.kind)
-      );
-    };
-    const checkpoint = async () =>
-      this.serial(async () => {
-        verify();
-        let cancelled = false;
-        this.store.transaction(() => {
-          cancelled = publish();
-        });
-        this.notify();
-        if (cancelled) {
-          cancellationObserved = true;
-          throw new Fault('CANCELLED', 'Operation cancelled before its next external effect.');
-        }
-      });
-    const actor = new EffectRunner(isolated.store, this.executableFile, this.options, {
-      checkpoint,
-      bindRepository,
-      reserveResume,
-    });
     const promise = this.queue.outside(async () => {
-      let result: unknown;
-      try {
-        switch (operation.kind) {
-          case 'doctor':
-            result = await actor.effectDoctor({ ...args, operation_id: operation.id });
-            break;
-          case 'submit':
-            result = await actor.effectSubmit(args);
-            break;
-          case 'review':
-            result = await actor.effectReview(args);
-            break;
-          case 'reconcile_run':
-            result = await actor.effectReconcile(actor.getRun(args.run_id), args.recover_only !== true);
-            result = actor.view(actor.getRun(args.run_id));
-            break;
-          case 'validate_run':
-            result = await actor.effectValidate(actor.getRun(args.run_id));
-            break;
-          case 'finalize_run':
-            result = await actor.effectFinalize(args);
-            break;
-          case 'launch':
-            result = await actor.effectLaunch(
-              actor.getRun(args.run_id),
-              actor.getRun(args.run_id).tasks.find((task) => task.spec.id === args.task_id)!,
-            );
-            break;
-          case 'collect':
-            result = await actor.effectCollect(actor.getRun(args.run_id));
-            break;
-          case 'cleanup':
-            result = await actor.effectCleanup(actor.getRun(args.run_id));
-            if (archivedRun) {
-              const seq = await this.serial(async () => {
-                verify();
-                this.store.state.event_seq++;
-                this.store.save();
-                return this.store.state.event_seq;
-              });
-              const prepared = await this.store.prepareArchivedEvent(args.run_id, 'worktrees_cleaned', {}, seq);
-              await this.serial(async () => {
-                verify();
-                this.store.commitArchivedEvent(prepared);
-                this.notify();
-              });
-            }
-            break;
-          default:
-            throw new Fault('OPERATION', 'Unknown external operation.');
-        }
-      } catch (error) {
-        result = this.errorResult(error);
-      }
-      return this.serial(async () => {
-        if (this.stopping)
-          return this.errorResult(
-            new Fault('REQUEST_UNCERTAIN', 'Service stopped during the external effect. Reconcile before retrying.'),
-          );
-        const live = this.store.state.operations[operation.id]!;
-        if (this.store.uncertain || ['REQUEST_UNCERTAIN', 'STALE_OPERATION'].includes((result as any)?.error?.code)) {
-          live.status = 'uncertain';
-          live.error = {
-            code: 'REQUEST_UNCERTAIN',
-            message: 'Reconcile durable operation evidence before further work.',
-          };
-          if (!this.store.uncertain) this.store.save();
-          return result;
-        }
-        try {
-          verify();
-          return this.store.transaction(() => {
-            publish(true);
-            if (result && typeof result === 'object' && 'event_cursor' in result && (result as any).run_id)
-              (result as any).event_cursor = this.store.eventCursor((result as any).run_id);
-            if (operation.kind === 'reconcile_run' && operation.run_id) {
-              const run = this.getRun(operation.run_id);
-              if (
-                !this.allAttempts(run).some((attempt) =>
-                  ['orphaned', 'stop_uncertain', 'integrating'].includes(attempt.state),
-                ) &&
-                run.state !== 'finalize_uncertain'
-              )
-                for (const pending of this.activeOperations())
-                  if (pending.id !== operation.id && pending.run_id === run.id && pending.status === 'uncertain') {
-                    if (pending.request_id && this.store.state.requests[pending.request_id]?.status === 'intent') {
-                      const prior = this.store.state.requests[pending.request_id]!;
-                      this.store.state.requests[pending.request_id] = {
-                        ...prior,
-                        status: 'done',
-                        completed_at: this.store.clock(),
-                        result: {
-                          reconciled: true,
-                          run_id: run.id,
-                          state: run.state,
-                          operation_id: pending.id,
-                          message:
-                            'Interrupted operation was reconciled from durable process/Git evidence; it was not replayed.',
-                        },
-                      };
-                    }
-                    delete this.store.state.operations[pending.id];
-                  }
-            }
-            if (operation.kind === 'cleanup' && !(result as any)?.error)
-              for (const pending of this.activeOperations())
-                if (
-                  pending.id !== operation.id &&
-                  pending.kind === 'cleanup' &&
-                  pending.run_id === operation.run_id &&
-                  pending.status === 'uncertain'
-                )
-                  delete this.store.state.operations[pending.id];
-            delete this.store.state.operations[operation.id];
-            if (operation.request_id) this.finishRequest(operation.request_id, result);
-            else this.store.save();
-            this.notify();
-            return result;
-          });
-        } catch (error) {
-          const pending = this.store.state.operations[operation.id];
-          if (pending && !this.store.uncertain) {
-            pending.status = 'uncertain';
-            pending.error = {
-              code: error instanceof Fault ? error.code : 'INTERNAL',
-              message: (error as Error).message,
-            };
-            this.store.save();
-          }
-          throw error;
-        }
-      });
+      const result = await this.dispatchEffect(scope, archivedRun).catch((error) => this.errorResult(error));
+      return this.serial(() => this.settleOperation(scope, result));
     });
     this.operations.set(operation.id, promise);
     void promise.finally(() => this.operations.delete(operation.id)).catch(() => undefined);
     return promise;
+  }
+  private verifyOperation(operation: DurableOperation) {
+    invariant(
+      !this.stopping,
+      'REQUEST_UNCERTAIN',
+      'Service shutdown fenced the external completion; reconcile on restart.',
+    );
+    const live = this.store.state.operations[operation.id];
+    invariant(live?.status === 'running', 'REQUEST_UNCERTAIN', 'Operation ownership changed.');
+    const run = operation.run_id ? this.store.state.runs.find((value) => value.id === operation.run_id) : undefined;
+    invariant(
+      !run ||
+        (run.control_generation === operation.generation && run.revision === operation.expected_revision) ||
+        run.state === 'cancelling',
+      'STALE_OPERATION',
+      'Run generation or revision changed.',
+    );
+    return { live, run };
+  }
+  private bindOperationRepository(operation: DurableOperation, commonDir: string) {
+    return this.serial(async () => {
+      this.verifyOperation(operation);
+      const key = this.repositoryKey(commonDir);
+      invariant(
+        !this.activeOperations().some((other) => other.id !== operation.id && other.reservations.repository === key),
+        'REPOSITORY_BUSY',
+        'Another operation owns this canonical repository.',
+      );
+      const live = this.store.state.operations[operation.id]!;
+      live.repository_key = key;
+      live.reservations.repository = key;
+      operation.repository_key = key;
+      this.store.save();
+    });
+  }
+  private reserveOperationResume(operation: DurableOperation, snapshot: Run, attempt: Attempt) {
+    return this.serial(async () => {
+      this.verifyOperation(operation);
+      const run = this.store.state.runs.find((value) => value.id === snapshot.id);
+      invariant(run, 'NOT_FOUND', 'Run not found.');
+      invariant(run.state !== 'cancelling', 'CANCELLED', 'Cancellation prevents a resource resume.');
+      const waiting = this.allAttempts(run).find((value) => value.id === attempt.id);
+      invariant(
+        waiting?.state === 'resource_wait',
+        'STALE_OPERATION',
+        'The waiting attempt changed before resource admission.',
+      );
+      this.assertCapacity(
+        run,
+        attempt.resources,
+        attempt.id,
+        (other) => other.id === operation.id || (other.run_id === run.id && other.status === 'uncertain'),
+      );
+      const live = this.store.state.operations[operation.id]!;
+      live.reservations.slot = true;
+      live.reservations.attempt_id = attempt.id;
+      live.reservations.resources = [...attempt.resources];
+      live.updated = this.store.clock();
+      this.store.save();
+    });
+  }
+  private checkpointOperation(scope: OperationScope) {
+    return this.serial(async () => {
+      this.verifyOperation(scope.operation);
+      let cancelled = false;
+      this.store.transaction(() => {
+        cancelled = this.publishOperation(scope);
+      });
+      this.notify();
+      if (cancelled) {
+        scope.cancellationObserved = true;
+        throw new Fault('CANCELLED', 'Operation cancelled before its next external effect.');
+      }
+    });
+  }
+  private publishOperation(scope: OperationScope, final = false) {
+    const { operation, args, isolated, actor } = scope;
+    const { live, run } = this.verifyOperation(operation);
+    const cancelling = run?.state === 'cancelling';
+    const cancelledAttempts = new Set(
+      run && cancelling
+        ? this.allAttempts(run)
+            .filter(holdsResources)
+            .map((attempt) => attempt.id)
+        : [],
+    );
+    const cancelledTasks = new Set(
+      run && cancelling ? run.tasks.filter((task) => task.state === 'cancelled').map((task) => task.spec.id) : [],
+    );
+    const batch = isolated.drain();
+    if (!final && cancelling && operation.kind === 'submit')
+      throw new Fault('CANCELLED', 'Cancellation rejected unpublished submission metadata.');
+    if (
+      !final &&
+      cancelling &&
+      batch.changes.some(
+        (change) => change.path.length === 1 && change.path[0] === 'state' && change.value === 'finalizing',
+      )
+    )
+      throw new Fault('CANCELLED', 'Cancellation won the finalization admission barrier.');
+    publishChanges(this.store, batch.changes);
+    if (!operation.run_id && operation.kind === 'submit') {
+      const created = batch.changes.find((change) => change.path.length === 0);
+      if (created) {
+        operation.run_id = created.run_id;
+        live.run_id = created.run_id;
+        const published = this.getRun(created.run_id);
+        operation.generation = published.control_generation;
+        live.generation = operation.generation;
+      }
+    }
+    const updated = operation.run_id ? this.store.state.runs.find((value) => value.id === operation.run_id) : undefined;
+    if (cancelling || updated?.state === 'cancelling')
+      this.reapplyCancellation(scope, updated, cancelledAttempts, cancelledTasks);
+    for (const event of batch.events) {
+      this.store.state.events.push({ seq: ++this.store.state.event_seq, ...event });
+    }
+    if (['launch', 'validate_run'].includes(operation.kind) && updated) {
+      const latest =
+        operation.kind === 'launch'
+          ? updated.tasks.find((task) => task.spec.id === args.task_id)?.attempts.at(-1)
+          : updated.validation?.attempt;
+      if (latest) live.reservations.attempt_id = latest.id;
+    }
+    live.updated = this.store.clock();
+    if (updated) {
+      operation.expected_revision = updated.revision;
+      live.expected_revision = updated.revision;
+    }
+    if (operation.request_id && actor.publicationResult !== undefined)
+      this.finishRequest(operation.request_id, actor.publicationResult);
+    return (
+      !final &&
+      !scope.cancellationObserved &&
+      updated?.state === 'cancelling' &&
+      ['launch', 'validate_run', 'submit'].includes(operation.kind)
+    );
+  }
+  // Cancellation overrides what the effect just published, so these writes skip the
+  // lifecycle graph: a published terminal state may not legally move back to cancelling.
+  private reapplyCancellation(
+    { operation, actor }: OperationScope,
+    updated: Run | undefined,
+    cancelledAttempts: Set<string>,
+    cancelledTasks: Set<string>,
+  ) {
+    // A worker may finish while cancellation is waiting for this publication barrier.
+    // Its stopped outcome is evidence, not authority to revive a task/validation.
+    if (updated) {
+      for (const task of updated.tasks) {
+        const latest = task.attempts.at(-1);
+        if (latest && cancelledAttempts.has(latest.id) && !holdsResources(latest)) {
+          latest.state = 'cancelled';
+          task.state = 'cancelled';
+        } else if (cancelledTasks.has(task.spec.id)) task.state = 'cancelled';
+      }
+      const validation = updated.validation;
+      if (validation && cancelledAttempts.has(validation.attempt.id) && !holdsResources(validation.attempt)) {
+        validation.attempt.state = 'cancelled';
+        validation.state = 'cancelled';
+      }
+    }
+    const canFinish =
+      updated?.state === 'cancelled' &&
+      ['collect', 'reconcile_run'].includes(operation.kind) &&
+      !this.allAttempts(updated).some(holdsResources);
+    if (updated) {
+      updated.state = canFinish ? 'cancelled' : 'cancelling';
+      if (!canFinish) updated.ended_at = undefined;
+      for (const task of updated.tasks) if (task.state === 'queued') task.state = 'cancelled';
+    }
+    const detached = operation.run_id ? actor.getRun(operation.run_id) : undefined;
+    if (detached) detached.state = canFinish ? 'cancelled' : 'cancelling';
+  }
+  private async dispatchEffect({ operation, args, actor }: OperationScope, archivedRun?: Run): Promise<unknown> {
+    switch (operation.kind) {
+      case 'doctor':
+        return actor.effectDoctor({ ...args, operation_id: operation.id });
+      case 'submit':
+        return actor.effectSubmit(args);
+      case 'review':
+        return actor.effectReview(args);
+      case 'reconcile_run':
+        await actor.effectReconcile(actor.getRun(args.run_id), args.recover_only !== true);
+        return actor.view(actor.getRun(args.run_id));
+      case 'validate_run':
+        return actor.effectValidate(actor.getRun(args.run_id));
+      case 'finalize_run':
+        return actor.effectFinalize(args);
+      case 'launch':
+        return actor.effectLaunch(
+          actor.getRun(args.run_id),
+          actor.getRun(args.run_id).tasks.find((task) => task.spec.id === args.task_id)!,
+        );
+      case 'collect':
+        return actor.effectCollect(actor.getRun(args.run_id));
+      case 'cleanup': {
+        const result = await actor.effectCleanup(actor.getRun(args.run_id));
+        if (archivedRun) await this.recordArchivedCleanup(operation, args.run_id);
+        return result;
+      }
+      default:
+        throw new Fault('OPERATION', 'Unknown external operation.');
+    }
+  }
+  private async recordArchivedCleanup(operation: DurableOperation, runID: string) {
+    const seq = await this.serial(async () => {
+      this.verifyOperation(operation);
+      this.store.state.event_seq++;
+      this.store.save();
+      return this.store.state.event_seq;
+    });
+    const prepared = await this.store.prepareArchivedEvent(runID, 'worktrees_cleaned', {}, seq);
+    await this.serial(async () => {
+      this.verifyOperation(operation);
+      this.store.commitArchivedEvent(prepared);
+      this.notify();
+    });
+  }
+  private async settleOperation(scope: OperationScope, result: unknown) {
+    const { operation } = scope;
+    if (this.stopping)
+      return this.errorResult(
+        new Fault('REQUEST_UNCERTAIN', 'Service stopped during the external effect. Reconcile before retrying.'),
+      );
+    const live = this.store.state.operations[operation.id]!;
+    if (this.store.uncertain || ['REQUEST_UNCERTAIN', 'STALE_OPERATION'].includes((result as any)?.error?.code)) {
+      live.status = 'uncertain';
+      live.error = {
+        code: 'REQUEST_UNCERTAIN',
+        message: 'Reconcile durable operation evidence before further work.',
+      };
+      if (!this.store.uncertain) this.store.save();
+      return result;
+    }
+    try {
+      this.verifyOperation(operation);
+      return this.store.transaction(() => {
+        this.publishOperation(scope, true);
+        if (result && typeof result === 'object' && 'event_cursor' in result && (result as any).run_id)
+          (result as any).event_cursor = this.store.eventCursor((result as any).run_id);
+        if (operation.kind === 'reconcile_run' && operation.run_id) this.clearReconciledOperations(operation);
+        if (operation.kind === 'cleanup' && !(result as any)?.error) this.clearRetriedCleanups(operation);
+        delete this.store.state.operations[operation.id];
+        if (operation.request_id) this.finishRequest(operation.request_id, result);
+        else this.store.save();
+        this.notify();
+        return result;
+      });
+    } catch (error) {
+      const pending = this.store.state.operations[operation.id];
+      if (pending && !this.store.uncertain) {
+        pending.status = 'uncertain';
+        pending.error = {
+          code: error instanceof Fault ? error.code : 'INTERNAL',
+          message: (error as Error).message,
+        };
+        this.store.save();
+      }
+      throw error;
+    }
+  }
+  private clearReconciledOperations(operation: DurableOperation) {
+    const run = this.getRun(operation.run_id!);
+    if (
+      this.allAttempts(run).some((attempt) => ['orphaned', 'stop_uncertain', 'integrating'].includes(attempt.state)) ||
+      run.state === 'finalize_uncertain'
+    )
+      return;
+    for (const pending of this.activeOperations())
+      if (pending.id !== operation.id && pending.run_id === run.id && pending.status === 'uncertain') {
+        if (pending.request_id && this.store.state.requests[pending.request_id]?.status === 'intent') {
+          const prior = this.store.state.requests[pending.request_id]!;
+          this.store.state.requests[pending.request_id] = {
+            ...prior,
+            status: 'done',
+            completed_at: this.store.clock(),
+            result: {
+              reconciled: true,
+              run_id: run.id,
+              state: run.state,
+              operation_id: pending.id,
+              message: 'Interrupted operation was reconciled from durable process/Git evidence; it was not replayed.',
+            },
+          };
+        }
+        delete this.store.state.operations[pending.id];
+      }
+  }
+  private clearRetriedCleanups(operation: DurableOperation) {
+    for (const pending of this.activeOperations())
+      if (
+        pending.id !== operation.id &&
+        pending.kind === 'cleanup' &&
+        pending.run_id === operation.run_id &&
+        pending.status === 'uncertain'
+      )
+        delete this.store.state.operations[pending.id];
   }
   private async wait(args: { run_id: string; after: number; timeout_ms: number }) {
     const exists = this.store.isArchived(args.run_id) || this.store.state.runs.some((run) => run.id === args.run_id);
