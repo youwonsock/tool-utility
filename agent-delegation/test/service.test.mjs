@@ -79,3 +79,10 @@ test('an interrupted lock recovery names the leftover lock and keeps it',async t
   await assert.rejects(serve(data,cli),error=>error.code==='SERVICE_RECOVERY'&&error.message.includes(reap));
   assert.equal(fs.existsSync(reap),true);assert.equal(fs.existsSync(lock),true);
 });
+
+test('the doctor command names its worker',async t=>{
+  const f=await fixture(t,{service:true});t.after(async()=>{try{await remoteCall(f.data,cli,'',{},'/stop');}catch{}});
+  const missing=await exec(process.execPath,[cli,'doctor'],{env:f.env});assert.equal(missing.code,1);assert.match(missing.stderr,/doctor <platform>/);
+  const result=await exec(process.execPath,[cli,'doctor','opencode',f.repo],{env:f.env,timeout:60000});assert.equal(result.code,0,result.stderr);
+  const doctor=JSON.parse(result.stdout);assert.equal(doctor.worker.platform,'opencode');assert.equal(doctor.compatible,true,result.stdout);
+});
