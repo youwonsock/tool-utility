@@ -110,6 +110,56 @@ test('integration conflict returns evidence and awaits Codex correction',async t
   await until(f,r.id,r=>r.tasks[1].attempts.length===2&&r.tasks[1].state==='needs_review'); await review(f,r,'b'); assert.equal(r.tasks[1].state,'integrated');
 });
 
+async function conflictedCorrection(f,extra={},submission={}) {
+  const s=await submit(f,[task('a',{files:{'base.txt':'one\n'}},{scope:['base.txt'],...extra}),task('b',{files:{'base.txt':'two\n'}},{scope:['base.txt'],...extra})],submission);
+  const r=await until(f,s.run_id,r=>r.tasks.every(t=>t.state==='needs_review'));await review(f,r,'a');assert.equal((await review(f,r,'b')).state,'integration_conflict');return r;
+}
+const keepEverything='FAKE_ACTION:{"summary":"No edits."}';
+
+test('a correction told about reapplied conflicts cannot be approved until they are resolved',async t=>{
+  const f=await fixture(t),r=await conflictedCorrection(f);const b=r.tasks[1];
+  await review(f,r,'b','request_changes',keepEverything);
+  await until(f,r.id,()=>b.attempts.length===2&&b.state==='needs_review');let attempt=b.attempts[1];
+  assert.equal(attempt.state,'conflict_unresolved');assert.match(attempt.error,/base\.txt/);assert.match(await git(attempt.directory,'show',`${attempt.commit}:base.txt`),/<<<<<<</);
+  assert.match(fs.readFileSync(path.join(attempt.job_dir,'prompt.txt'),'utf8'),/merge conflicts in: base\.txt/);
+  let page=await callOk(f,'get_run',{run_id:r.id}),items=page.items;while(page.next_cursor){page=await callOk(f,'get_run',{run_id:r.id,cursor:page.next_cursor});items=[...items,...page.items];}
+  assert.deepEqual(items[1].attempt.conflicts,['base.txt']);
+  const denied=await f.call('review_task',{request_id:uid('approve'),run_id:r.id,task_id:'b',attempt_id:attempt.id,commit:attempt.commit,decision:'approve'});assert.equal(denied.error.code,'UNRESOLVED_CONFLICT');
+  // The next correction still sees the marked files, including when it edits nothing again.
+  await review(f,r,'b','request_changes',keepEverything);
+  await until(f,r.id,()=>b.attempts.length===3&&b.state==='needs_review');attempt=b.attempts[2];assert.equal(attempt.state,'conflict_unresolved');
+  await review(f,r,'b','request_changes','FAKE_ACTION:{"files":{"base.txt":"resolved\\n"}}');
+  await until(f,r.id,()=>b.attempts.length===4&&b.state==='needs_review');assert.equal(b.attempts[3].state,'needs_review');
+  await review(f,r,'b');assert.equal(b.state,'integrated');assert.equal(await git(r.integration_dir,'show','HEAD:base.txt'),'resolved');
+});
+
+test('a binary conflict without markers stays unresolved until the file changes',async t=>{
+  const f=await fixture(t),s=await submit(f,[task('a',{files:{'bin.dat':'A\u0000one'}},{scope:['bin.dat']}),task('b',{files:{'bin.dat':'A\u0000two'}},{scope:['bin.dat']})]);
+  const r=await until(f,s.run_id,r=>r.tasks.every(t=>t.state==='needs_review'));await review(f,r,'a');await review(f,r,'b');const b=r.tasks[1];
+  await review(f,r,'b','request_changes',keepEverything);
+  await until(f,r.id,()=>b.attempts.length===2&&b.state==='needs_review');assert.equal(b.attempts[1].state,'conflict_unresolved');
+});
+
+test('a correction whose previous result cannot be applied sends no model request and spends no retry',async t=>{
+  const f=await fixture(t),s=await submit(f,[task('a',{files:{d:'file'}},{scope:['d']}),task('b',{files:{'d/x':'nested'}},{scope:['d/']})]);
+  const r=await until(f,s.run_id,r=>r.tasks.every(t=>t.state==='needs_review'));await review(f,r,'a');assert.equal((await review(f,r,'b')).state,'integration_conflict');const b=r.tasks[1];
+  await review(f,r,'b','request_changes',keepEverything);
+  await until(f,r.id,()=>b.attempts.length===2&&b.state==='needs_review');const attempt=b.attempts[1];
+  assert.equal(attempt.state,'failed');assert.match(attempt.error,/CORRECTION_APPLY_FAILED/);assert.equal(attempt.worker,undefined);assert.equal(fs.existsSync(path.join(attempt.job_dir,'spec.json')),false);
+});
+
+test('a resumed correction keeps the conflict instructions',async t=>{
+  const f=await fixture(t),state=path.join(f.dir,'editor.json');fs.writeFileSync(state,JSON.stringify({instance_id:'editor'}));
+  const profile={resource_key:'editor',connection:{name:'editor',config:{type:'remote',url:'http://127.0.0.1:59997/mcp'}},probe:{executable:process.execPath,args:['-e','console.log(require("fs").readFileSync(process.argv[1],"utf8"))',state],read_only:true},expected_instance:'editor'};
+  const r=await conflictedCorrection(f,{resources:['editor']},{resources:[profile]}),b=r.tasks[1];
+  fs.writeFileSync(state,JSON.stringify({instance_id:'other'}));
+  await review(f,r,'b','request_changes',keepEverything);
+  await until(f,r.id,()=>b.attempts.length===2&&b.attempts[1].state==='resource_wait');
+  fs.writeFileSync(state,JSON.stringify({instance_id:'editor'}));await callOk(f,'reconcile_run',{request_id:uid('r'),run_id:r.id});
+  await until(f,r.id,()=>b.state==='needs_review');
+  assert.equal(b.attempts[1].state,'conflict_unresolved');assert.match(fs.readFileSync(path.join(b.attempts[1].job_dir,'prompt.txt'),'utf8'),/merge conflicts in: base\.txt/);
+});
+
 test('cancellation confirms termination before releasing resource leases',async t=>{
   const f=await fixture(t); const s=await submit(f,[task('a',{delay:60000})]); const r=await until(f,s.run_id,r=>r.tasks[0].attempts[0]?.worker?.prompt_intent);
   const out=await callOk(f,'cancel_run',{request_id:uid('r'),run_id:r.id}); assert.equal(out.state,'cancelling');

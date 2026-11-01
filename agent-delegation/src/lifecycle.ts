@@ -54,6 +54,7 @@ const ended: AttemptState[] = [
   'cancelled',
   'needs_review',
   'scope_or_context_error',
+  'conflict_unresolved',
   'interrupted',
   'verified',
 ];
@@ -72,6 +73,7 @@ const attemptGraph: Graph<AttemptState> = {
   failed: [],
   cancelled: [],
   scope_or_context_error: [],
+  conflict_unresolved: [],
   integrated: [],
   integration_conflict: [],
   interrupted: [],
