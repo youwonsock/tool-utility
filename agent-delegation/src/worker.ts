@@ -12,7 +12,7 @@ import {
 import { uid, writeJson, readJson, durableWrite, exclusiveJson, processIdentity, sleep, samePath } from './io.js';
 import { moveWorker, workerTerminal } from './lifecycle.js';
 import { createBackend, type WorkerBackend, type Answer } from './backends/index.js';
-import { stopOwned } from './backends/process.js';
+import { stopOwned } from './process.js';
 import { runVerification } from './verification.js';
 import { assertRuntimeUnchanged } from './runtime.js';
 import { ScopeGuard, awaitGuardedTermination } from './scope-guard.js';

@@ -9,11 +9,11 @@ import {
   enforceHttpPolicy,
   httpSdkMethods,
   inspectSession,
-} from '../opencode.js';
+} from './opencode.js';
 import { workerEnvironment } from '../profiles.js';
-import { spawnRuntime, stopOwned } from './process.js';
+import { spawnRuntime, stopOwned } from '../process.js';
 import type { Answer, BackendContext, Observation, WorkerBackend } from './contract.js';
-import { workerPermissionKey, toolPolicy, mutationPaths } from './policy.js';
+import { workerPermissionKey, toolPolicy, mutationPaths } from '../policy.js';
 import { verificationShell } from '../shell.js';
 import { executableVersion, reportedVersion } from './version.js';
 import { loadSdk, requireSdkMethods, callSdkFactory } from '../runtime.js';

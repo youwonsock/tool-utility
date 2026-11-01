@@ -18,7 +18,7 @@ import { moveRun, moveValidation } from './lifecycle.js';
 import type { Store } from './store.js';
 import { resolveWorker } from './profiles.js';
 import { resolveRuntime } from './runtime.js';
-import { connection } from './backends/policy.js';
+import { connection } from './policy.js';
 
 type Manifest = {
   protocol: number;

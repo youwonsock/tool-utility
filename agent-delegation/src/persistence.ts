@@ -3,7 +3,7 @@ import path from 'node:path';
 import { STORE_FORMAT, Fault, invariant, type State, type Run, type Attempt } from './types.js';
 import { digest, hash, readJson, alive, treeAlive, inside } from './io.js';
 import { holdsResources } from './lifecycle.js';
-import { processEvidence } from './backends/process.js';
+import { processEvidence } from './process.js';
 import { applyDeltas, type TransactionRecord } from './storage-delta.js';
 
 export const ARCHIVE_AGE = 7 * 24 * 60 * 60 * 1000;

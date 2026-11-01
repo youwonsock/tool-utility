@@ -80,7 +80,7 @@ import { resolveWorker, publicWorker } from './profiles.js';
 import { resolveRuntime, assertRuntimeUnchanged, publicRuntime } from './runtime.js';
 import { inspectHttpSession } from './backends/http.js';
 import { attemptsStopped } from './persistence.js';
-import { confirmedStopped, stopOwned, processEvidence } from './backends/process.js';
+import { confirmedStopped, stopOwned, processEvidence } from './process.js';
 import { deploymentVersion } from './deployment.js';
 export class Engine {
   private queue = new ControlQueue();

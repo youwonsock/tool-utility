@@ -2,14 +2,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { ChildProcess } from 'node:child_process';
 import spawn from 'cross-spawn';
-import { Fault, invariant, type Model, type Resource, type WorkerSpec, type WorkerState } from './types.js';
-import { exec, readJson, sleep, digest } from './io.js';
-import { beginProcess, registerProcess } from './backends/process.js';
-import { workerEnvironment } from './profiles.js';
-import { connection } from './backends/policy.js';
-import { verificationShell } from './shell.js';
-import { executableVersion, reportedVersion } from './backends/version.js';
-import { loadSdk, requireSdkMethods, callSdkFactory } from './runtime.js';
+import { Fault, invariant, type Model, type Resource, type WorkerSpec, type WorkerState } from '../types.js';
+import { exec, readJson, sleep, digest } from '../io.js';
+import { beginProcess, registerProcess } from '../process.js';
+import { workerEnvironment } from '../profiles.js';
+import { connection } from '../policy.js';
+import { verificationShell } from '../shell.js';
+import { executableVersion, reportedVersion } from './version.js';
+import { loadSdk, requireSdkMethods, callSdkFactory } from '../runtime.js';
 
 export async function resolvedConfig(executable: string, args: string[], directory: string, env = process.env) {
   const r = await exec(executable, [...args, 'debug', 'config', '--pure'], { cwd: directory, env, timeout: 60000 });
