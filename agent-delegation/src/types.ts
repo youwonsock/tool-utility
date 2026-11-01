@@ -285,11 +285,8 @@ export type WorkerSpec = {
   resources: Resource[];
   context: ContextFile[];
   scope: string[];
-  model?: WorkerModel;
   timeout_ms: number;
   validation: boolean;
-  executable: string;
-  executable_args: string[];
   password: string;
   protocol: number;
   worker: WorkerConfig;

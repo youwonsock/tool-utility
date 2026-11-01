@@ -97,7 +97,7 @@ export class ClaudeBackend implements WorkerBackend {
     const options: Options = {
       cwd: spec.directory,
       sessionId: sessionID,
-      model: typeof spec.model === 'string' ? spec.model : undefined,
+      model: typeof spec.worker.model === 'string' ? spec.worker.model : undefined,
       env,
       settingSources: [],
       plugins: [],
@@ -118,7 +118,7 @@ export class ClaudeBackend implements WorkerBackend {
       ],
       permissionMode: 'default',
       maxTurns: 100,
-      pathToClaudeCodeExecutable: spec.executable,
+      pathToClaudeCodeExecutable: spec.worker.executable,
       hooks: {
         PreToolUse: [
           {
@@ -175,15 +175,15 @@ export class ClaudeBackend implements WorkerBackend {
           }
         };
         const command = findExecutable(options.command, options.env, options.cwd);
-        const direct = same(command, spec.executable),
-          javascript = same(command, process.execPath) && same(options.args[0], spec.executable);
+        const direct = same(command, spec.worker.executable),
+          javascript = same(command, process.execPath) && same(options.args[0], spec.worker.executable);
         if (!direct && !javascript) {
           writeJson(path.join(spec.job_dir, 'process-records', `${intent}.json`), { failed: true, stopped: true });
           throw runtimeFault('CLI_INCOMPATIBLE', spec.worker, 'Claude SDK tried to launch a different CLI.');
         }
         const args = javascript
-          ? [options.args[0], ...spec.executable_args, ...options.args.slice(1)]
-          : [...spec.executable_args, ...options.args];
+          ? [options.args[0], ...spec.worker.executable_args, ...options.args.slice(1)]
+          : [...spec.worker.executable_args, ...options.args];
         const child = spawn(options.command, args, {
           cwd: options.cwd,
           env: options.env,
@@ -280,11 +280,14 @@ export class ClaudeBackend implements WorkerBackend {
       'MODEL_UNAVAILABLE',
       'Claude did not identify its current native model.',
     );
-    const family = typeof spec.model === 'string' && /^(sonnet|opus|haiku)(?:\[1m\])?$/.exec(spec.model)?.[1];
+    const family =
+      typeof spec.worker.model === 'string' && /^(sonnet|opus|haiku)(?:\[1m\])?$/.exec(spec.worker.model)?.[1];
     const resolvedAlias =
-      family && usage.model.includes(family) && this.initialization.models?.some((m: any) => m.value === spec.model);
+      family &&
+      usage.model.includes(family) &&
+      this.initialization.models?.some((m: any) => m.value === spec.worker.model);
     invariant(
-      spec.model === undefined || spec.model === usage.model || resolvedAlias,
+      spec.worker.model === undefined || spec.worker.model === usage.model || resolvedAlias,
       'MODEL_UNAVAILABLE',
       'Requested Claude model was not resolved. Use a resolved model ID when its alias cannot be verified. No fallback was used.',
     );
@@ -367,14 +370,6 @@ export class ClaudeBackend implements WorkerBackend {
     } else pending.resolve({ behavior: 'allow', updatedInput: pending.native });
     this.pending.delete(input.id);
     return 'uncertain';
-  }
-  async reconcile() {
-    return {
-      session_present: !!this.context.state.session_id,
-      prompt_present: this.accepted,
-      complete: this.complete,
-      inputs: this.pending.size,
-    };
   }
   async cancel() {
     if (typeof this.query?.interrupt === 'function') await this.query.interrupt().catch(() => undefined);

@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { ChildProcess } from 'node:child_process';
 import spawn from 'cross-spawn';
 import { Fault, invariant, type Model, type Resource, type WorkerSpec, type WorkerState } from './types.js';
-import { exec, readJson, samePath, sleep, digest } from './io.js';
+import { exec, readJson, sleep, digest } from './io.js';
 import { beginProcess, registerProcess } from './backends/process.js';
 import { workerEnvironment } from './profiles.js';
 import { connection } from './backends/policy.js';
@@ -22,55 +22,6 @@ export async function resolvedConfig(executable: string, args: string[], directo
     return JSON.parse(r.stdout) as Record<string, any>;
   } catch {
     throw new Fault('OPENCODE_CONFIG', 'OpenCode configuration output was not JSON.');
-  }
-}
-export async function probeResources(resources: Resource[], directory: string) {
-  for (const resource of resources) {
-    const replace = (s: string) => s.replaceAll('{{worktree}}', directory);
-    const r = await exec(replace(resource.probe.executable), resource.probe.args.map(replace), {
-      cwd: directory,
-      timeout: 15000,
-      limit: 65536,
-    }).catch((e) => {
-      throw new Fault('RESOURCE_UNVERIFIED', `Probe failed for ${resource.resource_key}: ${(e as Error).message}`, {
-        worktree: directory,
-      });
-    });
-    let result;
-    try {
-      result = JSON.parse(r.stdout);
-    } catch {
-      throw new Fault('RESOURCE_UNVERIFIED', `Probe did not return JSON for ${resource.resource_key}`);
-    }
-    const details = {
-      resource_key: resource.resource_key,
-      worktree: directory,
-      expected_instance: resource.expected_instance,
-      observed_instance: result.instance_id,
-      observed_project: result.project_path,
-    };
-    invariant(
-      r.code === 0 && result.instance_id === resource.expected_instance,
-      'RESOURCE_MISMATCH',
-      `Wrong or unverified instance for ${resource.resource_key}`,
-      details,
-    );
-    if (resource.project_bound) {
-      let matches = false;
-      try {
-        matches =
-          typeof result.project_path === 'string' &&
-          samePath(fs.realpathSync(result.project_path), fs.realpathSync(directory));
-      } catch {
-        /* Unknown paths are not verified. */
-      }
-      invariant(
-        matches,
-        'RESOURCE_PROJECT_MISMATCH',
-        `Resource ${resource.resource_key} must bind to ${directory}. Rebind it and call reconcile_run.`,
-        details,
-      );
-    }
   }
 }
 export function restrictions(
@@ -190,7 +141,7 @@ export function enforceHttpPolicy(effective: Record<string, any>, overlay: Retur
 export async function selectModel(
   client: any,
   config: Record<string, any>,
-  spec: Pick<WorkerSpec, 'model' | 'executable' | 'executable_args' | 'directory'>,
+  spec: Pick<WorkerSpec, 'worker' | 'directory'>,
 ): Promise<Model> {
   const providers = (await client.provider.list({}, { throwOnError: true })).data!;
   invariant(
@@ -203,18 +154,20 @@ export async function selectModel(
     'OpenCode provider API returned an incompatible response.',
   );
   invariant(
-    spec.model === undefined || typeof spec.model === 'object',
+    spec.worker.model === undefined || typeof spec.worker.model === 'object',
     'MODEL',
     'OpenCode requires providerID/modelID.',
   );
-  let model = spec.model;
+  let model = spec.worker.model;
   const configured = config.model ?? config.agent?.build?.model;
   if (!model && configured) {
     const [providerID, ...rest] = String(configured).split('/');
     model = { providerID: providerID!, modelID: rest.join('/') };
   }
   if (!model) {
-    const r = await exec(spec.executable, [...spec.executable_args, 'debug', 'paths'], { cwd: spec.directory });
+    const r = await exec(spec.worker.executable, [...spec.worker.executable_args, 'debug', 'paths'], {
+      cwd: spec.directory,
+    });
     const statePath = r.stdout.match(/^state\s+(.+)$/m)?.[1];
     if (statePath) model = readJson<{ recent?: Model[] }>(path.join(statePath.trim(), 'model.json'))?.recent?.[0];
   }
@@ -240,8 +193,8 @@ export async function launchOpenCode(spec: WorkerSpec, state: WorkerState, save:
   const sdk = await loadSdk(spec.worker, state.runtime!);
   const version = await executableVersion(spec);
   const initial = await resolvedConfig(
-    spec.executable,
-    spec.executable_args,
+    spec.worker.executable,
+    spec.worker.executable_args,
     spec.directory,
     spec.worker ? workerEnvironment(spec.worker) : process.env,
   );
@@ -261,7 +214,7 @@ export async function launchOpenCode(spec: WorkerSpec, state: WorkerState, save:
     AGENT_DELEGATION_WORKER: '1',
   };
   // Resolve twice before starting the server, so managed config cannot silently re-enable a connection.
-  const effective = await resolvedConfig(spec.executable, spec.executable_args, spec.directory, env);
+  const effective = await resolvedConfig(spec.worker.executable, spec.worker.executable_args, spec.directory, env);
   const allowed = new Set(spec.resources.map((r) => r.connection.name));
   invariant(
     Object.entries(effective.mcp ?? {}).every(([name, cfg]) => (cfg as any).enabled === false || allowed.has(name)),
@@ -279,8 +232,8 @@ export async function launchOpenCode(spec: WorkerSpec, state: WorkerState, save:
   const context = { spec, state, save },
     intent = beginProcess(context);
   const child: ChildProcess = spawn(
-    spec.executable,
-    [...spec.executable_args, 'serve', '--hostname=127.0.0.1', '--port=0', '--pure'],
+    spec.worker.executable,
+    [...spec.worker.executable_args, 'serve', '--hostname=127.0.0.1', '--port=0', '--pure'],
     {
       cwd: spec.directory,
       env,
@@ -336,7 +289,7 @@ export async function launchOpenCode(spec: WorkerSpec, state: WorkerState, save:
   try {
     state.model = await selectModel(client, initial, spec);
   } catch (e) {
-    if (!spec.diagnostic || spec.model !== undefined || !(e instanceof Fault) || e.code !== 'MODEL_UNAVAILABLE')
+    if (!spec.diagnostic || spec.worker.model !== undefined || !(e instanceof Fault) || e.code !== 'MODEL_UNAVAILABLE')
       throw e;
   }
   save();

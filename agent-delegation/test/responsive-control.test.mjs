@@ -204,7 +204,7 @@ test('every resource-wait resume reserves a fresh slot after a previous resume b
   const first=await submit(f,[task('a',{}, {resources:['first_resume']}),task('b',{}, {resources:['second_resume']})],{resources:[one.profile,two.profile]});const run=f.engine.getRun(first.run_id);
   for(const current of run.tasks)await f.engine.launch(run,current);assert.ok(run.tasks.every(current=>current.attempts[0].state==='resource_wait'));
   const firstID=run.tasks[0].attempts[0].id,spawn=f.engine.spawn;
-  f.engine.spawn=async function(current,attempt,spec){if(attempt.id!==firstID)return spawn.call(this,current,attempt,spec);attempt.state='running';await this.persist();firstRunning.resolve();await releaseFirst.promise;};
+  f.engine.options.spawn=async function(current,attempt,spec){if(attempt.id!==firstID)return spawn.call(this,current,attempt,spec);attempt.state='running';await this.persist();firstRunning.resolve();await releaseFirst.promise;};
   fs.writeFileSync(one.mode,'gate');fs.writeFileSync(two.mode,'gate');fs.writeFileSync(third.mode,'gate');fs.writeFileSync(one.release,'release');
   const args={request_id:'resume_multiple',run_id:run.id},resuming=f.engine.call('reconcile_run',args);await firstRunning.promise;
   const competition=await submit(f,[task('c',{}, {resources:['competing_launch']})],{repo:other.repo,resources:[third.profile]});const competing=f.engine.getRun(competition.run_id);

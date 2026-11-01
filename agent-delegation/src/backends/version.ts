@@ -17,18 +17,18 @@ export async function executableVersion(spec: WorkerSpec): Promise<string> {
   if (spec.worker.runtime?.cli.version) return spec.worker.runtime.cli.version;
   let result;
   try {
-    result = await exec(spec.executable, [...spec.executable_args, '--version'], {
+    result = await exec(spec.worker.executable, [...spec.worker.executable_args, '--version'], {
       cwd: spec.directory,
       env: workerEnvironment(spec.worker),
     });
   } catch (error) {
     throw runtimeFault('CLI_INCOMPATIBLE', spec.worker, `${platform} --version failed: ${(error as Error).message}`, {
-      path: spec.executable,
+      path: spec.worker.executable,
     });
   }
   if (result.code !== 0)
     throw runtimeFault('CLI_INCOMPATIBLE', spec.worker, `${platform} --version failed: ${result.stderr.trim()}`, {
-      path: spec.executable,
+      path: spec.worker.executable,
     });
   const output = result.stdout.trim();
   try {
@@ -41,6 +41,6 @@ export async function executableVersion(spec: WorkerSpec): Promise<string> {
       platform,
     );
   } catch (error) {
-    throw runtimeFault('CLI_INCOMPATIBLE', spec.worker, (error as Error).message, { path: spec.executable });
+    throw runtimeFault('CLI_INCOMPATIBLE', spec.worker, (error as Error).message, { path: spec.worker.executable });
   }
 }

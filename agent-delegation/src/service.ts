@@ -40,7 +40,16 @@ export async function serve(root: string, executableFile: string) {
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
     const reap = path.join(root, 'service-reaping.lock');
-    fs.mkdirSync(reap, { mode: 0o700 });
+    try {
+      fs.mkdirSync(reap, { mode: 0o700 });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      throw new Fault(
+        'SERVICE_RECOVERY',
+        `Another service start is recovering this data directory, or an earlier recovery was interrupted. If no service is running, remove ${reap}.`,
+        { path: reap },
+      );
+    }
     try {
       const prior = readJson<{ owner: ProcessIdentity }>(path.join(lock, 'owner.json'));
       invariant(

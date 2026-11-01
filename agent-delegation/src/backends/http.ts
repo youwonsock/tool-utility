@@ -37,8 +37,8 @@ export class HttpBackend implements WorkerBackend {
     const sdk = await loadSdk(worker, state.runtime!);
     const version = await executableVersion(spec);
     const initial = await resolvedConfig(
-      spec.executable,
-      spec.executable_args,
+      spec.worker.executable,
+      spec.worker.executable_args,
       spec.directory,
       workerEnvironment(worker),
     );
@@ -57,7 +57,7 @@ export class HttpBackend implements WorkerBackend {
       KILO_NO_DAEMON: '1',
       KILO_CONFIG_CONTENT: JSON.stringify(overlay),
     };
-    const effective = await resolvedConfig(spec.executable, spec.executable_args, spec.directory, env);
+    const effective = await resolvedConfig(spec.worker.executable, spec.worker.executable_args, spec.directory, env);
     const allowed = new Set(spec.resources.map((r) => r.connection.name));
     invariant(
       Object.entries(effective.mcp ?? {}).every(([name, cfg]) => (cfg as any).enabled === false || allowed.has(name)),
@@ -74,8 +74,8 @@ export class HttpBackend implements WorkerBackend {
     enforceHttpPolicy(effective, overlay);
     const runtime = await spawnRuntime(
       this.context,
-      spec.executable,
-      [...spec.executable_args, 'serve', '--hostname=127.0.0.1', '--port=0', '--pure'],
+      spec.worker.executable,
+      [...spec.worker.executable_args, 'serve', '--hostname=127.0.0.1', '--port=0', '--pure'],
       env,
     );
     this.log = runtime.log;
@@ -123,7 +123,7 @@ export class HttpBackend implements WorkerBackend {
       'BACKEND_API',
       'Kilo provider API returned an incompatible response.',
     );
-    let model = spec.model as Model | undefined;
+    let model = spec.worker.model as Model | undefined;
     if (!model && initial.model) {
       const [providerID, ...parts] = String(initial.model).split('/');
       model = { providerID: providerID!, modelID: parts.join('/') };
@@ -133,7 +133,7 @@ export class HttpBackend implements WorkerBackend {
       if (provider) model = { providerID: provider.id, modelID: providers.default[provider.id] };
     }
     invariant(
-      (spec.diagnostic && spec.model === undefined) ||
+      (spec.diagnostic && spec.worker.model === undefined) ||
         (model &&
           providers.connected.includes(model.providerID) &&
           providers.all.find((p: any) => p.id === model!.providerID)?.models[model.modelID]),
@@ -317,9 +317,6 @@ export class HttpBackend implements WorkerBackend {
       await this.client.question.reject({ requestID: input.id }, { throwOnError: true });
     else await this.client.question.reply({ requestID: input.id, answers: answer.answers }, { throwOnError: true });
     return 'sent';
-  }
-  async reconcile() {
-    return inspectHttpSession(this.context.spec, this.context.state);
   }
   async cancel() {
     if (this.context.state.session_id)

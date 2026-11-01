@@ -74,7 +74,7 @@ test('cancel wins over an already completed final verification snapshot', async 
   const f=await controlled(t),s=await submit(f,[task('a',{files:{'a.txt':'ok'}})]);
   const run=await tickUntil(f,s.run_id,r=>r.tasks[0].state==='needs_review');
   await review(f,run,'a');
-  f.engine.spawn=async (_run,a)=>{
+  f.engine.options.spawn=async (_run,a)=>{
     writeJson(path.join(a.job_dir,'worker.json'),{protocol:WORKER_FORMAT,id:a.id,phase:'completed',updated:Date.now(),prompt_id:'msg',inputs:[],replies:{},stopped:true,
       verification:[{command:run.final_verification[0].command,status:'passed',exit_code:0,artifact:'verification-0.json'}]});
   };
@@ -91,7 +91,7 @@ test('cancel after a lost validation process does not reactivate the run', {skip
   const f=await controlled(t),s=await submit(f,[task('a',{files:{'a.txt':'ok'}})]);
   const run=await tickUntil(f,s.run_id,r=>r.tasks[0].state==='needs_review');
   await review(f,run,'a');
-  f.engine.spawn=async (_run,a)=>{
+  f.engine.options.spawn=async (_run,a)=>{
     const identity={pid:99999999,birth:'dead'};
     processFixture(a.job_dir,identity);
     writeJson(path.join(a.job_dir,'worker.json'),{protocol:WORKER_FORMAT,id:a.id,phase:'verifying',updated:Date.now(),prompt_id:'msg',host:identity,server:identity,inputs:[],replies:{},verification:[]});
@@ -194,7 +194,7 @@ test('current state strings load while unknown stored and worker states block ex
 test('uncertain termination retains a lease and blocks successors until termination is confirmed', async t=>{
   const f=await controlled(t),profile={resource_key:'editor',connection:{name:'editor',config:{type:'remote',url:'http://127.0.0.1:59998/mcp'}},probe:{executable:process.execPath,args:['-e','console.log(JSON.stringify({instance_id:"editor"}))'],read_only:true},expected_instance:'editor'};
   let dispatches=0;
-  f.engine.spawn=async (_run,a)=>{
+  f.engine.options.spawn=async (_run,a)=>{
     dispatches++;
     processFixture(a.job_dir);
     writeJson(path.join(a.job_dir,'worker.json'),{protocol:WORKER_FORMAT,id:a.id,phase:'stop_uncertain',updated:Date.now(),prompt_id:'msg',inputs:[],replies:{},verification:[]});
@@ -317,7 +317,7 @@ test('recovery preserves user changes in an unpublished prepared checkout', asyn
 
 test('an owned process intent without an identity cannot release a slot even if the snapshot claims stopped', async t=>{
   const f=await controlled(t);let dispatches=0;
-  f.engine.spawn=async (_run,a)=>{
+  f.engine.options.spawn=async (_run,a)=>{
     dispatches++;processFixture(a.job_dir);
     writeJson(path.join(a.job_dir,'worker.json'),{protocol:WORKER_FORMAT,id:a.id,phase:'completed',updated:Date.now(),prompt_id:'msg',inputs:[],replies:{},verification:[],stopped:true});
   };
@@ -332,7 +332,7 @@ test('an owned process intent without an identity cannot release a slot even if 
 
 test('reconciliation collects a stop record published during process ownership checks', async t=>{
   const f=await controlled(t);
-  f.engine.spawn=async (_run,a)=>{
+  f.engine.options.spawn=async (_run,a)=>{
     writeJson(path.join(a.job_dir,'worker.json'),{protocol:WORKER_FORMAT,id:a.id,phase:'cancelling',updated:Date.now(),
       host:{pid:99999999,birth:'exited fixture host'},inputs:[],replies:{},verification:[]});
     fs.mkdirSync(path.join(a.job_dir,'process-intents'),{recursive:true});

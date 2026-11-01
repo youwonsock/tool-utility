@@ -45,7 +45,7 @@ test('prepared submissions and unconfirmed or live processes prevent archiving',
   assert.equal(await store.archiveNext(),false);fs.rmSync(path.dirname(manifest),{recursive:true});
   const r=store.state.runs[0],job=path.join(root,'job');fs.mkdirSync(job);
   r.tasks=[{spec:{id:'task'},state:'cancelled',worker,attempts:[{state:'cancelled',job_dir:job,worker:{protocol:2,phase:'cancelled',stopped:true,host:await processIdentity(process.pid)}}]}];
-  store.save();assert.equal(await store.archiveNext(),false);delete r.tasks[0].attempts[0].worker;writeJson(path.join(job,'server-intent.json'),{});assert.equal(await store.archiveNext(),false);
+  store.save();assert.equal(await store.archiveNext(),false);
 });
 
 test('archive file failure retains records; checkpoint failure recovers the committed archive',async t=>{

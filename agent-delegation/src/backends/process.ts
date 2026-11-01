@@ -131,7 +131,6 @@ function processLedger(jobDir: string, state: BackendContext['state']) {
     )
       uncertain = true;
   }
-  if (!ledger && fs.existsSync(path.join(jobDir, 'server-intent.json'))) uncertain = true;
   return { records, uncertain, ledger };
 }
 async function stopOwnedProcesses(context: BackendContext): Promise<boolean> {

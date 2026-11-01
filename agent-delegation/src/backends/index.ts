@@ -27,7 +27,7 @@ export function createBackend(context: BackendContext): WorkerBackend {
       : await resolveRuntime(spec.worker);
     state.runtime = runtime;
     spec.worker.runtime = runtime;
-    spec.executable = runtime.cli.path;
+    spec.worker.executable = runtime.cli.path;
     save();
     state.diagnostic_stage = 'cli';
     save();

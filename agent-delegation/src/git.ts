@@ -172,7 +172,7 @@ export async function integrate(cwd: string, expected: string, commit: string) {
     await git(cwd, ['cherry-pick', '--abort'], true);
     throw new Fault(
       'INTEGRATION_CONFLICT',
-      'Accepted change cannot be integrated. Codex must give correction instructions.',
+      'Accepted change cannot be integrated. The supervisor must give correction instructions.',
       evidence,
     );
   }
