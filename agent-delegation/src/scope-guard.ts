@@ -53,6 +53,7 @@ export class ScopeGuard {
   private pending = new Set<string>();
   // Directories whose individual notifications no longer fit the bounded backlog.
   private collapsed = new Set<string>();
+  private notificationsLost = 0;
   // Verdicts are cached so a build writing thousands of ignored files asks Git once.
   private ignoredDirectories = new Set<string>();
   private plainDirectories = new Set<string>();
@@ -79,7 +80,10 @@ export class ScopeGuard {
       this.watcher = fs.watch(spec.directory, { recursive: true }, (_event, file) => {
         if (this.failure || this.closed) return;
         if (!file) {
-          this.fail(new Fault('SCOPE_GUARD_UNKNOWN', 'Filesystem notification omitted its path.'));
+          // Windows reports an overflowed change buffer this way. The events are gone, so
+          // Git status decides, and a write already undone cannot be seen. Keep the record.
+          this.notificationsLost++;
+          void this.check();
           return;
         }
         const relative = String(file).split(path.sep).join('/');
@@ -322,7 +326,12 @@ export class ScopeGuard {
     }
     this.assertHealthy();
     this.lastHealthyAt = Date.now();
-    state.scope_guard = { status: 'healthy', checked_at: this.lastHealthyAt, policy_hash: workerPolicyHash(spec) };
+    state.scope_guard = {
+      status: 'healthy',
+      checked_at: this.lastHealthyAt,
+      policy_hash: workerPolicyHash(spec),
+      ...(this.notificationsLost ? { notifications_lost: this.notificationsLost } : {}),
+    };
     (refresh ?? save)();
   }
   async stop() {

@@ -258,6 +258,7 @@ export type WorkerState = {
     checked_at: number;
     policy_hash: string;
     evidence?: string;
+    notifications_lost?: number;
   };
   verification_shell?: ShellSpec;
   verification: Evidence[];

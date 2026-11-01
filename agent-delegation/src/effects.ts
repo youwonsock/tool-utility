@@ -550,6 +550,7 @@ export class EffectRunner extends EngineBase {
           JSON.stringify({
             model_report: state.summary ?? null,
             reported_usage: state.usage ?? null,
+            scope_notifications_lost: state.scope_guard?.notifications_lost ?? 0,
             observed_verification: state.verification,
             session_id: state.session_id,
             model: state.model,
