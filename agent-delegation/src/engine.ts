@@ -1242,7 +1242,11 @@ export class Engine {
             `The previous result was reapplied to the current integration commit with merge conflicts in: ${conflicts.join(', ')}. Resolve these files and remove every conflict marker. The result cannot be approved otherwise.`,
           ]
         : []),
-      ...(attempt.feedback ? [`Supervisor correction instructions:\n${attempt.feedback}`] : []),
+      ...(attempt.feedback
+        ? [
+            `Supervisor correction instructions. These override the goal and acceptance wherever they conflict:\n${attempt.feedback}`,
+          ]
+        : []),
     ].join('\n\n');
   }
   resources(run: Run, attempt: Attempt): Resource[] {

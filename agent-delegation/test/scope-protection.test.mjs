@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { toolPolicy, checkedMutationPath, scopeAllows, workerPermissionKey, ScopeGuard, awaitGuardedTermination, hash, sleep } from '../dist/index.mjs';
+import { toolPolicy, checkedMutationPath, scopeAllows, workerPermissionKey, ScopeGuard, awaitGuardedTermination, hash, sleep, git, resultCommit } from '../dist/index.mjs';
 import { fixture } from './helpers.mjs';
 
 test('common scope semantics and direct mutation policy cover every edit, delete, rename and patch endpoint',async t=>{
@@ -72,6 +72,15 @@ test('worker-local monitor allows ignored generated outputs but stops out-of-sco
   assert.equal(f.guard.fault().code,'SCOPE_VIOLATION');assert.equal(f.stopped(),1);
   assert.equal(fs.readFileSync(path.join(f.repo,'outside.txt'),'utf8'),'preserve this evidence');
   assert.equal(JSON.parse(fs.readFileSync(path.join(f.spec.job_dir,'scope-violation.json'))).code,'SCOPE_VIOLATION');
+});
+test('monitor tolerates an atomic save of an in-scope file but not one outside scope or left behind',async t=>{
+  const f=await monitored(t),temp=path.join(f.repo,'a.txt.tmp.65502.78d4486ba9cb');
+  fs.writeFileSync(temp,'saved');await f.guard.check();f.guard.assertHealthy();
+  fs.renameSync(temp,path.join(f.repo,'a.txt'));await sleep(40);await f.guard.check();f.guard.assertHealthy();
+  fs.writeFileSync(temp,'left behind');const base=(await git(f.repo,['rev-parse','HEAD'])).stdout.trim();
+  await assert.rejects(resultCommit(f.repo,base,['a.txt'],f.spec.context,'title'),e=>e.code==='SCOPE_VIOLATION');
+  const g=await monitored(t);fs.writeFileSync(path.join(g.repo,'outside.txt.tmp.65502.78d4486ba9cb'),'x');await g.guard.check();
+  assert.equal(g.guard.fault().code,'SCOPE_VIOLATION');assert.equal(g.stopped(),1);
 });
 test('monitor permits creating directories needed by exact and recursive scopes and fails closed on watcher errors',async t=>{
   const f=await monitored(t,['new/**']);fs.mkdirSync(path.join(f.repo,'new'));fs.writeFileSync(path.join(f.repo,'new','a.txt'),'ok');

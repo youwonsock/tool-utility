@@ -16,6 +16,7 @@ test('parallel implementation, ignored context, correction, exact approval and f
   assert.equal(await git(f.repo,'rev-parse','HEAD'),run.base);
   await review(f,run,'a','request_changes','FAKE_ACTION:{"files":{"a.txt":"corrected"}}');
   run = await until(f,run.id,r=>r.tasks[0].attempts.length===2 && r.tasks[0].state==='needs_review');
+  assert.match(fs.readFileSync(path.join(f.data,'jobs',run.tasks[0].attempts[1].id,'prompt.txt'),'utf8'),/override the goal and acceptance[^\n]*\nFAKE_ACTION/);
   const stale = await f.call('approve_task',{request_id:uid('r'),run_id:run.id,task_id:'a',attempt_id:first.id,commit:first.commit}); assert.equal(stale.error.code,'ATTEMPT');
   await ready(f,run); const result = await finalize(f,run);
   assert.equal(result.state,'completed'); assert.equal(fs.readFileSync(path.join(f.repo,'a.txt'),'utf8'),'corrected');
