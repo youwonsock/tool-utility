@@ -26,7 +26,7 @@ const envNames: Record<Platform, string> = {
 type Discovery = { env?: NodeJS.ProcessEnv; global_root?: string | null; cwd?: string };
 export function runtimeFault(code: string, worker: WorkerConfig, message: string, extra: Record<string, unknown> = {}) {
   const sdk = sdkPackages[worker.platform];
-  const guidance = `Install/configure ${worker.platform} yourself. Set AGENT_DELEGATION_${envNames[worker.platform]}_EXECUTABLE or a profile executable${sdk ? `, and sdk_root (absolute ${sdk.name} package directory) or AGENT_DELEGATION_${envNames[worker.platform]}_SDK_ROOT` : ''}. Run doctor again. No runtime was installed or substituted.`;
+  const guidance = `Install/configure ${worker.platform} yourself. Set AGENT_DELEGATION_${envNames[worker.platform]}_EXECUTABLE or a profile executable${sdk ? `, and sdk_root (absolute ${sdk.name} package directory) or AGENT_DELEGATION_${envNames[worker.platform]}_SDK_ROOT` : ''}. The service keeps the environment it started with, so run stop before doctor after changing a variable. No runtime was installed or substituted.`;
   return new Fault(code, message, { platform: worker.platform, package: sdk?.name, ...extra, guidance });
 }
 const fingerprints = new Map<string, { stamp: string; hash: string }>();
