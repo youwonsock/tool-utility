@@ -57,6 +57,7 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
     if(thread.turns.length&&(argv.includes('--empty-rollout-always')||argv.includes('--empty-rollout-once')&&readErrors++===0)) {
       const rollout=path.join(process.cwd(),`rollout-${thread.id}.jsonl`);return send({id:frame.id,error:{code:-32603,message:`failed to read thread: thread-store internal error: failed to read session metadata ${rollout}: rollout at ${rollout} is empty`}});
     }
+    if(thread.turns.length&&(argv.includes('--list-turns-always')||argv.includes('--list-turns-once')&&readErrors++===0))return send({id:frame.id,error:{code:-32601,message:'list_turns is not supported yet'}});
     if(argv.includes('--unrelated-read-error'))return send({id:frame.id,error:{code:-32603,message:'failed to read thread: unrelated permanent metadata error'}});
     if(action.block_observe)return;return reply({thread});
   }
