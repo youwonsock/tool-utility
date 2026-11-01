@@ -5,6 +5,7 @@ import path from 'node:path';
 import {
   Store,
   Engine,
+  EffectRunner,
   Fault,
   uid,
   sleep,
@@ -626,9 +627,9 @@ test('reconciliation collects a stop record published during process ownership c
   a.state = 'cancelling';
   a.worker = readJson(file);
   f.store.save();
-  const original = Engine.prototype.workerState;
+  const original = EffectRunner.prototype.workerState;
   let reads = 0;
-  t.mock.method(Engine.prototype, 'workerState', function (attempt) {
+  t.mock.method(EffectRunner.prototype, 'workerState', function (attempt) {
     const state = original.call(this, attempt);
     // The worker finishes after reconciliation reads its starting snapshot,
     // before the slower OS ownership query reports that the host has exited.
