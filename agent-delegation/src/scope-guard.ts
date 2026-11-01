@@ -16,6 +16,14 @@ async function fileDigest(file: string): Promise<string> {
   return `${stat.mode}:${hash.digest('hex')}`;
 }
 
+// Claude Code saves through `<file>.tmp.<pid>.<hex>` and renames it over the file.
+// Only a temporary file of an in-scope path passes; one left behind fails at commit.
+const atomicWriteTemp = /^(.+)\.tmp\.\d+\.[0-9a-f]+$/;
+function savingInScope(scope: string[], file: string) {
+  const target = atomicWriteTemp.exec(file)?.[1];
+  return target !== undefined && scopeAllows(scope, target);
+}
+
 // The worker owns this monitor: service/MCP disconnects do not disable it.
 // Notifications provide prompt checks; periodic Git/context checks cover missed
 // events. Unknown watcher or inspection health is a hard failure.
@@ -177,7 +185,7 @@ export class ScopeGuard {
   }
   private async inspect() {
     const { spec, state, save } = this.context;
-    const changes = await status(spec.directory);
+    const changes = (await status(spec.directory)).filter((change) => !savingInScope(spec.scope, change.path));
     invariant((await head(spec.directory)) === this.initialHead, 'WORKER_CHANGED_HEAD', 'Worker changed HEAD.');
     invariant(
       (await git(spec.directory, ['symbolic-ref', '--quiet', 'HEAD'], true)).stdout.trim() === this.initialRef,
@@ -204,7 +212,7 @@ export class ScopeGuard {
         checkContext(spec.directory, spec.context);
         continue;
       }
-      if (scopeAllows(spec.scope, file)) continue;
+      if (scopeAllows(spec.scope, file) || savingInScope(spec.scope, file)) continue;
       try {
         if (
           fs.lstatSync(path.join(spec.directory, file)).isDirectory() &&

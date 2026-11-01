@@ -50,7 +50,7 @@
 
 `doctor.connection.healthy`는 선택한 런타임의 초기화·정책·세션 연결 확인을 뜻합니다. 모델 기본값이 없는 HTTP 런타임도 모델 호출 없이 진단할 수 있습니다. 공급자 인증 유효성은 실제 모델 작업으로 확인하며, doctor는 이를 검증했다고 주장하지 않습니다. 인증 오류는 선택한 플랫폼의 네이티브 설정에서 해결합니다. 다른 공급자의 자격 증명을 탐색해 대체하지 않습니다.
 
-서비스는 시작할 때의 환경 변수를 유지합니다. `AGENT_DELEGATION_*_EXECUTABLE`이나 `AGENT_DELEGATION_*_SDK_ROOT`를 바꾼 뒤에는 `stop`을 호출하고 `doctor`를 다시 실행합니다. Claude Code의 `CLI_INCOMPATIBLE` "did not report a runtime version"은 CLI가 초기화 응답에 버전을 보내지 않는 경우입니다. 2.1.223에서 재현됐고, SDK 0.3.316과 CLI 2.1.316 조합은 통과했습니다. OpenCode와 Kilo 워커는 사용자 설정의 권한 중 정책에 없는 항목을 `deny`로 덮어쓰므로, 전역 설정의 허용 항목은 워커에 적용되지 않습니다.
+서비스는 시작할 때의 환경 변수를 유지합니다. `AGENT_DELEGATION_*_EXECUTABLE`이나 `AGENT_DELEGATION_*_SDK_ROOT`를 바꾼 뒤에는 `stop`을 호출하고 `doctor`를 다시 실행합니다. Claude Code의 `CLI_INCOMPATIBLE` "did not report a runtime version"은 CLI가 초기화 응답에 버전을 보내지 않는 경우입니다. 2.1.223에서 재현됐고, SDK 0.3.316과 CLI 2.1.316 조합은 통과했습니다. 전역 폴더에 쓸 권한이 없으면 사용자 폴더에 CLI와 SDK를 설치하고 데이터 폴더의 `profiles.json`에서 `executable`과 `sdk_root`로 지정합니다. OpenCode와 Kilo 워커는 사용자 설정의 권한 중 정책에 없는 항목을 `deny`로 덮어쓰므로, 전역 설정의 허용 항목은 워커에 적용되지 않습니다.
 
 자원 프로파일은 같은 서비스 전체에서 동일 키에 동일 정의를 요구합니다. probe를 실행하는 시점은 잠금 획득 뒤, 모델 호출 전입니다. project-bound 자원은 실제 worktree 경로를 realpath로 비교합니다. 프로파일은 외부 서버를 자동 시작하거나 Editor 프로젝트를 자동 전환하는 명령이 아닙니다.
 
@@ -94,7 +94,7 @@ journal은 256개 레코드 또는 `max(32 MiB, 최신 레코드 바이트 수 �
 
 `export-host <opencode|codex|claude-code|kilo> <새 출력 경로>`는 MCP 설정과 delegate-agents 스킬·도구 계약을 생성하며 전역 설정을 등록하지 않습니다. Kilo는 CLI/runtime용 kilo.json과 IDE용 ide-mcp.json을 구분합니다. 같은 데이터 폴더에 연결하면 같은 서비스가 작업과 자원을 관리합니다.
 
-자동화된 16개 조합은 네 지시자 설정과 모의 네이티브 워커를 사용하는 MCP 계약 검사입니다. 실제 CLI/SDK 연결 검사는 별도 임시 경로에 준비한 테스트 설치본을 사용합니다. 실제 모델 작업과 IDE·데스크톱 GUI는 확인하지 않았다면 미확인으로 유지합니다. GUI 구현자 자동 제어는 제공하지 않습니다. Codex app-server는 실험 연동입니다. SDK·CLI 버전 일치 대신 필수 API·권한 정책·세션 연결을 검사합니다. `doctor.compatible`은 초기화 검사와 종료 확인 결과이며 유료 모델 작업의 성공을 보장하지 않습니다. `backend_version`은 실제 CLI 버전이고 `runtime`은 SDK와 CLI의 식별 정보입니다.
+자동화된 16개 조합은 네 지시자 설정과 모의 네이티브 워커를 사용하는 MCP 계약 검사입니다. 실제 CLI/SDK 연결 검사는 별도 임시 경로에 준비한 테스트 설치본을 사용합니다. 실제 모델 작업과 IDE·데스크톱 GUI는 확인하지 않았다면 미확인으로 유지합니다. macOS에서 충돌 수정부터 `finalize_run`까지 실제 모델로 확인한 조합은 Codex 0.162.1, OpenCode 1.19.0 + SDK 1.19.5, Claude Code 2.1.316 + SDK 0.3.316, Kilo 7.4.23 + SDK 7.8.18입니다. GUI 구현자 자동 제어는 제공하지 않습니다. Codex app-server는 실험 연동입니다. SDK·CLI 버전 일치 대신 필수 API·권한 정책·세션 연결을 검사합니다. `doctor.compatible`은 초기화 검사와 종료 확인 결과이며 유료 모델 작업의 성공을 보장하지 않습니다. `backend_version`은 실제 CLI 버전이고 `runtime`은 SDK와 CLI의 식별 정보입니다.
 
 ## 외부 설치본과 재시도
 
