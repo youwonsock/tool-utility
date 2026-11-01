@@ -284,6 +284,14 @@ test('resource normalization rejects conflicting or disabled connection settings
   ])assert.throws(()=>connection(resource(config),'/tmp/worktree'),e=>e.code==='MCP_POLICY');
 });
 
+test('HTTP backends deny inherited grants the worker policy does not name',()=>{
+  const config={permission:{websearch:'allow',lsp:'allow',read:'deny',editor_x:'allow'},agent:{'delegate-worker':{permission:{codesearch:'allow'}}}};
+  const result=restrictions(config,[{connection:{name:'editor',config:{type:'stdio',command:'node'}}}],'/tmp/worktree');
+  for(const key of ['websearch','lsp','editor_x','codesearch'])assert.equal(result.permission[key],'deny',key);
+  assert.equal(result.permission.read,'allow');
+  assert.equal(result.permission['editor_*'],'ask');
+});
+
 test('HTTP backends translate portable stdio fields without leaking unsupported native keys',()=>{
   const result=restrictions({},[{connection:{name:'editor',config:{type:'stdio',command:'node',args:['server.mjs'],env:{PROJECT:'{{worktree}}'},timeout:1500}}}],'/tmp/worktree');
   assert.deepEqual(result.mcp.editor,{type:'local',command:['node','server.mjs'],environment:{PROJECT:'/tmp/worktree'},timeout:1500,enabled:true});

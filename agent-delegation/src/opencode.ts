@@ -100,6 +100,10 @@ export function restrictions(
     });
     permission[`${r.connection.name}_*`] = 'ask';
   }
+  // A key the policy does not name would otherwise keep the user's own grant.
+  for (const inherited of [config.permission, config.agent?.['delegate-worker']?.permission])
+    if (inherited && typeof inherited === 'object')
+      for (const key of Object.keys(inherited)) permission[key] ??= 'deny';
   return {
     mcp,
     permission,

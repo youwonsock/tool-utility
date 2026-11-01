@@ -8,7 +8,7 @@ export function reportedVersion(value: unknown, platform: string): string {
   invariant(
     typeof value === 'string' && value.length > 0 && !/\s/.test(value),
     'BACKEND_VERSION',
-    `${platform} did not report a runtime version.`,
+    `${platform} did not report a runtime version. Update the CLI; older releases omit it.`,
   );
   return value;
 }
