@@ -134,15 +134,19 @@ export class HttpBackend implements WorkerBackend {
       const provider = providers.all.find((p: any) => providers.connected.includes(p.id));
       if (provider) model = { providerID: provider.id, modelID: providers.default[provider.id] };
     }
-    invariant(
-      (spec.diagnostic && spec.worker.model === undefined) ||
-        (model &&
-          providers.connected.includes(model.providerID) &&
-          providers.all.find((p: any) => p.id === model!.providerID)?.models[model.modelID]),
-      'MODEL_UNAVAILABLE',
-      'Configured Kilo model is unavailable. No fallback was used.',
-    );
-    state.model = model;
+    const known =
+      model && providers.connected.includes(model.providerID)
+        ? providers.all.find((p: any) => p.id === model!.providerID)?.models[model.modelID]
+        : undefined;
+    const problem = !known
+      ? 'Configured Kilo model is unavailable. No fallback was used.'
+      : known.capabilities?.toolcall === false
+        ? 'Configured Kilo model cannot call tools. No fallback was used.'
+        : undefined;
+    if (problem) {
+      invariant(spec.diagnostic && spec.worker.model === undefined, 'MODEL_UNAVAILABLE', problem);
+      state.model_warning = problem;
+    } else state.model = model;
     state.backend = 'kilo';
     state.backend_version = health.version;
     save();

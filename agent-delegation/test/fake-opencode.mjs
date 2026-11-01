@@ -17,7 +17,7 @@ if (argv.includes('debug')) {
   else
     console.log(
       JSON.stringify({
-        model: 'fake/test',
+        model: argv.includes('--stale-model') ? 'fake/missing' : 'fake/test',
         mcp: { inherited: { enabled: true, type: 'remote', url: 'http://never-connect.invalid' }, ...overlay.mcp },
         ...overlay,
       }),
@@ -121,7 +121,14 @@ const server = http.createServer(async (req, res) => {
       ?.slice('--advance-clock-after-provider='.length);
     if (clockFlag) fs.writeFileSync(clockFlag, 'ready');
     return send({
-      all: [{ id: 'fake', models: { test: { id: 'test' } } }],
+      all: [
+        {
+          id: 'fake',
+          models: {
+            test: { id: 'test', ...(argv.includes('--no-toolcall') ? { capabilities: { toolcall: false } } : {}) },
+          },
+        },
+      ],
       connected: ['fake'],
       default: { fake: 'test' },
     });

@@ -268,6 +268,8 @@ export type WorkerState = {
   summary?: string;
   transcript?: string;
   usage?: UsageSummary;
+  last_activity_at?: number;
+  model_warning?: string;
   error?: string;
   stopped?: boolean;
 };
@@ -309,6 +311,7 @@ export type Attempt = {
   verification: Evidence[];
   model?: WorkerModel;
   usage?: UsageSummary;
+  last_activity_at?: number;
   inputs: InputRequest[];
   error?: string;
   execution?: WorkerConfig;

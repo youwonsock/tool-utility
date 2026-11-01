@@ -112,6 +112,7 @@ export class EffectRunner extends EngineBase {
     let connection: {
       healthy: boolean;
       model?: unknown;
+      model_warning?: string;
       error?: string;
       code?: string;
       details?: unknown;
@@ -154,6 +155,7 @@ export class EffectRunner extends EngineBase {
       connection = {
         healthy: state.phase === 'completed' && state.stopped === true,
         model: state.model,
+        model_warning: state.model_warning,
         error: state.error,
         code: state.error_code,
         details: state.error_details,
@@ -232,16 +234,22 @@ export class EffectRunner extends EngineBase {
     for (const t of specs) visit(t.id);
   }
   async effectSubmit(args: SubmitArgs) {
-    return submitTasks(
-      this.store,
-      args,
-      (specs) => this.validateGraph(specs),
-      undefined,
-      async (result) => {
-        this.publicationResult = result;
-        await this.persist();
-      },
-      (commonDir) => this.hooks.bindRepository(commonDir),
+    const limit = (args as { settings?: { concurrency?: number } }).settings?.concurrency;
+    const limited = limit !== undefined && limit > this.options.concurrency;
+    const withLimit = (result: unknown) =>
+      limited ? { ...(result as object), service_concurrency_limit: this.options.concurrency } : result;
+    return withLimit(
+      await submitTasks(
+        this.store,
+        args,
+        (specs) => this.validateGraph(specs),
+        undefined,
+        async (result) => {
+          this.publicationResult = withLimit(result);
+          await this.persist();
+        },
+        (commonDir) => this.hooks.bindRepository(commonDir),
+      ),
     );
   }
   async effectCleanup(run: Run) {
@@ -490,6 +498,7 @@ export class EffectRunner extends EngineBase {
       attempt.worker = state;
       attempt.model = state.model;
       attempt.usage = state.usage;
+      attempt.last_activity_at = state.last_activity_at;
       attempt.inputs = state.inputs;
       const ownerTask = run.tasks.find((t) => t.attempts.includes(attempt));
       if (ownerTask && state.model && ownerTask.worker.model === undefined) {

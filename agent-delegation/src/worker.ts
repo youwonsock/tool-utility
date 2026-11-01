@@ -52,7 +52,12 @@ export async function worker(jobDir: string) {
   // policy-hook reads scope_guard.checked_at from this file and rejects it after 10 seconds.
   const refreshInterval = 2000;
   const changeKey = () =>
-    JSON.stringify({ ...state, updated: 0, scope_guard: state.scope_guard && { ...state.scope_guard, checked_at: 0 } });
+    JSON.stringify({
+      ...state,
+      updated: 0,
+      last_activity_at: 0,
+      scope_guard: state.scope_guard && { ...state.scope_guard, checked_at: 0 },
+    });
   let savedAt = 0,
     savedKey = '';
   const save = () => {
@@ -159,7 +164,9 @@ export async function worker(jobDir: string) {
         const observed = await backend.observe();
         guard?.assertHealthy();
         for (const id of observed.reply_confirmations ?? []) if (state.replies[id]) state.replies[id] = 'sent';
-        transcript = JSON.stringify(observed.transcript);
+        const observedTranscript = JSON.stringify(observed.transcript);
+        if (observedTranscript !== transcript) state.last_activity_at = Date.now();
+        transcript = observedTranscript;
         writeTranscript(observed.complete || observed.error !== undefined || observed.inputs.length > 0);
         state.prompt_accepted ||= observed.accepted;
         state.usage = observed.usage ?? state.usage;

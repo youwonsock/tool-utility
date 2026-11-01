@@ -139,3 +139,19 @@ for (const [platform, expected] of Object.entries({
     assert.deepEqual(view.items[0].attempt.usage, expected);
     assert.deepEqual(view.usage, expected);
   });
+
+test('get_run reports activity while a model runs and the concurrency that applies', async (t) => {
+  const f = await fixture(t);
+  const started = await submit(f, [task('a', { files: { 'a.txt': 'x' }, delay: 1500 })], {
+    settings: { concurrency: 8 },
+  });
+  assert.equal(started.service_concurrency_limit, 2);
+  await until(f, started.run_id, (run) => run.tasks[0].attempts[0]?.last_activity_at);
+  const view = await f.call('get_run', { run_id: started.run_id });
+  assert.equal(typeof view.items[0].attempt.last_activity_at, 'number');
+  assert.equal(view.effective_concurrency, 2);
+  const unlimited = await submit(f, [task('b', { files: { 'b.txt': 'x' } }, { scope: ['b.txt'] })], {
+    settings: { concurrency: 2 },
+  }).catch((e) => e);
+  assert.equal(unlimited.service_concurrency_limit, undefined);
+});

@@ -191,6 +191,11 @@ export async function selectModel(
     'MODEL_UNAVAILABLE',
     `Configured model is unavailable: ${model.providerID}/${model.modelID}. No fallback was used.`,
   );
+  invariant(
+    provider.models[model.modelID].capabilities?.toolcall !== false,
+    'MODEL_UNAVAILABLE',
+    `Configured model cannot call tools: ${model.providerID}/${model.modelID}. No fallback was used.`,
+  );
   return model;
 }
 export async function launchOpenCode(spec: WorkerSpec, state: WorkerState, save: () => void) {
@@ -295,6 +300,7 @@ export async function launchOpenCode(spec: WorkerSpec, state: WorkerState, save:
   } catch (e) {
     if (!spec.diagnostic || spec.worker.model !== undefined || !(e instanceof Fault) || e.code !== 'MODEL_UNAVAILABLE')
       throw e;
+    state.model_warning = e.message;
   }
   save();
   return { client, child, log };
