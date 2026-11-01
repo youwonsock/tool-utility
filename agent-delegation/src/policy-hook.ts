@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { readJson } from './io.js';
-import { toolPolicy } from './backends/policy.js';
+import { toolPolicy } from './policy.js';
 import type { WorkerSpec, WorkerState } from './types.js';
 import { scopeMonitorHealthy } from './scope.js';
 import { CODEX_COMMAND_TOOL, CODEX_READ_TOOL } from './backends/codex-tools.js';

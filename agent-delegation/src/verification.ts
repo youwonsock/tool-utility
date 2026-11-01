@@ -4,7 +4,7 @@ import spawn from 'cross-spawn';
 import { invariant, type Evidence, type ShellSpec, type Command } from './types.js';
 import { readJson, writeJson, mkdir, uid, digest, sleep, alive } from './io.js';
 import { workerEnvironment } from './profiles.js';
-import { spawnRuntime, stopOwned, stopRuntimeIntent } from './backends/process.js';
+import { spawnRuntime, stopOwned, stopRuntimeIntent } from './process.js';
 import type { BackendContext } from './backends/contract.js';
 import { verificationInvocation, verificationShell } from './shell.js';
 export { verificationShell } from './shell.js';

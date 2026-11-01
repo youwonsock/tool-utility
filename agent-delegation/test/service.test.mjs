@@ -10,79 +10,219 @@ import { remoteCall, connect, serve, Store, sleep, exec, terminate, processIdent
 import { fixture, task, cli, fake, root, readState, temporaryRoot, runDefaults } from './helpers.mjs';
 import { mockSdks } from './mock-sdks.mjs';
 
-test('authenticated daemon survives MCP disconnect and restart without duplicate prompts',async t=>{
-  const f=await fixture(t,{service:true}); const audit=path.join(f.dir,'audit.jsonl');
-  const saved={...process.env}; Object.assign(process.env,f.env,{FAKE_AUDIT:audit});
-  t.after(async()=>{ try { await remoteCall(f.data,cli,'',{},'/stop'); } catch{} for(const key of Object.keys(process.env)) if(!(key in saved)) delete process.env[key]; Object.assign(process.env,saved); });
-  const client=new Client({name:'integration-test',version:'1'});
-  t.after(()=>client.close());
-  const transport=new StdioClientTransport({command:process.execPath,args:[cli,'mcp'],env:{...process.env},stderr:'pipe'}); await client.connect(transport);
-  assert.equal((await client.listTools()).tools.length,14);
-  const gate=path.join(f.dir,'complete-implementation'),args={request_id:'single',...runDefaults,repo:f.repo,tasks:[task('a',{files:{'a.txt':'a'},wait_file:gate,drop_response:true})]};
-  const result=await client.callTool({name:'create_run',arguments:args});
-  const submitted=JSON.parse(result.content[0].text); assert.ok(submitted.run_id); await client.close();
+test('authenticated daemon survives MCP disconnect and restart without duplicate prompts', async (t) => {
+  const f = await fixture(t, { service: true });
+  const audit = path.join(f.dir, 'audit.jsonl');
+  const saved = { ...process.env };
+  Object.assign(process.env, f.env, { FAKE_AUDIT: audit });
+  t.after(async () => {
+    try {
+      await remoteCall(f.data, cli, '', {}, '/stop');
+    } catch {}
+    for (const key of Object.keys(process.env)) if (!(key in saved)) delete process.env[key];
+    Object.assign(process.env, saved);
+  });
+  const client = new Client({ name: 'integration-test', version: '1' });
+  t.after(() => client.close());
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: [cli, 'mcp'],
+    env: { ...process.env },
+    stderr: 'pipe',
+  });
+  await client.connect(transport);
+  assert.equal((await client.listTools()).tools.length, 14);
+  const gate = path.join(f.dir, 'complete-implementation'),
+    args = {
+      request_id: 'single',
+      ...runDefaults,
+      repo: f.repo,
+      tasks: [task('a', { files: { 'a.txt': 'a' }, wait_file: gate, drop_response: true })],
+    };
+  const result = await client.callTool({ name: 'create_run', arguments: args });
+  const submitted = JSON.parse(result.content[0].text);
+  assert.ok(submitted.run_id);
+  await client.close();
   let state;
-  for(let i=0;i<100;i++){state=readState(f.data);if(state.runs[0].tasks[0].attempts[0]?.worker?.prompt_intent)break;await sleep(100);}
+  for (let i = 0; i < 100; i++) {
+    state = readState(f.data);
+    if (state.runs[0].tasks[0].attempts[0]?.worker?.prompt_intent) break;
+    await sleep(100);
+  }
   assert.ok(state.runs[0].tasks[0].attempts[0].worker.prompt_intent);
-  let descriptor=JSON.parse(fs.readFileSync(path.join(f.data,'service.json')));
-  assert.equal((await fetch(`${descriptor.url}/health`)).status,401);
-  assert.equal((await fetch(`${descriptor.url}/health`,{headers:{Authorization:`Bearer ${descriptor.token}`,Origin:'https://outside.test'}})).status,403);
-  if(process.platform==='win32') await terminate(descriptor.owner); else process.kill(descriptor.owner.pid,'SIGKILL');
-  for(let i=0;i<100;i++){try{process.kill(descriptor.owner.pid,0);}catch{break;}await sleep(30);}
-  await connect(f.data,cli);
-  fs.writeFileSync(gate,'complete');
-  const deadline=Date.now()+90000;
-  do{state=readState(f.data);if(state.runs[0].tasks[0].state==='needs_review')break;await sleep(100);}while(Date.now()<deadline);
-  assert.equal(state.runs[0].tasks[0].state,'needs_review');
-  assert.equal(state.runs[0].tasks[0].attempts[0].worker.stopped,true);
-  const events=fs.readFileSync(audit,'utf8').trim().split('\n').map(JSON.parse); assert.equal(events.filter(e=>e.event==='prompt').length,1);
-  const repeat=await remoteCall(f.data,cli,'create_run',args); assert.equal(repeat.run_id,submitted.run_id);
+  let descriptor = JSON.parse(fs.readFileSync(path.join(f.data, 'service.json')));
+  assert.equal((await fetch(`${descriptor.url}/health`)).status, 401);
+  assert.equal(
+    (
+      await fetch(`${descriptor.url}/health`, {
+        headers: { Authorization: `Bearer ${descriptor.token}`, Origin: 'https://outside.test' },
+      })
+    ).status,
+    403,
+  );
+  if (process.platform === 'win32') await terminate(descriptor.owner);
+  else process.kill(descriptor.owner.pid, 'SIGKILL');
+  for (let i = 0; i < 100; i++) {
+    try {
+      process.kill(descriptor.owner.pid, 0);
+    } catch {
+      break;
+    }
+    await sleep(30);
+  }
+  await connect(f.data, cli);
+  fs.writeFileSync(gate, 'complete');
+  const deadline = Date.now() + 90000;
+  do {
+    state = readState(f.data);
+    if (state.runs[0].tasks[0].state === 'needs_review') break;
+    await sleep(100);
+  } while (Date.now() < deadline);
+  assert.equal(state.runs[0].tasks[0].state, 'needs_review');
+  assert.equal(state.runs[0].tasks[0].attempts[0].worker.stopped, true);
+  const events = fs.readFileSync(audit, 'utf8').trim().split('\n').map(JSON.parse);
+  assert.equal(events.filter((e) => e.event === 'prompt').length, 1);
+  const repeat = await remoteCall(f.data, cli, 'create_run', args);
+  assert.equal(repeat.run_id, submitted.run_id);
 });
 
-test('installed bundle works after its source is moved, without source node_modules',async t=>{
-  const dir=fs.mkdtempSync(path.join(temporaryRoot,'설치 경로 space ')); const source=path.join(dir,'개발 source'),install=path.join(dir,'설치본'),data=path.join(dir,'state');fs.mkdirSync(source);
-  for(const entry of ['dist','plugins','.agents','scripts','package.json'])fs.cpSync(path.join(root,entry),path.join(source,entry),{recursive:true,mode:fs.constants.COPYFILE_FICLONE,filter:()=>true});
-  assert.ok(fs.existsSync(path.join(source,'scripts/install.mjs')), `Copied installer missing: ${JSON.stringify(fs.readdirSync(source))}`);
-  const env={...process.env,AGENT_DELEGATION_INSTALL_ROOT:install,AGENT_DELEGATION_HOME:data,AGENT_DELEGATION_OPENCODE_EXECUTABLE:process.execPath,AGENT_DELEGATION_OPENCODE_EXECUTABLE_ARGS:JSON.stringify([fake])};
-  const installed=await exec(process.execPath,[path.join(source,'scripts/install.mjs'),'--no-register'],{env,timeout:120000});assert.equal(installed.code,0,installed.stderr);
-  const current=JSON.parse(fs.readFileSync(path.join(install,'current.json')));
-  fs.renameSync(source,path.join(dir,'moved source'));
-  assert.equal(fs.existsSync(path.join(path.dirname(current.cli),'node_modules')),false);
-  assert.equal(fs.existsSync(path.join(path.dirname(current.cli),'runtime-manifest.json')),false);
-  const sdks=mockSdks(path.join(dir,'user SDKs'));
-  const mockClaude=path.join(dir,'mock-claude.mjs');fs.copyFileSync(path.join(root,'test','fake-claude.mjs'),mockClaude);
-  env.AGENT_DELEGATION_OPENCODE_SDK_ROOT=path.join(dir,'missing-sdk');
-  env.AGENT_DELEGATION_CLAUDE_EXECUTABLE=process.execPath;env.AGENT_DELEGATION_CLAUDE_EXECUTABLE_ARGS=JSON.stringify([mockClaude]);env.AGENT_DELEGATION_CLAUDE_SDK_ROOT=path.join(dir,'missing-sdk');
-  fs.mkdirSync(data,{recursive:true});fs.writeFileSync(path.join(data,'profiles.json'),JSON.stringify({profiles:{'installed-claude':{platform:'claude-code',executable:process.execPath,args:[mockClaude],sdk_root:sdks['claude-code']}}}));
-  const client=new Client({name:'installed-test',version:'1'});const transport=new StdioClientTransport({command:process.execPath,args:[current.cli,'mcp'],env,stderr:'pipe'});await client.connect(transport);
-  try{assert.equal((await client.listTools()).tools.length,14);
-    const result=await client.callTool({name:'doctor',arguments:{worker:{platform:'opencode'}}});const doctor=JSON.parse(result.content[0].text);assert.equal(doctor.connection.healthy,false);assert.equal(doctor.connection.code,'SDK_NOT_FOUND');
-    const external=JSON.parse((await client.callTool({name:'doctor',arguments:{worker:{platform:'claude-code',profile:'installed-claude',model:'fake-model'}}})).content[0].text);assert.equal(external.connection.healthy,true,JSON.stringify(external));assert.equal(external.compatible,true,JSON.stringify(external));
-    assert.equal(external.runtime.sdk.root,fs.realpathSync.native(sdks['claude-code']));
-    const missing=JSON.parse((await client.callTool({name:'doctor',arguments:{worker:{platform:'claude-code'}}})).content[0].text);assert.equal(missing.connection.healthy,false);assert.equal(missing.connection.code,'SDK_NOT_FOUND');
-    for(const platform of ['opencode','codex','claude-code','kilo'])assert.ok(fs.existsSync(path.join(current.release,'hosts',platform,'binding.json')));
-  }finally{await client.close();await exec(process.execPath,[current.cli,'stop'],{env});}
-  assert.ok(!fs.readFileSync(path.join(current.release,'plugins/agent-delegation/.mcp.json'),'utf8').includes(source));
+test('installed bundle works after its source is moved, without source node_modules', async (t) => {
+  const dir = fs.mkdtempSync(path.join(temporaryRoot, '설치 경로 space '));
+  const source = path.join(dir, '개발 source'),
+    install = path.join(dir, '설치본'),
+    data = path.join(dir, 'state');
+  fs.mkdirSync(source);
+  for (const entry of ['dist', 'plugins', '.agents', 'scripts', 'package.json'])
+    fs.cpSync(path.join(root, entry), path.join(source, entry), {
+      recursive: true,
+      mode: fs.constants.COPYFILE_FICLONE,
+      filter: () => true,
+    });
+  assert.ok(
+    fs.existsSync(path.join(source, 'scripts/install.mjs')),
+    `Copied installer missing: ${JSON.stringify(fs.readdirSync(source))}`,
+  );
+  const env = {
+    ...process.env,
+    AGENT_DELEGATION_INSTALL_ROOT: install,
+    AGENT_DELEGATION_HOME: data,
+    AGENT_DELEGATION_OPENCODE_EXECUTABLE: process.execPath,
+    AGENT_DELEGATION_OPENCODE_EXECUTABLE_ARGS: JSON.stringify([fake]),
+  };
+  const installed = await exec(process.execPath, [path.join(source, 'scripts/install.mjs'), '--no-register'], {
+    env,
+    timeout: 120000,
+  });
+  assert.equal(installed.code, 0, installed.stderr);
+  const current = JSON.parse(fs.readFileSync(path.join(install, 'current.json')));
+  fs.renameSync(source, path.join(dir, 'moved source'));
+  assert.equal(fs.existsSync(path.join(path.dirname(current.cli), 'node_modules')), false);
+  assert.equal(fs.existsSync(path.join(path.dirname(current.cli), 'runtime-manifest.json')), false);
+  const sdks = mockSdks(path.join(dir, 'user SDKs'));
+  const mockClaude = path.join(dir, 'mock-claude.mjs');
+  fs.copyFileSync(path.join(root, 'test', 'fake-claude.mjs'), mockClaude);
+  env.AGENT_DELEGATION_OPENCODE_SDK_ROOT = path.join(dir, 'missing-sdk');
+  env.AGENT_DELEGATION_CLAUDE_EXECUTABLE = process.execPath;
+  env.AGENT_DELEGATION_CLAUDE_EXECUTABLE_ARGS = JSON.stringify([mockClaude]);
+  env.AGENT_DELEGATION_CLAUDE_SDK_ROOT = path.join(dir, 'missing-sdk');
+  fs.mkdirSync(data, { recursive: true });
+  fs.writeFileSync(
+    path.join(data, 'profiles.json'),
+    JSON.stringify({
+      profiles: {
+        'installed-claude': {
+          platform: 'claude-code',
+          executable: process.execPath,
+          args: [mockClaude],
+          sdk_root: sdks['claude-code'],
+        },
+      },
+    }),
+  );
+  const client = new Client({ name: 'installed-test', version: '1' });
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: [current.cli, 'mcp'],
+    env,
+    stderr: 'pipe',
+  });
+  await client.connect(transport);
+  try {
+    assert.equal((await client.listTools()).tools.length, 14);
+    const result = await client.callTool({ name: 'doctor', arguments: { worker: { platform: 'opencode' } } });
+    const doctor = JSON.parse(result.content[0].text);
+    assert.equal(doctor.connection.healthy, false);
+    assert.equal(doctor.connection.code, 'SDK_NOT_FOUND');
+    const external = JSON.parse(
+      (
+        await client.callTool({
+          name: 'doctor',
+          arguments: { worker: { platform: 'claude-code', profile: 'installed-claude', model: 'fake-model' } },
+        })
+      ).content[0].text,
+    );
+    assert.equal(external.connection.healthy, true, JSON.stringify(external));
+    assert.equal(external.compatible, true, JSON.stringify(external));
+    assert.equal(external.runtime.sdk.root, fs.realpathSync.native(sdks['claude-code']));
+    const missing = JSON.parse(
+      (await client.callTool({ name: 'doctor', arguments: { worker: { platform: 'claude-code' } } })).content[0].text,
+    );
+    assert.equal(missing.connection.healthy, false);
+    assert.equal(missing.connection.code, 'SDK_NOT_FOUND');
+    for (const platform of ['opencode', 'codex', 'claude-code', 'kilo'])
+      assert.ok(fs.existsSync(path.join(current.release, 'hosts', platform, 'binding.json')));
+  } finally {
+    await client.close();
+    await exec(process.execPath, [current.cli, 'stop'], { env });
+  }
+  assert.ok(
+    !fs.readFileSync(path.join(current.release, 'plugins/agent-delegation/.mcp.json'), 'utf8').includes(source),
+  );
 });
 
-test('owned process tree termination includes a child that ignores SIGTERM',{skip:process.platform==='win32'?'Windows taskkill /T is covered by worker cancellation tests':false},async()=>{
-  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'process-tree-')),ready=path.join(dir,'ready'),marker=path.join(dir,'survived');
-  const code=`import {spawn} from 'node:child_process';spawn(process.execPath,['--input-type=module','-e',${JSON.stringify(`import fs from 'node:fs';process.on('SIGTERM',()=>{});fs.writeFileSync(${JSON.stringify(ready)},'ready');setTimeout(()=>{fs.writeFileSync(${JSON.stringify(marker)},'bad');process.exit(0)},5000);`)}],{stdio:'ignore'});setInterval(()=>{},1000)`;
-  const child=spawn(process.execPath,['--input-type=module','-e',code],{detached:true,stdio:'ignore'});child.unref();
-  const identity=await processIdentity(child.pid);for(let i=0;i<50&&!fs.existsSync(ready);i++)await sleep(50);
-  assert.equal(await terminate(identity,true),true);await sleep(100);assert.equal(fs.existsSync(marker),false);
+test(
+  'owned process tree termination includes a child that ignores SIGTERM',
+  { skip: process.platform === 'win32' ? 'Windows taskkill /T is covered by worker cancellation tests' : false },
+  async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'process-tree-')),
+      ready = path.join(dir, 'ready'),
+      marker = path.join(dir, 'survived');
+    const code = `import {spawn} from 'node:child_process';spawn(process.execPath,['--input-type=module','-e',${JSON.stringify(`import fs from 'node:fs';process.on('SIGTERM',()=>{});fs.writeFileSync(${JSON.stringify(ready)},'ready');setTimeout(()=>{fs.writeFileSync(${JSON.stringify(marker)},'bad');process.exit(0)},5000);`)}],{stdio:'ignore'});setInterval(()=>{},1000)`;
+    const child = spawn(process.execPath, ['--input-type=module', '-e', code], { detached: true, stdio: 'ignore' });
+    child.unref();
+    const identity = await processIdentity(child.pid);
+    for (let i = 0; i < 50 && !fs.existsSync(ready); i++) await sleep(50);
+    assert.equal(await terminate(identity, true), true);
+    await sleep(100);
+    assert.equal(fs.existsSync(marker), false);
+  },
+);
+
+test('an interrupted lock recovery names the leftover lock and keeps it', async (t) => {
+  const data = fs.mkdtempSync(path.join(temporaryRoot, 'service-recovery-'));
+  t.after(() => fs.rmSync(data, { recursive: true, force: true }));
+  const lock = path.join(data, 'service.lock'),
+    reap = path.join(data, 'service-reaping.lock');
+  fs.mkdirSync(lock);
+  fs.mkdirSync(reap);
+  await assert.rejects(serve(data, cli), (error) => error.code === 'SERVICE_RECOVERY' && error.message.includes(reap));
+  assert.equal(fs.existsSync(reap), true);
+  assert.equal(fs.existsSync(lock), true);
 });
 
-test('an interrupted lock recovery names the leftover lock and keeps it',async t=>{
-  const data=fs.mkdtempSync(path.join(temporaryRoot,'service-recovery-'));t.after(()=>fs.rmSync(data,{recursive:true,force:true}));
-  const lock=path.join(data,'service.lock'),reap=path.join(data,'service-reaping.lock');fs.mkdirSync(lock);fs.mkdirSync(reap);
-  await assert.rejects(serve(data,cli),error=>error.code==='SERVICE_RECOVERY'&&error.message.includes(reap));
-  assert.equal(fs.existsSync(reap),true);assert.equal(fs.existsSync(lock),true);
-});
-
-test('the doctor command names its worker',async t=>{
-  const f=await fixture(t,{service:true});t.after(async()=>{try{await remoteCall(f.data,cli,'',{},'/stop');}catch{}});
-  const missing=await exec(process.execPath,[cli,'doctor'],{env:f.env});assert.equal(missing.code,1);assert.match(missing.stderr,/doctor <platform>/);
-  const result=await exec(process.execPath,[cli,'doctor','opencode',f.repo],{env:f.env,timeout:60000});assert.equal(result.code,0,result.stderr);
-  const doctor=JSON.parse(result.stdout);assert.equal(doctor.worker.platform,'opencode');assert.equal(doctor.compatible,true,result.stdout);
+test('the doctor command names its worker', async (t) => {
+  const f = await fixture(t, { service: true });
+  t.after(async () => {
+    try {
+      await remoteCall(f.data, cli, '', {}, '/stop');
+    } catch {}
+  });
+  const missing = await exec(process.execPath, [cli, 'doctor'], { env: f.env });
+  assert.equal(missing.code, 1);
+  assert.match(missing.stderr, /doctor <platform>/);
+  const result = await exec(process.execPath, [cli, 'doctor', 'opencode', f.repo], { env: f.env, timeout: 60000 });
+  assert.equal(result.code, 0, result.stderr);
+  const doctor = JSON.parse(result.stdout);
+  assert.equal(doctor.worker.platform, 'opencode');
+  assert.equal(doctor.compatible, true, result.stdout);
 });

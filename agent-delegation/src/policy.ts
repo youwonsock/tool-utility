@@ -1,9 +1,9 @@
 import path from 'node:path';
 import fs from 'node:fs';
-import { invariant, type Resource } from '../types.js';
-import { digest } from '../io.js';
-import { checkedMutationPath, workerPolicyHash } from '../scope.js';
-import type { WorkerSpec } from '../types.js';
+import { invariant, type Resource } from './types.js';
+import { digest } from './io.js';
+import { checkedMutationPath, workerPolicyHash } from './scope.js';
+import type { WorkerSpec } from './types.js';
 
 export function forbiddenCommand(command: string): boolean {
   return (

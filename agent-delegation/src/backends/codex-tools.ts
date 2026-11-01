@@ -3,7 +3,7 @@ import path from 'node:path';
 import { TextDecoder } from 'node:util';
 import { invariant, type WorkerSpec } from '../types.js';
 import { checkedMutationPath } from '../scope.js';
-import { toolPolicy } from './policy.js';
+import { toolPolicy } from '../policy.js';
 
 export const CODEX_READ_TOOL = 'delegate_read_file';
 export const CODEX_COMMAND_TOOL = 'delegate_run_command';
