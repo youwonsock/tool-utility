@@ -137,15 +137,19 @@ export type ExecResult = { stdout: string; stderr: string; code: number | null }
 export function exec(
   executable: string,
   args: string[],
-  options: { cwd?: string; env?: NodeJS.ProcessEnv; timeout?: number; limit?: number } = {},
+  options: { cwd?: string; env?: NodeJS.ProcessEnv; timeout?: number; limit?: number; input?: string } = {},
 ): Promise<ExecResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(executable, args, {
       cwd: options.cwd,
       env: options.env ?? process.env,
       windowsHide: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: [options.input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
     });
+    if (options.input !== undefined) {
+      child.stdin!.on('error', () => undefined); // An early exit reports through its code.
+      child.stdin!.end(options.input);
+    }
     const out: Buffer[] = [],
       err: Buffer[] = [];
     let size = 0,

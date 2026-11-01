@@ -135,9 +135,10 @@ test('permission grants bind exact command, cwd, attempt, scope and context poli
     assert.notEqual(workerPermissionKey(other, 'Bash', input), key);
 });
 
-async function monitored(t, scope = ['a.txt']) {
+async function monitored(t, scope = ['a.txt'], prepare) {
   const f = await fixture(t);
   f.engine.stop();
+  await prepare?.(f);
   const job_dir = path.join(f.data, 'guard');
   fs.mkdirSync(job_dir);
   fs.writeFileSync(path.join(f.repo, 'AGENTS.md'), 'rules');
@@ -191,6 +192,108 @@ test('monitor tolerates an atomic save of an in-scope file but not one outside s
   await g.guard.check();
   assert.equal(g.guard.fault().code, 'SCOPE_VIOLATION');
   assert.equal(g.stopped(), 1);
+});
+async function settled(f, ms = 20000) {
+  const end = Date.now() + ms;
+  while (Date.now() < end && !f.guard.fault()) {
+    await sleep(100);
+    if (!f.guard.pending.size && !f.guard.collapsed.size && !f.guard.checking) break;
+  }
+  await f.guard.check();
+}
+function exclude(f, pattern) {
+  fs.appendFileSync(path.join(f.repo, '.git', 'info', 'exclude'), `${pattern}\n`);
+}
+function burst(f, directory, count, extension = 'js') {
+  fs.mkdirSync(path.join(f.repo, directory), { recursive: true });
+  for (let i = 0; i < count; i++) fs.writeFileSync(path.join(f.repo, directory, `f${i}.${extension}`), 'x');
+}
+test('monitor survives a burst of ignored build output past its notification limit', async (t) => {
+  const f = await monitored(t);
+  exclude(f, 'out/');
+  burst(f, 'out', 20000);
+  burst(f, 'out/nested', 2000);
+  await settled(f);
+  assert.equal(f.guard.fault(), undefined);
+  assert.equal(f.stopped(), 0);
+});
+test('monitor batches ignored files whose directory is not ignored', async (t) => {
+  const f = await monitored(t);
+  exclude(f, '*.log');
+  burst(f, '.', 3000, 'log');
+  await settled(f);
+  assert.equal(f.guard.fault(), undefined);
+  assert.equal(f.stopped(), 0);
+});
+test('monitor still stops an out-of-scope write hidden in an ignored burst', async (t) => {
+  const f = await monitored(t);
+  exclude(f, 'out/');
+  burst(f, 'out', 6000);
+  fs.writeFileSync(path.join(f.repo, 'leak.txt'), 'x');
+  for (let i = 0; i < 100 && !f.guard.fault(); i++) await sleep(50);
+  assert.equal(f.guard.fault()?.code, 'SCOPE_VIOLATION');
+  assert.equal(f.stopped(), 1);
+});
+test(
+  'monitor still stops a transient out-of-scope write in a burst it was notified about',
+  { skip: process.platform === 'win32' && 'Windows can drop these events when its change buffer overflows.' },
+  async (t) => {
+    const f = await monitored(t);
+    exclude(f, 'out/');
+    burst(f, 'out', 6000);
+    fs.writeFileSync(path.join(f.repo, 'leak.txt'), 'x');
+    fs.rmSync(path.join(f.repo, 'leak.txt'));
+    for (let i = 0; i < 100 && !f.guard.fault(); i++) await sleep(50);
+    assert.equal(f.guard.fault()?.code, 'SCOPE_VIOLATION');
+    assert.equal(f.stopped(), 1);
+  },
+);
+test('monitor records lost notifications and still stops what Git status can see', async (t) => {
+  const f = await monitored(t);
+  f.guard.watcher.emit('change', 'rename', null);
+  await sleep(50);
+  await f.guard.check();
+  assert.equal(f.guard.fault(), undefined);
+  assert.equal(f.state.scope_guard.notifications_lost, 1);
+  fs.writeFileSync(path.join(f.repo, 'outside.txt'), 'x');
+  await f.guard.check();
+  assert.equal(f.guard.fault()?.code, 'SCOPE_VIOLATION');
+});
+test('monitor allows a burst inside a recursive scope and fails closed outside it', async (t) => {
+  const inside = await monitored(t, ['gen/**']);
+  burst(inside, 'gen', 6000);
+  await settled(inside);
+  assert.equal(inside.guard.fault(), undefined);
+  const outside = await monitored(t);
+  burst(outside, 'gen', 6000);
+  for (let i = 0; i < 100 && !outside.guard.fault(); i++) await sleep(50);
+  assert.ok(['SCOPE_VIOLATION', 'SCOPE_GUARD_UNKNOWN'].includes(outside.guard.fault()?.code));
+  assert.equal(outside.stopped(), 1);
+});
+test('monitor still stops an edit to a tracked file inside an ignored directory', async (t) => {
+  const f = await monitored(t, ['a.txt'], async (prepared) => {
+    fs.mkdirSync(path.join(prepared.repo, 'out'));
+    fs.writeFileSync(path.join(prepared.repo, 'out', 'tracked.txt'), 'one');
+    await git(prepared.repo, ['add', '-f', 'out/tracked.txt']);
+    await git(prepared.repo, ['commit', '-qm', 'tracked', '--no-verify']);
+    exclude(prepared, 'out/');
+  });
+  burst(f, 'out', 50);
+  await settled(f);
+  assert.equal(f.guard.fault(), undefined);
+  fs.writeFileSync(path.join(f.repo, 'out', 'tracked.txt'), 'two');
+  for (let i = 0; i < 100 && !f.guard.fault(); i++) await sleep(50);
+  assert.equal(f.guard.fault()?.code, 'SCOPE_VIOLATION');
+});
+test('monitor forgets ignore verdicts when a gitignore file changes', async (t) => {
+  const f = await monitored(t, ['.gitignore', 'a.txt']);
+  exclude(f, 'out/');
+  burst(f, 'out', 5);
+  await settled(f);
+  assert.ok(f.guard.ignoredDirectories.has('out'));
+  fs.appendFileSync(path.join(f.repo, '.gitignore'), '\n# changed\n');
+  await sleep(100);
+  assert.equal(f.guard.ignoredDirectories.has('out'), false);
 });
 test('monitor permits creating directories needed by exact and recursive scopes and fails closed on watcher errors', async (t) => {
   const f = await monitored(t, ['new/**']);
