@@ -6,23 +6,23 @@ The current conversation owns planning, review, correction instructions and fina
 
 ## Contracts
 
-- Node 22+, Windows/macOS. Users install, update and authenticate their CLI, SDK and GUI applications. Platform SDKs/CLIs are never bundled, installed or substituted by the tool. Required APIs and policies determine compatibility; version strings identify the runtime. Codex app-server is experimental. The existing 12 STDIO MCP tools connect to an authenticated localhost service. Each implementation attempt owns its native session/process ledger and isolated worktree.
+- Node 22+, Windows/macOS. Users install, update and authenticate their CLI, SDK and GUI applications. Platform SDKs/CLIs are never bundled, installed or substituted by the tool. Required APIs and policies determine compatibility; version strings identify the runtime. Codex app-server is experimental. The 14 STDIO MCP tools connect to an authenticated localhost service. Each implementation attempt owns its native session/process ledger and isolated worktree.
 - Defaults: concurrency 2, timeout 60 minutes, at most 3 corrections after the initial model dispatch. Configuration/initialization failures do not spend this budget; uncertain dispatch intents do. No automatic model fallback or implementation retry.
 - Start only on a named branch with clean tracked and untracked source files. Explicit ignored context snapshots are immutable, preserve relative paths, cannot overwrite tracked files, and cannot enter result commits.
-- Tasks declare goals, dependencies, edit scope, acceptance criteria, verification argv, context files and resource keys. Dependencies require accepted and integrated predecessor commits. Resource locks span all runs owned by the service. Read-only probes must confirm instance identity and, when applicable, the actual attempt/validation project path.
+- Tasks declare goals, dependencies, edit scope, acceptance criteria, at least one verification command, context files and resource keys. Dependencies require accepted and integrated predecessor commits. Resource locks span all runs owned by the service. Read-only probes must confirm instance identity and, when applicable, the actual attempt/validation project path.
 - A failed resource probe exposes the allocated worktree and waits without dispatching a model request. Rebinding the resource and calling `reconcile_run` rechecks that same worktree under its existing lease; final validation remains frozen while waiting. It does not allocate a replacement worktree just to retry a connection check.
 - Persist outbound intent before every native dispatch, input reply and verification command. Unknown delivery is reconciled against session messages; never blindly replay. Unknown process ownership holds locks and blocks replacements.
-- Completion commits are immutable. Review binds attempt ID and commit; integration is serial. Conflicts and scope violations require supervisor instructions.
+- Completion commits are immutable. Review binds attempt ID and commit; integration is serial. Conflicts and scope violations require supervisor instructions. A correction reapplies the latest committed attempt; conflicted files are named in its prompt, and a result that leaves them marked or unchanged becomes conflict_unresolved and cannot be approved. A failed apply stops before dispatch and spends no correction.
 - Final validation freezes task revision, integration commit, context hash and commands. It runs in a separate worktree. Source changes invalidate it. Final approval must name the validation, commit and revision. Finalize rechecks the original checkout and uses `git merge --ff-only --no-overwrite-ignore`; recovery observes rather than resets user changes.
 - Mutating MCP calls require idempotency IDs. Calls taking longer than one second may return {in_progress:true, operation_id, operation_status:"running", run_id?}; identical retries follow progress or the final result, never duplicate execution. get_run adds operations with id/kind/status/updated. Responses are paginated valid JSON (4 KiB); artifacts use 16 KiB pages. Observed command evidence is distinct from model claims.
 - Submission validates every task/resource/context before preparing owned files and worktrees, then publishes the whole batch with its event in one journal record. Durable preparation manifests permit safe cleanup of unchanged unpublished resources or recovery of committed responses. Uncertain persistence fences dispatch until restart; no implementation request is replayed.
-- Typed lifecycle rules keep existing state names and validate grouped transitions. RPC remains 1; storage and new submission preparations use format 4 and workers use format 2. Only these current formats are supported. Old or missing formats are rejected without conversion; an unfinished migration marker blocks startup and installation switching. Corrections immediately remove the old result from review. Cancellation is one-way and overrides late verification snapshots; termination uncertainty retains leases. Rejections preserve structured reasons, changed files and bounded UTF-8 previews without reading symlink targets or authentication bodies.
+- Typed lifecycle rules validate grouped transitions. Data with a different format number is rejected without conversion and blocks startup and installation switching. Corrections immediately remove the old result from review. Cancellation is one-way and overrides late verification snapshots; termination uncertainty retains leases. Rejections preserve structured reasons, changed files and bounded UTF-8 previews without reading symlink targets or authentication bodies.
 - Service and workers survive MCP disconnection. Stop/cancel require confirmed termination. Install/update copies self-contained versioned bundles and a marketplace into user storage, retaining old releases. Host exports do not change global registration. Supervisor conversations are not launched by the service; no authored GUI or public marketplace publishing is included.
 
 ## Platform and recovery contracts
 
 Run and task worker selections are fixed at submission. Task overrides replace
-run selections as a whole; omitted selections default to OpenCode. Native model
+run selections as a whole; create_run and doctor require a selection. Native model
 and shell defaults are resolved during initial preparation and retained for
 corrections. Unsupported models, policies and MCP settings fail explicitly.
 
@@ -80,7 +80,7 @@ The native request_user_input question tool retains the existing supervisor
 question/answer route. The owned Codex hook emits only allow/deny: its current ask decision is unsupported
 and can fail open. Unknown tools and native MCP calls, including declared tools
 that would require ask, are explicitly denied; the dynamic gateway does not yet
-provide MCP tool approval. The public 12-tool MCP contract remains unchanged.
+provide MCP tool approval.
 Delegation,
 background and Git ownership mutations remain denied. Grants bind exact native
 command/input, cwd, attempt and scope/context policy hash; always remains local
@@ -141,15 +141,15 @@ Paid-model testing is separate from the model-free checks. Installation activati
 
 ## Naming and inputs
 
-The package, plugin and MCP server are agent-delegation. Only delegate-agents is exported. Model selection uses worker.model. Diagnostics and initial submissions default to OpenCode; task worker overrides replace the run selection. Runtime configuration uses AGENT_DELEGATION environment variables without aliases.
+The package, plugin and MCP server are agent-delegation. Only delegate-agents is exported. Model selection uses worker.model. Task worker overrides replace the run selection. Runtime configuration uses AGENT_DELEGATION environment variables.
 
 ## Seven-day archives
 
 Runs retain their first terminal ended_at; completed/cancelled runs and done request responses move to checksummed cold files after seven days. Startup/hourly scans perform one move per serialized scheduler tick. Leased/unconfirmed processes and unresolved submission preparations block run archival. Request intents remain hot; archived response hashes and results preserve idempotency. Summaries, resource fingerprints and the global event sequence remain in the hot checkpoint. list_runs includes both stores ordered by created time/ID; get_run/wait_run/artifacts and cleanup retain access. New archived-run mutations return RUN_ARCHIVED, after idempotency lookup. Responses add archived/archived_at/ended_at without new tools or inputs.
 
-Archive files publish before index/removal commits. Uncertain commit/checkpoint delivery fences dispatch; missing/corrupt archives never become fresh requests. Run manifests use format 4 and split task/attempt/history and bounded event chunks, so paged reads do not hydrate the entire archive. Monolithic run archives are unsupported. Artifact reads use requested byte ranges plus UTF-8 boundary lookaround, not full-file reads.
+Archive files publish before index/removal commits. Uncertain commit/checkpoint delivery fences dispatch; missing/corrupt archives never become fresh requests. Run manifests split task/attempt/history and bounded event chunks, so paged reads do not hydrate the entire archive. Artifact reads use requested byte ranges plus UTF-8 boundary lookaround, not full-file reads.
 
-Storage format 4 appends typed revision-linked checksummed deltas, atomically combining
+Storage appends typed revision-linked checksummed deltas, atomically combining
 state changes, request results and events. Full snapshots are checkpoints rather
 than per-write output. At 256 records or max(32 MiB, four current-record sizes), a
 durable new journal tail is rotated before a storage worker serializes immutable
@@ -158,16 +158,7 @@ publication retains concurrent tails; obsolete files retire after read leases.
 Recovery streams journal records. state.json remains the initial format guard;
 backup must include the manifest and its referenced generations, not only that file.
 
-Only format 4 typed-delta journals and chunked run archives are read. Old storage,
-submission preparations, full-state journal records and migration markers are
-rejected without rewriting or deleting their data. No automatic migration,
-interrupted-migration resumption or reverse conversion is provided. Keep old
-data and its matching release separate; finish/cancel owned work and confirm
-termination with that release. A new empty AGENT_DELEGATION_HOME starts a new
-history under the current release, rather than relocating or resuming old runs.
-Do not copy old records into that root or remove a marker to bypass validation.
-
-Back up the entire stopped current data root, including its manifest, referenced
+Back up the entire stopped data root, including its manifest, referenced
 checkpoint/journal generations, archives, jobs, worktrees and context/evidence.
 Preserve the current root before restoring a consistent whole backup at its
 original absolute location with a matching release. Data-root relocation and

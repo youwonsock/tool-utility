@@ -18,8 +18,3 @@ the user's requested scope includes it. Observed command evidence and exact
 commit/revision approval remain required for every platform.
 
 Read [the tool contract and examples](references/contract.md) when preparing tasks.
-
-Use only the current service RPC 1, storage/submission format 4 and worker
-format 2. Old records and unfinished migration markers are rejected without
-conversion; preserve their data and consult operations before using a separate
-empty data root or restoring a whole current-format backup.
