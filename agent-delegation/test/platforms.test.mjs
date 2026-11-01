@@ -43,7 +43,7 @@ test('mixed workers preserve dependency gates, resource leases and correction co
   assert.equal(run.tasks[2].attempts.length,0);
   const profiles=JSON.parse(fs.readFileSync(path.join(f.data,'profiles.json')));profiles.profiles['mock-codex'].executable='missing-codex';fs.writeFileSync(path.join(f.data,'profiles.json'),JSON.stringify(profiles));
   await review(f,run,'a','request_changes','FAKE_ACTION:{"files":{"a.txt":"corrected"}}');
-  const stale=await f.call('review_task',{request_id:uid('stale'),run_id:run.id,task_id:'a',attempt_id:first.id,commit:first.commit,decision:'approve'});assert.ok(stale.error);
+  const stale=await f.call('approve_task',{request_id:uid('stale'),run_id:run.id,task_id:'a',attempt_id:first.id,commit:first.commit});assert.ok(stale.error);
   await advance(()=>run.tasks[0].attempts.length===2&&run.tasks[0].state==='needs_review');
   assert.deepEqual(run.tasks[0].attempts[1].execution,frozen);assert.equal(run.tasks[0].attempts[1].worker.backend,'codex');
   await review(f,run,'a');await review(f,run,'b');

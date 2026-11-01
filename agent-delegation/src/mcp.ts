@@ -6,15 +6,17 @@ import { deploymentVersion } from './deployment.js';
 
 const descriptions: Record<ToolName, string> = {
   doctor: 'Check the selected local worker runtime, version, configuration and resource registrations. No model call.',
-  submit_tasks:
-    'Create a run or append tasks. Requires a clean named Git checkout for a new run. Workers implement; the current agent plans and reviews. Idempotent request_id required.',
+  create_run:
+    'Create a run from a clean named Git checkout, with its worker and final verification. Workers implement; the current agent plans and reviews. Idempotent request_id required.',
+  add_tasks: 'Add tasks to an existing run. Its worker, settings, resources and shared context stay fixed.',
   list_runs: 'Discover local runs. Paginated; follow next_cursor.',
   get_run: 'Read compact task, attempt, review, input and validation state. Follow next_cursor.',
   wait_run: 'Wait up to 30 seconds for events after a cursor. Returns only changes; use the returned after cursor.',
   get_artifact:
     'Read a bounded UTF-8 artifact page. Follow next_offset. Includes observed checks, diffs and model reports.',
-  review_task:
-    'Approve an exact attempt/commit after inspecting evidence, or request a correction with instructions. No autonomous retries.',
+  approve_task: 'Approve the exact attempt and commit after inspecting its evidence, and integrate it.',
+  request_changes:
+    'Reject the latest stopped attempt and start a correction with these instructions. No autonomous retries.',
   respond_to_request:
     'Answer a worker question or permission request. Honor supported_decisions. Decisions are persisted before delivery; never blindly replay uncertain replies.',
   reconcile_run:

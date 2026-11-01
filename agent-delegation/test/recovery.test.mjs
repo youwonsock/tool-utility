@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { uid, writeJson, bootId, terminate, sleep, Store, remoteCall, connect, alive } from '../dist/index.mjs';
-import { fixture,task,submit,until,review,ready,git,callOk,cli,readState } from './helpers.mjs';
+import { fixture,task,submit,until,review,ready,git,callOk,cli,readState, runDefaults } from './helpers.mjs';
 
 test('source edits during final verification invalidate it',async t=>{
   const f=await fixture(t); const s=await submit(f,[task('a',{files:{'a.txt':'a'}})],{final_verification:[{command:'node -e "require(\'fs\').writeFileSync(\'base.txt\',\'modified\')"'}]});
@@ -25,14 +25,14 @@ test('unknown launch holds leases; proven reboot interrupts without dispatch',as
   const f=await fixture(t);const s=await submit(f,[task('a',{files:{'a.txt':'a'}})]);const r=await until(f,s.run_id,r=>r.tasks[0].state==='needs_review');const a=r.tasks[0].attempts[0];
   const savedJob=a.job_dir;a.job_dir=path.join(f.dir,'unknown-job');fs.mkdirSync(a.job_dir);a.state='orphaned';a.worker=undefined;r.tasks[0].state='running';a.launch_boot=await bootId();
   await f.engine.reconcile(r);assert.equal(a.state,'orphaned');
-  const denied=await f.call('review_task',{request_id:uid('r'),run_id:r.id,task_id:'a',attempt_id:a.id,commit:a.commit,decision:'request_changes',feedback:'Retry safely'});assert.equal(denied.error.code,'ATTEMPT');
+  const denied=await f.call('request_changes',{request_id:uid('r'),run_id:r.id,task_id:'a',attempt_id:a.id,feedback:'Retry safely'});assert.equal(denied.error.code,'ATTEMPT');
   a.launch_boot='previous-boot';await f.engine.reconcile(r);assert.equal(a.state,'interrupted');assert.equal(r.tasks[0].attempts.length,1);a.job_dir=savedJob;
 });
 test('service restart during cancellation confirms stop and does not dispatch a replacement',async t=>{
   const f=await fixture(t,{service:true}),audit=path.join(f.dir,'audit.jsonl'),saved={...process.env};Object.assign(process.env,f.env,{FAKE_AUDIT:audit});
   t.after(async()=>{try{await remoteCall(f.data,cli,'',{},'/stop');}catch{}for(const k of Object.keys(process.env))if(!(k in saved))delete process.env[k];Object.assign(process.env,saved);});
   const gate=path.join(f.dir,'finish-after-cancel');
-  const s=await remoteCall(f.data,cli,'submit_tasks',{request_id:'cancel-case',repo:f.repo,tasks:[task('a',{wait_file:gate})]});
+  const s=await remoteCall(f.data,cli,'create_run',{request_id:'cancel-case',...runDefaults,repo:f.repo,tasks:[task('a',{wait_file:gate})]});
   let r;const promptDeadline=Date.now()+60000;
   do{r=readState(f.data).runs[0];if(fs.existsSync(audit)&&fs.readFileSync(audit,'utf8').trim().split('\n').map(JSON.parse).some(e=>e.event==='prompt')&&r?.tasks[0].attempts[0]?.worker?.prompt_accepted)break;await sleep(100);}while(Date.now()<promptDeadline);
   assert.equal(r.tasks[0].attempts[0].worker.prompt_accepted,true);assert.equal(await alive(r.tasks[0].attempts[0].worker.server),true);

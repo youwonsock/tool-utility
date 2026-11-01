@@ -24,12 +24,14 @@ assert.ok(!skill.includes('TODO'));
 assert.ok(skill.split('\n').length < 500);
 for (const name of [
   'doctor',
-  'submit_tasks',
+  'create_run',
+  'add_tasks',
   'list_runs',
   'get_run',
   'wait_run',
   'get_artifact',
-  'review_task',
+  'approve_task',
+  'request_changes',
   'respond_to_request',
   'reconcile_run',
   'cancel_run',
@@ -48,12 +50,14 @@ for (const name of ['delegate-agents']) {
   assert.ok(generated.split('\n').length < 500);
   for (const tool of [
     'doctor',
-    'submit_tasks',
+    'create_run',
+    'add_tasks',
     'list_runs',
     'get_run',
     'wait_run',
     'get_artifact',
-    'review_task',
+    'approve_task',
+    'request_changes',
     'respond_to_request',
     'reconcile_run',
     'cancel_run',

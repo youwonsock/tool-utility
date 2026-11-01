@@ -8,8 +8,6 @@ import {
   STORE_FORMAT,
   WORKER_FORMAT,
   VERSION,
-  backendVersions,
-  platforms,
   Fault,
   invariant,
   schemas,
@@ -171,7 +169,7 @@ export class Engine {
             'Published submission cannot release its preparation reservation.',
           );
           for (const operation of Object.values(this.store.state.operations))
-            if (operation.kind === 'submit_tasks' && operation.request_id === requestID)
+            if (operation.kind === 'submit' && operation.request_id === requestID)
               delete this.store.state.operations[operation.id];
           this.store.save();
         }),
@@ -238,7 +236,15 @@ export class Engine {
     ]);
   }
   async call(name: ToolName, raw: unknown): Promise<unknown> {
-    const args: any = schemas[name].parse(raw);
+    const parsed: any = schemas[name].parse(raw);
+    const kind =
+      name === 'create_run' || name === 'add_tasks'
+        ? 'submit'
+        : name === 'approve_task' || name === 'request_changes'
+          ? 'review'
+          : name;
+    const args: any =
+      kind === 'review' ? { ...parsed, decision: name === 'approve_task' ? 'approve' : 'request_changes' } : parsed;
     if (name === 'wait_run') return this.wait(args);
     if (name === 'get_artifact') return this.store.artifactPage(args.artifact_id, args.offset, args.limit);
     if (name === 'list_runs') return this.serial(async () => this.store.page(this.store.summaries(), args.cursor));
@@ -288,7 +294,7 @@ export class Engine {
         }
       }
       try {
-        const operation = this.admit(name, args, args.request_id, key);
+        const operation = this.admit(kind, args, args.request_id, key);
         return { operation, promise: this.execute(operation, args) };
       } catch (error) {
         return this.finishRequest(args.request_id, this.errorResult(error));
@@ -357,7 +363,7 @@ export class Engine {
       'A durable operation is still using this run.',
     );
     const repository_key = this.repositoryKey(run?.common_dir ?? args.repo);
-    const repositoryEffect = ['submit_tasks', 'review_task', 'finalize_run', 'cleanup'].includes(kind);
+    const repositoryEffect = ['submit', 'review', 'finalize_run', 'cleanup'].includes(kind);
     invariant(
       !repositoryEffect ||
         !repository_key ||
@@ -531,7 +537,7 @@ export class Engine {
         run && cancelling ? run.tasks.filter((task) => task.state === 'cancelled').map((task) => task.spec.id) : [],
       );
       const batch = isolated.drain();
-      if (!final && cancelling && operation.kind === 'submit_tasks')
+      if (!final && cancelling && operation.kind === 'submit')
         throw new Fault('CANCELLED', 'Cancellation rejected unpublished submission metadata.');
       if (
         !final &&
@@ -542,7 +548,7 @@ export class Engine {
       )
         throw new Fault('CANCELLED', 'Cancellation won the finalization admission barrier.');
       publishChanges(this.store, batch.changes);
-      if (!operation.run_id && operation.kind === 'submit_tasks') {
+      if (!operation.run_id && operation.kind === 'submit') {
         const created = batch.changes.find((change) => change.path.length === 0);
         if (created) {
           operation.run_id = created.run_id;
@@ -605,7 +611,7 @@ export class Engine {
         !final &&
         !cancellationObserved &&
         updated?.state === 'cancelling' &&
-        ['launch', 'validate_run', 'submit_tasks'].includes(operation.kind)
+        ['launch', 'validate_run', 'submit'].includes(operation.kind)
       );
     };
     actor.effectCheckpoint = async () =>
@@ -628,10 +634,10 @@ export class Engine {
           case 'doctor':
             result = await actor.effectDoctor({ ...args, operation_id: operation.id });
             break;
-          case 'submit_tasks':
+          case 'submit':
             result = await actor.effectSubmit(args);
             break;
-          case 'review_task':
+          case 'review':
             result = await actor.effectReview(args);
             break;
           case 'reconcile_run':
@@ -846,7 +852,7 @@ export class Engine {
       },
     );
   }
-  private async effectDoctor(args: { repo?: string; worker?: WorkerSelection; operation_id?: string }) {
+  private async effectDoctor(args: { repo?: string; worker: WorkerSelection; operation_id?: string }) {
     const doctorID = args.operation_id ?? uid('doctor'),
       jobDir = path.join(this.store.root, 'diagnostics', doctorID);
     mkdir(jobDir);
@@ -938,20 +944,8 @@ export class Engine {
       worker: publicWorker(selected),
       backend_version: state?.backend_version,
       runtime: publicRuntime(state?.runtime ?? selected?.runtime),
-      baseline: selected?.baseline,
       compatible: connection.healthy,
       connection,
-      provider_authentication:
-        'Not exercised by doctor; a real model request is required to verify provider credentials.',
-      backends: platforms.map((platform) => ({
-        platform,
-        baseline: backendVersions[platform],
-        connection:
-          platform === (selected?.platform ?? args.worker?.platform ?? 'opencode')
-            ? connection
-            : { healthy: null, checked: false },
-        experimental: platform === 'codex',
-      })),
       repo,
       resources: this.store.state.runs.flatMap((r) =>
         r.resources.map((p) => ({
@@ -1022,7 +1016,7 @@ export class Engine {
     });
     return admitted.promise;
   }
-  async doctor(args: { repo?: string; worker?: WorkerSelection }) {
+  async doctor(args: { repo?: string; worker: WorkerSelection }) {
     const admitted = await this.serial(async () => {
       const operation = this.admit('doctor', args);
       return { operation, promise: this.execute(operation, args) };
@@ -1038,11 +1032,11 @@ export class Engine {
     }));
   }
   // The owned compatibility runner awaits one diagnostic through termination; MCP uses doctor().
-  async diagnose(args: { repo?: string; worker?: WorkerSelection }) {
+  async diagnose(args: { repo?: string; worker: WorkerSelection }) {
     return this.runEffect('doctor', args);
   }
   async submit(args: SubmitArgs) {
-    return this.runEffect('submit_tasks', args);
+    return this.runEffect('submit', args);
   }
   async launch(run: Run, task: Task) {
     return this.runEffect('launch', { run_id: run.id, task_id: task.spec.id });
@@ -1051,7 +1045,7 @@ export class Engine {
     return this.runEffect('collect', { run_id: run.id });
   }
   async review(args: any) {
-    return this.runEffect('review_task', args);
+    return this.runEffect('review', args);
   }
   async reconcile(run: Run, recoverOnly = false) {
     return this.runEffect('reconcile_run', { run_id: run.id, recover_only: recoverOnly });
@@ -1591,7 +1585,6 @@ export class Engine {
       'ATTEMPT',
       'Review must name the latest stopped attempt.',
     );
-    invariant(attempt.commit === args.commit, 'STALE_APPROVAL', 'Result commit does not match the attempt.');
     invariant(
       task.state !== 'integrated',
       'IMMUTABLE',
@@ -1617,6 +1610,7 @@ export class Engine {
       await this.emit(run.id, 'correction_requested', { task_id: task.spec.id, previous_attempt: attempt.id }, false);
       return { run_id: run.id, task_id: task.spec.id, state: task.state, revision: run.revision };
     }
+    invariant(attempt.commit === args.commit, 'STALE_APPROVAL', 'Result commit does not match the attempt.');
     invariant(
       attempt.state !== 'conflict_unresolved',
       'UNRESOLVED_CONFLICT',

@@ -47,7 +47,11 @@ export async function fixture(t, { service = false } = {}) {
 }
 export const task = (id, action={}, extra={}) => ({ id, goal:`FAKE_ACTION:${JSON.stringify(action)}`, scope:[`${id}.txt`], acceptance:['Requested content exists'], verification:[{ command:'node -e "process.exit(0)"' }], ...extra });
 export async function callOk(f,name,args) { let r = await f.call(name,args); while(r?.in_progress&&args?.request_id){await sleep(25);r=await f.call(name,args);} if (r.error) throw new Error(JSON.stringify(r.error)); return r; }
-export async function submit(f,tasks,extra={}) { return callOk(f,'submit_tasks',{ request_id:uid('request'),repo:f.repo,tasks,final_verification:[{ command:'node -e "process.exit(0)"' }],...extra }); }
+export const runDefaults={ worker:{ platform:'opencode' },final_verification:[{ command:'node -e "process.exit(0)"' }] };
+export async function submit(f,tasks,extra={}) {
+  if (extra.run_id) return callOk(f,'add_tasks',{ request_id:uid('request'),tasks,...extra });
+  return callOk(f,'create_run',{ request_id:uid('request'),repo:f.repo,tasks,...runDefaults,...extra });
+}
 export async function until(f,id,predicate,timeout=30000) {
   const end = Date.now()+timeout;
   while (Date.now()<end) { const run = f.store.state.runs.find(r=>r.id===id); if (predicate(run)) return run; await sleep(100); }
@@ -55,7 +59,8 @@ export async function until(f,id,predicate,timeout=30000) {
 }
 export async function review(f,run,id,decision='approve',feedback) {
   const a = run.tasks.find(t=>t.spec.id===id).attempts.at(-1);
-  return callOk(f,'review_task',{ request_id:uid('review'),run_id:run.id,task_id:id,attempt_id:a.id,commit:a.commit,decision,feedback });
+  const target={ request_id:uid('review'),run_id:run.id,task_id:id,attempt_id:a.id };
+  return decision==='approve'?callOk(f,'approve_task',{ ...target,commit:a.commit }):callOk(f,'request_changes',{ ...target,feedback });
 }
 export async function ready(f,run) {
   for (const t of run.tasks) await review(f,run,t.spec.id);
