@@ -1,4 +1,4 @@
-import type { InputDecision, InputRequest, WorkerSpec, WorkerState } from '../types.js';
+import type { InputDecision, InputRequest, UsageSummary, WorkerSpec, WorkerState } from '../types.js';
 
 export type Observation = {
   accepted: boolean;
@@ -6,7 +6,7 @@ export type Observation = {
   inputs: InputRequest[];
   transcript: unknown;
   summary?: string;
-  usage?: unknown;
+  usage?: UsageSummary;
   error?: string;
   reply_confirmations?: string[];
 };

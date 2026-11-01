@@ -393,6 +393,44 @@ test('Codex cancellation stops an executing dynamic command and retains process-
     assert.equal(JSON.parse(fs.readFileSync(path.join(spec.job_dir, 'process-records', name))).stopped, true);
 });
 
+for (const platform of ['opencode', 'kilo'])
+  test(`${platform} waits for the next model step after a tool-call pause`, async (t) => {
+    const { backend, state } = await native(t, platform);
+    await backend.createSession();
+    await backend.dispatch('FAKE_ACTION:{"tool_calls_gap":600}', state.prompt_id);
+    let paused;
+    for (let i = 0; i < 40 && !paused?.transcript?.some((m) => m.info.finish === 'tool-calls'); i++) {
+      paused = await backend.observe();
+      await sleep(25);
+    }
+    assert.equal(paused.complete, false);
+    assert.equal(paused.error, undefined);
+    let finished;
+    for (let i = 0; i < 100; i++) {
+      finished = await backend.observe();
+      if (finished.complete) break;
+      await sleep(50);
+    }
+    assert.equal(finished.complete, true);
+    assert.equal(finished.error, undefined);
+  });
+test('OpenCode still fails an attempt whose model never takes its next step', async (t) => {
+  const { backend, state } = await native(t, 'opencode');
+  await backend.createSession();
+  await backend.dispatch('FAKE_ACTION:{"stuck_in_tool_calls":true}', state.prompt_id);
+  let observed;
+  for (let i = 0; i < 40 && !observed?.transcript?.some((m) => m.info.finish === 'tool-calls'); i++) {
+    observed = await backend.observe();
+    await sleep(25);
+  }
+  assert.equal(observed.complete, false);
+  const now = Date.now();
+  t.mock.method(Date, 'now', () => now + 6000);
+  observed = await backend.observe();
+  assert.equal(observed.complete, true);
+  assert.match(observed.error, /did not finish/);
+  t.mock.restoreAll();
+});
 test('Codex follows the stream without polling thread history or replaying its prompt', async (t) => {
   const { backend, state, spec } = await native(t, 'codex');
   await backend.createSession();

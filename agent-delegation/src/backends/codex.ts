@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { invariant, type InputRequest } from '../types.js';
+import { invariant, type InputRequest, type UsageSummary } from '../types.js';
 import { writeJson, digest } from '../io.js';
 import { workerEnvironment } from '../profiles.js';
 import { connection, workerPermissionKey, toolPolicy } from '../policy.js';
@@ -32,6 +32,7 @@ export class CodexBackend implements WorkerBackend {
   private peer?: JsonRpcPeer;
   private frames: RpcFrame[] = [];
   private notices = new Set<string>();
+  private usage?: UsageSummary;
   private pending = new Map<string, { frame: RpcFrame; input: InputRequest }>();
   private answered = new Map<string, string>();
   private confirmed = new Set<string>();
@@ -81,6 +82,15 @@ export class CodexBackend implements WorkerBackend {
     if (frame.method === 'item/completed' && p.item?.type === 'dynamicToolCall') {
       const key = this.dynamicAnswers.get(String(p.item.id));
       if (key) this.confirmed.add(key);
+    }
+    if (frame.method === 'thread/tokenUsage/updated' && p.tokenUsage?.total) {
+      const total = p.tokenUsage.total;
+      this.usage = {
+        input_tokens: total.inputTokens ?? 0,
+        output_tokens: total.outputTokens ?? 0,
+        cached_input_tokens: total.cachedInputTokens ?? 0,
+        cost_usd: null,
+      };
     }
     if (frame.method === 'turn/started') {
       state.turn_id = p.turn?.id;
@@ -512,6 +522,7 @@ export class CodexBackend implements WorkerBackend {
       inputs: [...this.pending.values()].map((p) => p.input),
       transcript: { thread: this.thread, events: this.frames },
       summary,
+      usage: this.usage,
       error: this.error,
       reply_confirmations: [...this.confirmed],
     };

@@ -489,6 +489,7 @@ export class EffectRunner extends EngineBase {
       const prior = progress(attempt.worker);
       attempt.worker = state;
       attempt.model = state.model;
+      attempt.usage = state.usage;
       attempt.inputs = state.inputs;
       const ownerTask = run.tasks.find((t) => t.attempts.includes(attempt));
       if (ownerTask && state.model && ownerTask.worker.model === undefined) {

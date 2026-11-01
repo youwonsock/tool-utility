@@ -48,6 +48,8 @@
 
 ## 모델·자원 점검
 
+`get_run`은 시도별 `usage`와 실행 합계 `usage`를 돌려줍니다. 값은 플랫폼이 보고한 입력·출력·캐시 토큰과 `cost_usd`입니다. Codex처럼 비용을 보고하지 않으면 `cost_usd`는 `null`이고, 합계도 한 시도라도 비용이 없으면 `null`입니다. 구독형 요금제의 실제 청구액과는 다를 수 있습니다.
+
 `doctor.connection.healthy`는 선택한 런타임의 초기화·정책·세션 연결 확인을 뜻합니다. 모델 기본값이 없는 HTTP 런타임도 모델 호출 없이 진단할 수 있습니다. 공급자 인증 유효성은 실제 모델 작업으로 확인하며, doctor는 이를 검증했다고 주장하지 않습니다. 인증 오류는 선택한 플랫폼의 네이티브 설정에서 해결합니다. 다른 공급자의 자격 증명을 탐색해 대체하지 않습니다.
 
 서비스는 시작할 때의 환경 변수를 유지합니다. `AGENT_DELEGATION_*_EXECUTABLE`이나 `AGENT_DELEGATION_*_SDK_ROOT`를 바꾼 뒤에는 `stop`을 호출하고 `doctor`를 다시 실행합니다. Claude Code의 `CLI_INCOMPATIBLE` "did not report a runtime version"은 CLI가 초기화 응답에 버전을 보내지 않는 경우입니다. 2.1.223에서 재현됐고, SDK 0.3.316과 CLI 2.1.316 조합은 통과했습니다. 전역 폴더에 쓸 권한이 없으면 사용자 폴더에 CLI와 SDK를 설치하고 데이터 폴더의 `profiles.json`에서 `executable`과 `sdk_root`로 지정합니다. OpenCode와 Kilo 워커는 사용자 설정의 권한 중 정책에 없는 항목을 `deny`로 덮어쓰므로, 전역 설정의 허용 항목은 워커에 적용되지 않습니다.

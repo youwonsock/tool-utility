@@ -40,6 +40,7 @@ const audit = (event) => {
       `${JSON.stringify({ ...event, cwd: process.cwd(), time: Date.now(), pid: process.pid })}\n`,
     );
 };
+let gapSeen = false;
 const finish = () => {
   if (action?.wait_file && !fs.existsSync(action.wait_file)) {
     timer = setTimeout(finish, 100);
@@ -52,6 +53,33 @@ const finish = () => {
   if (action?.require_context) {
     for (const [file, expected] of Object.entries(action.require_context))
       if (fs.readFileSync(file, 'utf8') !== expected) throw new Error(`Missing context ${file}`);
+  }
+  const step = (id, finish) => ({
+    info: {
+      id,
+      role: 'assistant',
+      parentID: current.messageID,
+      sessionID: session.id,
+      time: { created: Date.now(), completed: Date.now() },
+      finish,
+      tokens: { input: 1, output: 1, reasoning: 0, cache: { read: 0, write: 0 } },
+      cost: 0,
+      providerID: 'fake',
+      modelID: 'test',
+    },
+    parts: [],
+  });
+  if (action?.tool_calls_gap && !gapSeen) {
+    gapSeen = true;
+    messages.push(step('msg_step', 'tool-calls'));
+    busy = false;
+    timer = setTimeout(finish, action.tool_calls_gap);
+    return;
+  }
+  if (action?.stuck_in_tool_calls) {
+    messages.push(step('msg_stuck', 'tool-calls'));
+    busy = false;
+    return;
   }
   const info = {
     id: 'msg_reply',

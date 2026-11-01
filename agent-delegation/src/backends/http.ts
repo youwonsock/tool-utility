@@ -19,10 +19,12 @@ import { executableVersion, reportedVersion } from './version.js';
 import { loadSdk, requireSdkMethods, callSdkFactory } from '../runtime.js';
 import { assertScopeMonitor, scopeMonitorHealthy } from '../scope.js';
 
+const unfinishedStepGrace = 5000;
 // Each generated SDK remains owned by its corresponding native runtime.
 export class HttpBackend implements WorkerBackend {
   private client: any;
   private log?: fs.WriteStream;
+  private unfinishedStep?: { id: string; at: number };
   constructor(private context: BackendContext) {}
   async start() {
     const { spec, state, save } = this.context;
@@ -222,13 +224,19 @@ export class HttpBackend implements WorkerBackend {
     const accepted = messages.some((m: any) => m.info.id === state.prompt_id && m.info.role === 'user');
     const replies = messages.filter((m: any) => m.info.role === 'assistant' && m.info.parentID === state.prompt_id),
       last = replies.at(-1);
-    const complete = !!(
+    const settled = !!(
       accepted &&
       last?.info.time?.completed &&
       (!statuses[state.session_id!] || statuses[state.session_id!].type === 'idle') &&
       !inputs.length &&
       !last.parts.some((p: any) => p.type === 'tool' && ['pending', 'running'].includes(p.state.status))
     );
+    // The session can look idle between model steps, so a step that ended in tool calls
+    // only counts as final once no next step has appeared for a while.
+    const unfinished = settled && ['tool-calls', 'unknown'].includes(last.info.finish);
+    if (!unfinished || this.unfinishedStep?.id !== last.info.id)
+      this.unfinishedStep = unfinished ? { id: last.info.id, at: Date.now() } : undefined;
+    const complete = settled && (!unfinished || Date.now() - this.unfinishedStep!.at >= unfinishedStepGrace);
     return {
       accepted,
       complete,
@@ -237,11 +245,16 @@ export class HttpBackend implements WorkerBackend {
       summary: replies
         .flatMap((m: any) => m.parts.filter((p: any) => p.type === 'text').map((p: any) => p.text))
         .join('\n'),
-      usage: replies.map((m: any) => ({
-        model: `${m.info.providerID}/${m.info.modelID}`,
-        tokens: m.info.tokens,
-        cost: m.info.cost,
-      })),
+      usage: replies.length
+        ? {
+            input_tokens: replies.reduce((sum: number, m: any) => sum + (m.info.tokens?.input ?? 0), 0),
+            output_tokens: replies.reduce((sum: number, m: any) => sum + (m.info.tokens?.output ?? 0), 0),
+            cached_input_tokens: replies.reduce((sum: number, m: any) => sum + (m.info.tokens?.cache?.read ?? 0), 0),
+            cost_usd: replies.every((m: any) => typeof m.info.cost === 'number')
+              ? replies.reduce((sum: number, m: any) => sum + m.info.cost, 0)
+              : null,
+          }
+        : undefined,
       error: last?.info.error
         ? JSON.stringify(last.info.error)
         : complete && ['tool-calls', 'unknown'].includes(last.info.finish)

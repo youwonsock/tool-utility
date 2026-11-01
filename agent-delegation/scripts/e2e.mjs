@@ -127,6 +127,7 @@ async function settle(run_id, id, attempts, limit = 15 * 60_000) {
       const { state, error, verification, summary } = item.attempt;
       const statuses = verification?.map((value) => value.status);
       log(id, 'attempt', attempts, state, JSON.stringify(item.attempt.model), statuses, error ?? '');
+      log(id, 'usage', JSON.stringify(item.attempt.usage ?? null));
       if (state !== 'needs_review' || statuses?.some((status) => status !== 'passed'))
         throw new Error(`${id} is not reviewable: ${state} ${error ?? ''} ${summary ?? ''}`.slice(0, 1200));
       return item;
@@ -189,6 +190,7 @@ async function run() {
     await sleep(3000);
   }
   log('validated', current.state, current.validation?.state);
+  log('run usage', JSON.stringify(current.usage ?? null));
   if (current.validation?.state !== 'passed') throw new Error(`Validation did not pass: ${current.state}`);
 
   const finalized = await call('finalize_run', {
