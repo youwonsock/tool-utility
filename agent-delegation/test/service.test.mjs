@@ -7,7 +7,7 @@ import { spawn } from 'node:child_process';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { remoteCall, connect, serve, Store, sleep, exec, terminate, processIdentity, uid } from '../dist/index.mjs';
-import { fixture, task, cli, fake, root, readState, temporaryRoot } from './helpers.mjs';
+import { fixture, task, cli, fake, root, readState, temporaryRoot, runDefaults } from './helpers.mjs';
 import { mockSdks } from './mock-sdks.mjs';
 
 test('authenticated daemon survives MCP disconnect and restart without duplicate prompts',async t=>{
@@ -17,9 +17,9 @@ test('authenticated daemon survives MCP disconnect and restart without duplicate
   const client=new Client({name:'integration-test',version:'1'});
   t.after(()=>client.close());
   const transport=new StdioClientTransport({command:process.execPath,args:[cli,'mcp'],env:{...process.env},stderr:'pipe'}); await client.connect(transport);
-  assert.equal((await client.listTools()).tools.length,12);
-  const gate=path.join(f.dir,'complete-implementation'),args={request_id:'single',repo:f.repo,tasks:[task('a',{files:{'a.txt':'a'},wait_file:gate,drop_response:true})]};
-  const result=await client.callTool({name:'submit_tasks',arguments:args});
+  assert.equal((await client.listTools()).tools.length,14);
+  const gate=path.join(f.dir,'complete-implementation'),args={request_id:'single',...runDefaults,repo:f.repo,tasks:[task('a',{files:{'a.txt':'a'},wait_file:gate,drop_response:true})]};
+  const result=await client.callTool({name:'create_run',arguments:args});
   const submitted=JSON.parse(result.content[0].text); assert.ok(submitted.run_id); await client.close();
   let state;
   for(let i=0;i<100;i++){state=readState(f.data);if(state.runs[0].tasks[0].attempts[0]?.worker?.prompt_intent)break;await sleep(100);}
@@ -36,7 +36,7 @@ test('authenticated daemon survives MCP disconnect and restart without duplicate
   assert.equal(state.runs[0].tasks[0].state,'needs_review');
   assert.equal(state.runs[0].tasks[0].attempts[0].worker.stopped,true);
   const events=fs.readFileSync(audit,'utf8').trim().split('\n').map(JSON.parse); assert.equal(events.filter(e=>e.event==='prompt').length,1);
-  const repeat=await remoteCall(f.data,cli,'submit_tasks',args); assert.equal(repeat.run_id,submitted.run_id);
+  const repeat=await remoteCall(f.data,cli,'create_run',args); assert.equal(repeat.run_id,submitted.run_id);
 });
 
 test('installed bundle works after its source is moved, without source node_modules',async t=>{
@@ -55,8 +55,8 @@ test('installed bundle works after its source is moved, without source node_modu
   env.AGENT_DELEGATION_CLAUDE_EXECUTABLE=process.execPath;env.AGENT_DELEGATION_CLAUDE_EXECUTABLE_ARGS=JSON.stringify([mockClaude]);env.AGENT_DELEGATION_CLAUDE_SDK_ROOT=path.join(dir,'missing-sdk');
   fs.mkdirSync(data,{recursive:true});fs.writeFileSync(path.join(data,'profiles.json'),JSON.stringify({profiles:{'installed-claude':{platform:'claude-code',executable:process.execPath,args:[mockClaude],sdk_root:sdks['claude-code']}}}));
   const client=new Client({name:'installed-test',version:'1'});const transport=new StdioClientTransport({command:process.execPath,args:[current.cli,'mcp'],env,stderr:'pipe'});await client.connect(transport);
-  try{assert.equal((await client.listTools()).tools.length,12);
-    const result=await client.callTool({name:'doctor',arguments:{}});const doctor=JSON.parse(result.content[0].text);assert.equal(doctor.connection.healthy,false);assert.equal(doctor.connection.code,'SDK_NOT_FOUND');
+  try{assert.equal((await client.listTools()).tools.length,14);
+    const result=await client.callTool({name:'doctor',arguments:{worker:{platform:'opencode'}}});const doctor=JSON.parse(result.content[0].text);assert.equal(doctor.connection.healthy,false);assert.equal(doctor.connection.code,'SDK_NOT_FOUND');
     const external=JSON.parse((await client.callTool({name:'doctor',arguments:{worker:{platform:'claude-code',profile:'installed-claude',model:'fake-model'}}})).content[0].text);assert.equal(external.connection.healthy,true,JSON.stringify(external));assert.equal(external.compatible,true,JSON.stringify(external));
     assert.equal(external.runtime.sdk.root,fs.realpathSync.native(sdks['claude-code']));
     const missing=JSON.parse((await client.callTool({name:'doctor',arguments:{worker:{platform:'claude-code'}}})).content[0].text);assert.equal(missing.connection.healthy,false);assert.equal(missing.connection.code,'SDK_NOT_FOUND');

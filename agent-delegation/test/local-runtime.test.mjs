@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import * as api from '../dist/index.mjs';
-import { fixture, task, submit, callOk, review, cli } from './helpers.mjs';
+import { fixture, task, submit, callOk, review, cli, runDefaults } from './helpers.mjs';
 import { mockProfiles, selection } from './native-helpers.mjs';
 import { configFixture, decodeInlineToml, sentinel, inputSentinel } from './codex-toml-fixture.mjs';
 const {uid}=api;
@@ -17,7 +17,7 @@ test('missing external SDK returns actionable doctor diagnostics without registe
   assert.equal(diagnostic.compatible,false);
   assert.equal(diagnostic.connection.code,'SDK_NOT_FOUND');
   assert.match(diagnostic.connection.details.guidance,/SDK_ROOT|sdk_root/);
-  const result=await f.call('submit_tasks',{request_id:uid('missing'),repo:f.repo,tasks:[task('a')]});
+  const result=await f.call('create_run',{request_id:uid('missing'),...runDefaults,repo:f.repo,tasks:[task('a')]});
   assert.equal(result.error.code,'SDK_NOT_FOUND');
   assert.equal(f.store.state.runs.length,0);
   assert.equal(fs.existsSync(path.join(f.data,'worktrees')),false);
@@ -39,7 +39,7 @@ test('runtime resolver uses explicit SDK roots and detects changed entrypoints w
   const marker=path.join(f.dir,'imported');
   fs.writeFileSync(path.join(root,'package.json'),JSON.stringify({name:'@opencode-ai/sdk',version:'999.0.0',type:'module',exports:{'./v2/client':{types:'./missing.d.ts',import:'./client.mjs'}}}));
   fs.writeFileSync(path.join(root,'client.mjs'),`import fs from 'node:fs';fs.writeFileSync(${JSON.stringify(marker)},'imported');export const createOpencodeClient=()=>({});`);
-  const worker={...api.resolveWorker(f.data),sdk_root:root};
+  const worker={...api.resolveWorker(f.data,{platform:'opencode'}),sdk_root:root};
   const runtime=await api.resolveRuntime(worker,{global_root:null});
   assert.equal(runtime.sdk.version,'999.0.0');assert.equal(fs.existsSync(marker),false);
   fs.appendFileSync(path.join(root,'client.mjs'),'\n// changed\n');
@@ -51,7 +51,7 @@ test('CLI missing is detected before creating submission artifacts', async t => 
   const profiles=JSON.parse(fs.readFileSync(path.join(f.data,'profiles.json')));
   profiles.profiles['mock-codex'].executable=path.join(f.dir,'missing-cli');
   fs.writeFileSync(path.join(f.data,'profiles.json'),JSON.stringify(profiles));
-  const result=await f.call('submit_tasks',{request_id:uid('missing'),repo:f.repo,tasks:[task('a',{}, {worker:selection('codex')})]});
+  const result=await f.call('create_run',{request_id:uid('missing'),...runDefaults,repo:f.repo,tasks:[task('a',{}, {worker:selection('codex')})]});
   assert.equal(result.error.code,'CLI_NOT_FOUND');assert.equal(f.store.state.runs.length,0);
   assert.equal(fs.existsSync(path.join(f.data,'worktrees')),false);
 });
@@ -85,7 +85,7 @@ test('SDK API initialization failures do not consume the model correction limit'
   await review(f,run,'a','request_changes','Use the now configured SDK and implement the original task.');
   await advance(f,()=>run.tasks[0].attempts.length===2&&run.tasks[0].state==='needs_review');
   const second=run.tasks[0].attempts[1];assert.ok(second.commit);assert.ok(second.worker.prompt_intent);
-  const denied=await f.call('review_task',{request_id:uid('limit'),run_id,task_id:'a',attempt_id:second.id,commit:second.commit,decision:'request_changes',feedback:'Another model attempt'});
+  const denied=await f.call('request_changes',{request_id:uid('limit'),run_id,task_id:'a',attempt_id:second.id,feedback:'Another model attempt'});
   assert.equal(denied.error.code,'RETRY_LIMIT');
   await review(f,run,'a');
   fs.rmSync(f.sdks.opencode,{recursive:true});
@@ -120,7 +120,7 @@ test('SDK-free completed records remain reviewable after restart',async t=>{
   fs.rmSync(f.sdks.opencode,{recursive:true});
   const store=new api.Store(f.data),engine=new api.Engine(store,cli,{concurrency:2});
   const restored=store.state.runs[0],a=restored.tasks[0].attempts[0];
-  const response=await engine.call('review_task',{request_id:uid('approve'),run_id,task_id:'a',attempt_id:a.id,commit:a.commit,decision:'approve'});
+  const response=await engine.call('approve_task',{request_id:uid('approve'),run_id,task_id:'a',attempt_id:a.id,commit:a.commit});
   assert.equal(response.state,'integrated');
 });
 
@@ -133,7 +133,7 @@ test('SDK discovery honors explicit, environment, owned CLI and direct global pr
   const copy={recursive:true,mode:fs.constants.COPYFILE_FICLONE,filter:()=>true};
   fs.cpSync(f.sdks.opencode,ownRoot,copy);
   const global=path.join(f.dir,'global'),globalSdk=path.join(global,'@opencode-ai/sdk');fs.cpSync(f.sdks.opencode,globalSdk,copy);
-  const worker={...api.resolveWorker(f.data),executable_args:[script]};delete worker.sdk_root;
+  const worker={...api.resolveWorker(f.data,{platform:'opencode'}),executable_args:[script]};delete worker.sdk_root;
   const env={...process.env,AGENT_DELEGATION_OPENCODE_SDK_ROOT:f.sdks.opencode};
   let runtime=await api.resolveRuntime(worker,{env,global_root:global});assert.equal(runtime.sdk.source,'environment');
   runtime=await api.resolveRuntime({...worker,sdk_root:ownRoot},{env,global_root:global});assert.equal(runtime.sdk.root,fs.realpathSync.native(ownRoot));
@@ -149,7 +149,7 @@ test('SDK discovery honors explicit, environment, owned CLI and direct global pr
 test('absolute CLI and SDK paths work without npm and preserve SDK symlink identity',async t=>{
   const f=await fixture(t);f.engine.stop();
   const alias=path.join(f.dir,'SDK alias');fs.symlinkSync(f.sdks.opencode,alias,process.platform==='win32'?'junction':'dir');
-  const worker={...api.resolveWorker(f.data),sdk_root:alias};
+  const worker={...api.resolveWorker(f.data,{platform:'opencode'}),sdk_root:alias};
   const runtime=await api.resolveRuntime(worker,{env:{PATH:''},global_root:null});
   assert.equal(runtime.sdk.root,fs.realpathSync.native(f.sdks.opencode));
   fs.writeFileSync(path.join(f.sdks.opencode,'implementation.mjs'),'export const newApi=1;\n');
@@ -160,14 +160,14 @@ test('doctor loads SDK code only in its isolated owned process',async t=>{
   const f=await fixture(t);f.engine.stop();
   const marker=path.join(f.dir,'SDK-process'),file=path.join(f.sdks.opencode,'sdk.mjs');
   fs.writeFileSync(file,`import fs from 'node:fs';fs.writeFileSync(${JSON.stringify(marker)},String(process.pid));\n`+fs.readFileSync(file,'utf8'));
-  const diagnostic=await f.engine.doctor({repo:f.repo});assert.equal(diagnostic.compatible,true,JSON.stringify(diagnostic));
+  const diagnostic=await f.engine.doctor({repo:f.repo,worker:{platform:'opencode'}});assert.equal(diagnostic.compatible,true,JSON.stringify(diagnostic));
   assert.notEqual(Number(fs.readFileSync(marker,'utf8')),process.pid);
 });
 
 test('SDK constructor API failures are actionable and stop the owned native process',async t=>{
   const f=await fixture(t);f.engine.stop();
   fs.writeFileSync(path.join(f.sdks.opencode,'sdk.mjs'),'export function createOpencodeClient(){throw new TypeError("Changed SDK constructor API");}\n');
-  const diagnostic=await f.engine.doctor({repo:f.repo});
+  const diagnostic=await f.engine.doctor({repo:f.repo,worker:{platform:'opencode'}});
   assert.equal(diagnostic.compatible,false);assert.equal(diagnostic.connection.code,'SDK_INCOMPATIBLE');
   assert.match(diagnostic.connection.details.guidance,/sdk_root/);assert.match(diagnostic.connection.error,/constructor API/);
   const folders=fs.readdirSync(path.join(f.data,'diagnostics'));

@@ -20,10 +20,11 @@ function environment(values, action) {
 
 test('model selection uses worker.model exclusively', () => {
   const model = { providerID: 'test', modelID: 'test' };
-  const task = { id: 'a', goal: 'Implement a', scope: ['a.txt'], acceptance: ['a exists'] };
+  const task = { id: 'a', goal: 'Implement a', scope: ['a.txt'], acceptance: ['a exists'], verification: [{ command: 'node a.js' }] };
+  const run = { request_id: 'model', repo: '/repo', worker: { platform: 'opencode' }, final_verification: [{ command: 'node a.js' }] };
   assert.throws(() => schemas.doctor.parse({ model }));
-  assert.throws(() => schemas.submit_tasks.parse({ request_id: 'model', tasks: [{ ...task, model }] }));
-  assert.deepEqual(schemas.submit_tasks.parse({ request_id: 'model', tasks: [{ ...task, worker: { platform: 'opencode', model } }] }).tasks[0].worker.model, model);
+  assert.throws(() => schemas.create_run.parse({ ...run, tasks: [{ ...task, model }] }));
+  assert.deepEqual(schemas.create_run.parse({ ...run, tasks: [{ ...task, worker: { platform: 'opencode', model } }] }).tasks[0].worker.model, model);
 });
 
 test('only current worker records are accepted', () => {
@@ -42,12 +43,12 @@ test('new environment settings select data and each native executable', () => {
       assert.deepEqual(worker.executable_args, ['example']);
     });
   }
-  assert.equal(resolveWorker(directory).platform, 'opencode');
+  assert.equal(resolveWorker(directory,{platform:'opencode'}).platform, 'opencode');
 });
 
 test('workers cannot enter the service or override the recursion guard', async () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-'));
-  const worker = resolveWorker(directory);
+  const worker = resolveWorker(directory,{platform:'opencode'});
   assert.equal(workerEnvironment(worker).AGENT_DELEGATION_WORKER, '1');
   assert.throws(() => workerEnvironment({ ...worker, env_refs: { AGENT_DELEGATION_WORKER: 'PATH' } }), error => error.code === 'WORKER_PROFILE');
   await environment({ AGENT_DELEGATION_WORKER: '1' }, () => assert.rejects(connect(directory, cli, false), error => error.code === 'RECURSION'));

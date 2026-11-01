@@ -4,15 +4,8 @@ export const PROTOCOL = 1;
 export const STORE_FORMAT = 4;
 export const WORKER_FORMAT = 2;
 export const VERSION = '1.0.0';
-export const BASELINE = '1.18.30';
 export const platforms = ['opencode', 'codex', 'claude-code', 'kilo'] as const;
 export type Platform = (typeof platforms)[number];
-export const backendVersions: Record<Platform, string> = {
-  opencode: BASELINE,
-  codex: '0.162.1',
-  'claude-code': '0.3.296',
-  kilo: '7.4.23',
-};
 export const idSchema = z.string().regex(/^[a-zA-Z0-9_-]{1,100}$/);
 export const commandSchema = z
   .object({
@@ -44,7 +37,7 @@ export const taskSchema = z
     dependencies: z.array(idSchema).default([]),
     scope: z.array(z.string().min(1)).min(1),
     acceptance: z.array(z.string().min(1)).min(1),
-    verification: z.array(commandSchema).default([]),
+    verification: z.array(commandSchema).min(1),
     context_files: z.array(z.string()).default([]),
     resources: z.array(idSchema).default([]),
     worker: workerSchema.optional(),
@@ -53,18 +46,18 @@ export const taskSchema = z
 const request = { request_id: idSchema };
 const run = { run_id: idSchema };
 const paging = { cursor: z.string().optional() };
+const tasks = z.array(taskSchema).min(1).max(100);
 export const schemas = {
-  doctor: z.object({ repo: z.string().optional(), worker: workerSchema.optional() }).strict(),
-  submit_tasks: z
+  doctor: z.object({ repo: z.string().optional(), worker: workerSchema }).strict(),
+  create_run: z
     .object({
       ...request,
-      run_id: idSchema.optional(),
-      repo: z.string().optional(),
-      tasks: z.array(taskSchema).min(1).max(100),
+      repo: z.string(),
+      worker: workerSchema,
+      tasks,
+      final_verification: z.array(commandSchema).min(1),
       resources: z.array(resourceSchema).default([]),
-      final_verification: z.array(commandSchema).optional(),
       context_files: z.array(z.string()).default([]),
-      worker: workerSchema.optional(),
       settings: z
         .object({
           concurrency: z.number().int().min(1).max(16).optional(),
@@ -74,6 +67,9 @@ export const schemas = {
         .strict()
         .optional(),
     })
+    .strict(),
+  add_tasks: z
+    .object({ ...request, ...run, tasks, final_verification: z.array(commandSchema).min(1).optional() })
     .strict(),
   list_runs: z.object(paging).strict(),
   get_run: z.object({ ...run, ...paging }).strict(),
@@ -91,15 +87,14 @@ export const schemas = {
       limit: z.number().int().min(1).max(16384).default(16384),
     })
     .strict(),
-  review_task: z
+  approve_task: z.object({ ...request, ...run, task_id: idSchema, attempt_id: idSchema, commit: z.string() }).strict(),
+  request_changes: z
     .object({
       ...request,
       ...run,
       task_id: idSchema,
       attempt_id: idSchema,
-      commit: z.string().optional(),
-      decision: z.enum(['approve', 'request_changes']),
-      feedback: z.string().max(32000).optional(),
+      feedback: z.string().min(1).max(32000),
     })
     .strict(),
   respond_to_request: z
@@ -147,7 +142,6 @@ export type WorkerConfig = {
   profile: string;
   executable: string;
   executable_args: string[];
-  baseline: string;
   config_hash: string;
   model?: WorkerModel;
   native_profile?: string;
@@ -159,7 +153,7 @@ export type WorkerConfig = {
 };
 export type Command = z.infer<typeof commandSchema>;
 export type TaskSpec = z.infer<typeof taskSchema>;
-export type SubmitArgs = z.infer<typeof schemas.submit_tasks>;
+export type SubmitArgs = z.infer<typeof schemas.create_run> | z.infer<typeof schemas.add_tasks>;
 export type Resource = z.infer<typeof resourceSchema>;
 export type Settings = { concurrency: number; timeout_ms: number; max_retries: number };
 export type ContextFile = { path: string; hash: string; artifact: string; tracked: boolean; mode: number };

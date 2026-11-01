@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Engine, Store, uid, sleep } from '../dist/index.mjs';
-import { fixture, submit, task, callOk, cli } from './helpers.mjs';
+import { fixture, submit, task, callOk, cli, runDefaults } from './helpers.mjs';
 
 function gate(){let resolve;const promise=new Promise(done=>{resolve=done;});return {promise,resolve};}
 const turn=()=>new Promise(resolve=>setImmediate(resolve));
@@ -20,7 +20,7 @@ test('a held diagnosis leaves queries and durable cancellation responsive',async
   const entered=gate(),release=gate(),original=Engine.prototype.effectDoctor;
   Engine.prototype.effectDoctor=async()=>{entered.resolve();await release.promise;return {compatible:true,connection:{healthy:true}};};
   t.after(()=>{release.resolve();Engine.prototype.effectDoctor=original;});
-  const diagnosis=f.engine.call('doctor',{});await entered.promise;
+  const diagnosis=f.engine.call('doctor',{worker:{platform:'opencode'}});await entered.promise;
   assert.equal((await bounded(f.engine.call('list_runs',{}))).items[0].run_id,submitted.run_id);
   const cancelled=await bounded(f.engine.call('cancel_run',{request_id:'cancel_during_doctor',run_id:submitted.run_id}));
   assert.equal(cancelled.state,'cancelling');
@@ -42,17 +42,17 @@ test('a detached completion must reenter the queue after its external wait',asyn
 
 test('a held submission returns live progress, preserves request identity and publishes no partial run',async t=>{
   const f=await fixture(t,{service:true}),blocked=hold(t,'effectSubmit');
-  const args={request_id:'held_submission',repo:f.repo,tasks:[task('a')],final_verification:[{command:'node -e "process.exit(0)"'}]};
-  const first=f.engine.call('submit_tasks',args);await blocked.entered.promise;
+  const args={request_id:'held_submission',...runDefaults,repo:f.repo,tasks:[task('a')],final_verification:[{command:'node -e "process.exit(0)"'}]};
+  const first=f.engine.call('create_run',args);await blocked.entered.promise;
   const pending=await first;assert.equal(pending.in_progress,true);assert.ok(pending.operation_id);
   assert.equal(f.store.state.requests[args.request_id].status,'intent');assert.equal(f.store.state.requests[args.request_id].result,undefined);
   assert.equal((await bounded(f.engine.call('list_runs',{}))).items.length,0);
-  const repeated=await f.engine.call('submit_tasks',args);assert.equal(repeated.operation_id,pending.operation_id);
-  await assert.rejects(f.engine.call('submit_tasks',{...args,tasks:[task('different')]}),error=>error.code==='IDEMPOTENCY_CONFLICT');
-  blocked.release.resolve();const result=await callOk(f,'submit_tasks',args);assert.ok(result.run_id);assert.equal(result.in_progress,undefined);
+  const repeated=await f.engine.call('create_run',args);assert.equal(repeated.operation_id,pending.operation_id);
+  await assert.rejects(f.engine.call('create_run',{...args,tasks:[task('different')]}),error=>error.code==='IDEMPOTENCY_CONFLICT');
+  blocked.release.resolve();const result=await callOk(f,'create_run',args);assert.ok(result.run_id);assert.equal(result.in_progress,undefined);
   const reopened=new Store(f.data);assert.deepEqual(reopened.request(args.request_id).result,result);assert.equal(Object.keys(reopened.state.operations).length,0);
   assert.equal(reopened.state.runs.length,1);assert.equal(reopened.state.runs[0].tasks.length,1);
-  assert.equal(await f.engine.call('submit_tasks',args).then(value=>value.run_id),result.run_id);
+  assert.equal(await f.engine.call('create_run',args).then(value=>value.run_id),result.run_id);
 });
 
 test('cancel wins over a held launch, retaining its reservation until completion and never dispatching a model',async t=>{
@@ -145,13 +145,13 @@ test('review final state, event and response publish together even when completi
   const f=await fixture(t,{service:true});const {run_id}=await submit(f,[task('a',{files:{'a.txt':'result'}})]);await f.engine.tick();
   const run=f.engine.getRun(run_id),deadline=Date.now()+30000;while(run.tasks[0].state!=='needs_review'&&Date.now()<deadline){await f.engine.tick();await sleep(25);}assert.equal(run.tasks[0].state,'needs_review');
   const original=Engine.prototype.effectReview,entered=gate(),release=gate();Engine.prototype.effectReview=async function(...args){const value=await original.apply(this,args);entered.resolve();await release.promise;return value;};t.after(()=>{release.resolve();Engine.prototype.effectReview=original;});
-  const attempt=run.tasks[0].attempts[0],args={request_id:'atomic_review',run_id,task_id:'a',attempt_id:attempt.id,commit:attempt.commit,decision:'approve'};
-  const reviewing=f.engine.call('review_task',args);await entered.promise;
+  const attempt=run.tasks[0].attempts[0],args={request_id:'atomic_review',run_id,task_id:'a',attempt_id:attempt.id,commit:attempt.commit};
+  const reviewing=f.engine.call('approve_task',args);await entered.promise;
   const before=new Store(f.data);assert.equal(before.request(args.request_id).status,'intent');assert.equal(before.run(run_id).tasks[0].state,'needs_review');assert.equal(before.events(run_id).some(event=>event.type==='reviewed'),false);
   const fsync=fs.fsyncSync;let injected=false;fs.fsyncSync=function(fd){if(!injected&&f.store.state.requests[args.request_id]?.status==='done'){injected=true;throw new Error('injected final fsync uncertainty');}return fsync(fd);};
   t.after(()=>{fs.fsyncSync=fsync;});release.resolve();await assert.rejects(reviewing,error=>error.code==='REQUEST_UNCERTAIN');fs.fsyncSync=fsync;assert.equal(injected,true);
   const recovered=new Store(f.data),record=recovered.request(args.request_id);assert.equal(record.status,'done');assert.equal(recovered.run(run_id).tasks[0].state,'integrated');assert.equal(recovered.events(run_id).some(event=>event.type==='reviewed'),true);assert.equal(Object.keys(recovered.state.operations).length,0);
-  const reopened=new Engine(recovered,cli);assert.deepEqual(await reopened.call('review_task',args),record.result);
+  const reopened=new Engine(recovered,cli);assert.deepEqual(await reopened.call('approve_task',args),record.result);
 });
 
 test('a revision change rejects an old completion and leaves an explicit uncertain operation',async t=>{
@@ -192,8 +192,8 @@ test('canonical repository reservations also cover a new submission through a ch
   const f=await fixture(t,{service:true});const {run_id}=await submit(f,[task('a')]);const alias=path.join(f.dir,'repository-alias');fs.symlinkSync(f.repo,alias,process.platform==='win32'?'junction':'dir');
   const entered=gate(),release=gate(),original=Engine.prototype.effectReview;
   Engine.prototype.effectReview=async()=>{entered.resolve();await release.promise;return {held:true};};t.after(()=>{release.resolve();Engine.prototype.effectReview=original;});
-  const reviewing=f.engine.call('review_task',{request_id:'held_repo_operation',run_id,task_id:'a',attempt_id:'synthetic',decision:'request_changes',feedback:'held fixture'});await entered.promise;
-  const denied=await f.engine.call('submit_tasks',{request_id:'alias_submission',repo:alias,tasks:[task('b')]});assert.equal(denied.error.code,'REPOSITORY_BUSY');assert.equal(f.store.state.runs.length,1);
+  const reviewing=f.engine.call('request_changes',{request_id:'held_repo_operation',run_id,task_id:'a',attempt_id:'synthetic',feedback:'held fixture'});await entered.promise;
+  const denied=await f.engine.call('create_run',{request_id:'alias_submission',...runDefaults,repo:alias,tasks:[task('b')]});assert.equal(denied.error.code,'REPOSITORY_BUSY');assert.equal(f.store.state.runs.length,1);
   assert.equal(fs.existsSync(path.join(f.data,'submissions','alias_submission')),false);release.resolve();await reviewing;
 });
 
@@ -222,8 +222,8 @@ test('a promised progress response keeps a child event loop alive without unrela
   const source=`import assert from 'node:assert/strict';import {Engine,Store} from ${JSON.stringify(new URL('../dist/index.mjs',import.meta.url).href)};
 let release;Engine.prototype.effectSubmit=async()=>{await new Promise(resolve=>{release=resolve;});return {finished:true};};
 const engine=new Engine(new Store(${JSON.stringify(path.join(f.dir,'child-data'))}),${JSON.stringify(cli)});
-const args={request_id:'progress_without_handles',repo:${JSON.stringify(f.repo)},tasks:[{id:'a',goal:'held mock effect',scope:['a.txt'],acceptance:['done']}]};
-const progress=await engine.call('submit_tasks',args);assert.equal(progress.in_progress,true);release();const result=await engine.call('submit_tasks',args);assert.equal(result.finished,true);await engine.drain();await engine.store.close();console.log(JSON.stringify({progress:true,finished:true}));`;
+const args={request_id:'progress_without_handles',repo:${JSON.stringify(f.repo)},worker:{platform:'opencode'},final_verification:[{command:'node -e 0'}],tasks:[{id:'a',goal:'held mock effect',scope:['a.txt'],acceptance:['done'],verification:[{command:'node -e 0'}]}]};
+const progress=await engine.call('create_run',args);assert.equal(progress.in_progress,true);release();const result=await engine.call('create_run',args);assert.equal(result.finished,true);await engine.drain();await engine.store.close();console.log(JSON.stringify({progress:true,finished:true}));`;
   fs.writeFileSync(script,source);const {exec}=await import('../dist/index.mjs');const result=await exec(process.execPath,[script],{timeout:10000});
   assert.equal(result.code,0,result.stderr);assert.deepEqual(JSON.parse(result.stdout.trim()),{progress:true,finished:true});
 });

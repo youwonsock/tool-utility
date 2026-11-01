@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Store, Engine, Fault, uid, sleep, writeJson, readJson, WORKER_FORMAT, transition, moveRun, rejectedEvidence } from '../dist/index.mjs';
-import { fixture, task, submit, review, callOk, cli, git } from './helpers.mjs';
+import { fixture, task, submit, review, callOk, cli, git, runDefaults } from './helpers.mjs';
 
 function processFixture(jobDir, identity, stopped=false) {
   const id=uid('process');writeJson(path.join(jobDir,'process-intents',`${id}.json`),{id,at:Date.now()});
@@ -37,17 +37,16 @@ test('a correction makes its previous result unreviewable before dispatch and af
   const s = await submit(f, [task('a', {files:{'a.txt':'original'}})]);
   let run = await tickUntil(f, s.run_id, r => r.tasks[0].state === 'needs_review');
   const a = run.tasks[0].attempts[0];
-  const args = {request_id:uid('correction'),run_id:run.id,task_id:'a',attempt_id:a.id,commit:a.commit,decision:'request_changes',feedback:'FAKE_ACTION:{"files":{"a.txt":"corrected"}}'};
-  const correction = await callOk(f, 'review_task', args);
-  assert.deepEqual(await callOk(f,'review_task',args),correction);
-  for (const decision of ['approve','request_changes']) {
-    const result = await f.call('review_task',{...args,request_id:uid('stale'),decision});
-    assert.equal(result.error?.code, 'REVIEW');
-  }
+  const args = {request_id:uid('correction'),run_id:run.id,task_id:'a',attempt_id:a.id,feedback:'FAKE_ACTION:{"files":{"a.txt":"corrected"}}'};
+  const approval = {request_id:uid('stale'),run_id:run.id,task_id:'a',attempt_id:a.id,commit:a.commit};
+  const correction = await callOk(f, 'request_changes', args);
+  assert.deepEqual(await callOk(f,'request_changes',args),correction);
+  assert.equal((await f.call('request_changes',{...args,request_id:uid('stale')})).error?.code,'REVIEW');
+  assert.equal((await f.call('approve_task',approval)).error?.code,'REVIEW');
   const store = new Store(f.data);
   const engine = new Engine(store,cli,{concurrency:2});
   const recovered = {...f,store,engine,call:(name,args)=>engine.call(name,args)};
-  const denied = await recovered.call('review_task',{...args,request_id:uid('stale'),decision:'approve'});
+  const denied = await recovered.call('approve_task',{...approval,request_id:uid('stale')});
   assert.equal(denied.error?.code,'REVIEW');
   run = await tickUntil(recovered,run.id,r=>r.tasks[0].attempts.length===2 && r.tasks[0].state==='needs_review');
   await review(recovered,run,'a');
@@ -57,14 +56,14 @@ test('a correction makes its previous result unreviewable before dispatch and af
 test('invalid submissions publish no empty run, worktree, context or partial append', async t => {
   const f = await controlled(t);
   for (const extra of [{resources:['missing']},{context_files:['missing.md']}]) {
-    const result = await f.call('submit_tasks',{request_id:uid('bad'),repo:f.repo,tasks:[task('a',{},extra)]});
+    const result = await f.call('create_run',{request_id:uid('bad'),...runDefaults,repo:f.repo,tasks:[task('a',{},extra)]});
     assert.ok(result.error);
     assert.equal(f.store.state.runs.length,0);
     assert.equal(fs.existsSync(path.join(f.data,'worktrees')),false);
   }
   const s = await submit(f,[task('a')]);
   const before = JSON.stringify(f.engine.getRun(s.run_id));
-  const result = await f.call('submit_tasks',{request_id:uid('bad'),run_id:s.run_id,tasks:[task('b'),task('c',{}, {context_files:['missing.md']})]});
+  const result = await f.call('add_tasks',{request_id:uid('bad'),run_id:s.run_id,tasks:[task('b'),task('c',{}, {context_files:['missing.md']})]});
   assert.ok(result.error);
   assert.equal(JSON.stringify(f.engine.getRun(s.run_id)),before);
   assert.equal(fs.existsSync(path.join(f.data,'runs',s.run_id,'b.json')),false);
@@ -124,7 +123,7 @@ test('metadata publication failure rolls back the whole submission and preserves
     if (destination===path.join(f.data,'runs',s.run_id,'c.json')) throw new Error('injected metadata failure');
     return link(source,destination);
   });
-  const result=await f.call('submit_tasks',{request_id:uid('bad'),run_id:s.run_id,tasks:[task('b'),task('c')]});
+  const result=await f.call('add_tasks',{request_id:uid('bad'),run_id:s.run_id,tasks:[task('b'),task('c')]});
   mock.mock.restore();
   assert.match(result.error.message,/injected metadata failure/);
   assert.equal(JSON.stringify(f.engine.getRun(s.run_id)),before);
@@ -135,7 +134,7 @@ test('metadata publication failure rolls back the whole submission and preserves
 test('a crash after checkout creation is fenced and its unpublished checkout is safely recovered', async t=>{
   const f=await controlled(t),save=f.store.save.bind(f.store);
   f.store.save=()=>{if(f.store.state.events.some(event=>event.type==='tasks_submitted')){f.store.uncertain=true;throw new Fault('REQUEST_UNCERTAIN','publication interruption');}return save();};
-  const interrupted=await f.call('submit_tasks',{request_id:uid('submit'),repo:f.repo,tasks:[task('a')],final_verification:[{command:'node -e "process.exit(0)"'}]});
+  const interrupted=await f.call('create_run',{request_id:uid('submit'),...runDefaults,repo:f.repo,tasks:[task('a')],final_verification:[{command:'node -e "process.exit(0)"'}]});
   assert.equal(interrupted.error.code,'REQUEST_UNCERTAIN');
   const prepared=f.store.state.runs[0];
   assert.equal(fs.existsSync(prepared.integration_dir),true);
@@ -150,19 +149,19 @@ test('a crash after checkout creation is fenced and its unpublished checkout is 
 
 test('journal publication survives fsync uncertainty and retransmission without replaying submission', async t=>{
   const f=await controlled(t),request_id=uid('submit');
-  const args={request_id,repo:f.repo,tasks:[task('a')],final_verification:[{command:'node -e "process.exit(0)"'}]};
+  const args={request_id,...runDefaults,repo:f.repo,tasks:[task('a')],final_verification:[{command:'node -e "process.exit(0)"'}]};
   const sync=fs.fsyncSync;
   const mock=t.mock.method(fs,'fsyncSync',descriptor=>{
     if (f.store.state.events.some(e=>e.type==='tasks_submitted')) throw new Error('journal fsync interruption');
     return sync(descriptor);
   });
-  const interrupted=await f.call('submit_tasks',args);assert.equal(interrupted.error.code,'REQUEST_UNCERTAIN');
+  const interrupted=await f.call('create_run',args);assert.equal(interrupted.error.code,'REQUEST_UNCERTAIN');
   mock.mock.restore();
   assert.equal(f.store.uncertain,true);
   await f.engine.tick();
   assert.equal(f.store.state.runs[0].tasks[0].attempts.length,0);
   const store=new Store(f.data),engine=new Engine(store,cli,{concurrency:2});
-  const recovered=await engine.call('submit_tasks',args);
+  const recovered=await engine.call('create_run',args);
   assert.equal(recovered.run_id,store.state.runs[0].id);
   assert.equal(store.state.runs.length,1);
   assert.equal(store.state.runs[0].tasks[0].attempts.length,0);
@@ -278,8 +277,8 @@ test('answered implementation input and service recovery cannot restart implemen
 });
 
 for(const preparation of ['absent','missing-manifest','published-manifest'])test(`a published submission without its atomic response and ${preparation} stays uncertain without recovery or replay`, async t=>{
-  const f=await controlled(t),request_id=uid('submit'),args={request_id,repo:f.repo,tasks:[task('a')]};
-  const committed=await f.call('submit_tasks',args);assert.equal(committed.run_id,f.store.state.runs[0].id);
+  const f=await controlled(t),request_id=uid('submit'),args={request_id,...runDefaults,repo:f.repo,tasks:[task('a')]};
+  const committed=await f.call('create_run',args);assert.equal(committed.run_id,f.store.state.runs[0].id);
   assert.equal(fs.existsSync(path.join(f.data,'submissions',request_id)),false);
   f.store.state.requests[request_id]={hash:f.store.state.requests[request_id].hash,status:'intent'};f.store.save();
   const store=new Store(f.data),engine=new Engine(store,cli,{concurrency:2}),run=store.state.runs[0],directory=path.join(f.data,'submissions',request_id);
@@ -291,7 +290,7 @@ for(const preparation of ['absent','missing-manifest','published-manifest'])test
     else writeJson(retained,{protocol:4,request_id,request_hash:store.state.requests[request_id].hash,run_id:run.id,repo:run.repo,base:run.base,new_run:true,integration_dir:run.integration_dir,integration_branch:run.integration_branch,files:[],result:committed});
   }
   const before=retained&&fs.readFileSync(retained);
-  await assert.rejects(engine.call('submit_tasks',args),error=>error.code==='REQUEST_UNCERTAIN');
+  await assert.rejects(engine.call('create_run',args),error=>error.code==='REQUEST_UNCERTAIN');
   if(retained)assert.deepEqual(fs.readFileSync(retained),before);
   assert.equal(store.state.requests[request_id].status,'intent');
   assert.equal(store.state.runs.length,1);assert.equal(store.state.runs[0].tasks[0].attempts.length,0);
@@ -299,16 +298,16 @@ for(const preparation of ['absent','missing-manifest','published-manifest'])test
 });
 
 test('recovery preserves user changes in an unpublished prepared checkout', async t=>{
-  const f=await controlled(t),request_id=uid('submit'),args={request_id,repo:f.repo,tasks:[task('a')]},save=f.store.save.bind(f.store);
+  const f=await controlled(t),request_id=uid('submit'),args={request_id,...runDefaults,repo:f.repo,tasks:[task('a')]},save=f.store.save.bind(f.store);
   f.store.save=()=>{if(f.store.state.events.some(event=>event.type==='tasks_submitted')){f.store.uncertain=true;throw new Fault('REQUEST_UNCERTAIN','publication interruption');}return save();};
-  const interrupted=await f.call('submit_tasks',args);assert.equal(interrupted.error.code,'REQUEST_UNCERTAIN');
+  const interrupted=await f.call('create_run',args);assert.equal(interrupted.error.code,'REQUEST_UNCERTAIN');
   const run=f.store.state.runs[0],original=fs.readFileSync(path.join(run.integration_dir,'base.txt'));
   fs.writeFileSync(path.join(run.integration_dir,'base.txt'),'user change');
   const store=new Store(f.data),engine=new Engine(store,cli,{concurrency:2});
   await engine.recoverPreparations();
   assert.equal(fs.readFileSync(path.join(run.integration_dir,'base.txt'),'utf8'),'user change');
   assert.equal(store.state.runs.length,0);
-  await assert.rejects(engine.call('submit_tasks',args),e=>e.code==='REQUEST_UNCERTAIN');
+  await assert.rejects(engine.call('create_run',args),e=>e.code==='REQUEST_UNCERTAIN');
   fs.writeFileSync(path.join(run.integration_dir,'base.txt'),original);
   const cleanupEngine=new Engine(new Store(f.data),cli,{concurrency:2});
   await cleanupEngine.recoverPreparations();

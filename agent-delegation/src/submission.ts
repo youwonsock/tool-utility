@@ -184,13 +184,13 @@ export async function submitTasks(
   store: Store,
   args: SubmitArgs,
   validateGraph: (specs: TaskSpec[]) => void,
-  resolve: (selection?: WorkerSelection) => WorkerConfig = (selection) => resolveWorker(store.root, selection),
+  resolve: (selection: WorkerSelection) => WorkerConfig = (selection) => resolveWorker(store.root, selection),
   publish: (result?: unknown) => Promise<void> = async () => undefined,
   bindRepository: (commonDir: string) => Promise<void> = async () => undefined,
 ) {
   const specs = structuredClone(args.tasks);
   let existing: Run | undefined, candidate: Run;
-  if (args.run_id) {
+  if ('run_id' in args) {
     existing = store.state.runs.find((r) => r.id === args.run_id);
     invariant(existing, 'NOT_FOUND', 'Run not found.');
     invariant(
@@ -198,16 +198,9 @@ export async function submitTasks(
       'RUN_FROZEN',
       'Run does not accept new tasks in its current state.',
     );
-    invariant(!args.repo || args.repo === existing.repo, 'REPO', 'Cannot change run repository.');
-    invariant(
-      !args.worker && !args.settings && !args.resources.length && !args.context_files.length,
-      'RUN_CONFIG',
-      'Run worker, settings, resources and shared context are immutable.',
-    );
     candidate = { ...existing, tasks: [...existing.tasks] };
     checkContext(existing.repo, existing.context);
   } else {
-    invariant(args.repo, 'REPO', 'A repository root is required for a new run.');
     const repo = await repository(args.repo),
       id = uid('run');
     candidate = {
@@ -222,7 +215,7 @@ export async function submitTasks(
       tasks: [],
       context: [],
       resources: args.resources,
-      final_verification: args.final_verification ?? [],
+      final_verification: args.final_verification,
       worker: resolve(args.worker),
       settings: { concurrency: 2, timeout_ms: 3600000, max_retries: 3, ...args.settings },
     };
@@ -278,7 +271,7 @@ export async function submitTasks(
       );
     }
   }
-  const shared = existing ? existing.context.map((c) => c.path) : args.context_files;
+  const shared = 'run_id' in args ? existing!.context.map((c) => c.path) : args.context_files;
   const captures = await captureContext(candidate.repo, [...shared, ...specs.flatMap((s) => s.context_files)]);
   const files: { path: string; hash: string; data: Buffer }[] = [];
   const contexts = new Map<string, ContextFile>();

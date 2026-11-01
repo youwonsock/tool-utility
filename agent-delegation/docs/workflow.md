@@ -13,10 +13,10 @@ worktrees. Keep this division when changing either platform.
    credentials or perform a paid model invocation.
    Users install/configure their CLI and SDK themselves. Missing SDKs do not
    prevent MCP connection, review, cancellation or final command verification.
-3. Call submit_tasks with a unique request_id, bounded goals, scope,
+3. Call create_run with a unique request_id, bounded goals, scope,
    dependencies, acceptance criteria, declared verification commands and
    explicit context/resources. Select worker.platform and optionally model or
-   a trusted local profile. Missing selection retains the OpenCode default.
+   a trusted local profile. Use add_tasks to extend the run.
 4. Discover existing work with list_runs. Inspect get_run and use wait_run with
    its returned event cursor; consume every next_cursor. Follow get_artifact
    next_offset to inspect bounded diffs, observed checks and model reports.
@@ -27,7 +27,7 @@ worktrees. Keep this division when changing either platform.
    elevated by a grant. An uncertain reply is reconciled, never blindly sent again.
 6. Review only the latest stopped needs_review attempt. Compare its actual
    commit, bounded diff, observed exit codes, context and acceptance criteria.
-   A model report is not verification evidence. Use review_task to approve
+   A model report is not verification evidence. Use approve_task for
    that exact commit or request_changes with concrete correction instructions.
 7. After a correction, its old result cannot be approved, including before
    dispatch and after restart. Keep the selected worker/profile/model for the

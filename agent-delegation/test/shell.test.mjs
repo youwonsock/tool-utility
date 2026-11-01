@@ -7,7 +7,7 @@ import { fixture, cli } from './helpers.mjs';
 
 const variants=process.platform==='win32'?['default','cmd']:['default','bash'];
 for(const variant of variants)test(`${variant} verification shell preserves exit codes, quotes, logs and the worktree directory`,async t=>{
-  const f=await fixture(t);f.engine.stop();const worker=resolveWorker(f.data);
+  const f=await fixture(t);f.engine.stop();const worker=resolveWorker(f.data,{platform:'opencode'});
   if(variant!=='default')worker.shell={executable:variant==='cmd'?process.env.ComSpec??'cmd.exe':'/bin/bash',args:variant==='cmd'?['/d','/s','/c']:['-c']};
   const id=uid('verification'),job_dir=path.join(f.data,'jobs',id);fs.mkdirSync(job_dir,{recursive:true});
   const spec={protocol:2,id,job_dir,directory:f.repo,host_executable:cli,worker};

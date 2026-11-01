@@ -1,7 +1,6 @@
 import path from 'node:path';
 import { z } from 'zod';
 import {
-  backendVersions,
   platforms,
   workerSchema,
   modelSchema,
@@ -30,8 +29,8 @@ const profileSchema = z
   })
   .strict();
 const fileSchema = z.object({ profiles: z.record(z.string(), profileSchema) }).strict();
-export function resolveWorker(root: string, selection?: WorkerSelection): WorkerConfig {
-  const choice = workerSchema.parse(selection ?? { platform: 'opencode' });
+export function resolveWorker(root: string, selection: WorkerSelection): WorkerConfig {
+  const choice = workerSchema.parse(selection);
   const profile = choice.profile ?? 'default';
   const saved = readJson<unknown>(path.join(root, 'profiles.json'));
   const profiles = saved === undefined ? {} : fileSchema.parse(saved).profiles;
@@ -104,7 +103,6 @@ export function resolveWorker(root: string, selection?: WorkerSelection): Worker
     profile,
     executable: checked.executable,
     executable_args: checked.args,
-    baseline: backendVersions[choice.platform],
     config_hash: digest({ ...checked, ...(sdk_root ? { sdk_root } : {}) }),
     model,
     ...(checked.native_profile ? { native_profile: checked.native_profile } : {}),
@@ -118,7 +116,6 @@ export function publicWorker(worker?: WorkerConfig) {
   return {
     platform: worker.platform,
     profile: worker.profile,
-    baseline: worker.baseline,
     model: worker.model,
     config_hash: worker.config_hash,
   };

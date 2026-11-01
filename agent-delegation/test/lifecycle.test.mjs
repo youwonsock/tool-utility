@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Store, uid, sleep, digest, writeJson, processIdentity } from '../dist/index.mjs';
-import { fixture, task, submit, until, review, ready, finalize, git, callOk } from './helpers.mjs';
+import { fixture, task, submit, until, review, ready, finalize, git, callOk, runDefaults } from './helpers.mjs';
 
 test('parallel implementation, ignored context, correction, exact approval and final fast-forward', async t => {
   const f = await fixture(t);
@@ -16,16 +16,16 @@ test('parallel implementation, ignored context, correction, exact approval and f
   assert.equal(await git(f.repo,'rev-parse','HEAD'),run.base);
   await review(f,run,'a','request_changes','FAKE_ACTION:{"files":{"a.txt":"corrected"}}');
   run = await until(f,run.id,r=>r.tasks[0].attempts.length===2 && r.tasks[0].state==='needs_review');
-  const stale = await f.call('review_task',{request_id:uid('r'),run_id:run.id,task_id:'a',attempt_id:first.id,commit:first.commit,decision:'approve'}); assert.equal(stale.error.code,'ATTEMPT');
+  const stale = await f.call('approve_task',{request_id:uid('r'),run_id:run.id,task_id:'a',attempt_id:first.id,commit:first.commit}); assert.equal(stale.error.code,'ATTEMPT');
   await ready(f,run); const result = await finalize(f,run);
   assert.equal(result.state,'completed'); assert.equal(fs.readFileSync(path.join(f.repo,'a.txt'),'utf8'),'corrected');
   assert.equal(fs.readFileSync(path.join(f.repo,'b.txt'),'utf8'),'parallel'); assert.equal(await git(f.repo,'status','--porcelain'),'');
 });
 
 test('idempotency, conflicting request IDs, dependency gating and delta cursors',async t=>{
-  const f=await fixture(t); const args={request_id:'fixed',repo:f.repo,tasks:[task('a',{files:{'a.txt':'a'}}),task('b',{files:{'b.txt':'b'}},{dependencies:['a']})]};
-  const one=await callOk(f,'submit_tasks',args), two=await callOk(f,'submit_tasks',args); assert.deepEqual(one,two);
-  await assert.rejects(f.call('submit_tasks',{...args,tasks:[task('z')]}),/different content/);
+  const f=await fixture(t); const args={request_id:'fixed',...runDefaults,repo:f.repo,tasks:[task('a',{files:{'a.txt':'a'}}),task('b',{files:{'b.txt':'b'}},{dependencies:['a']})]};
+  const one=await callOk(f,'create_run',args), two=await callOk(f,'create_run',args); assert.deepEqual(one,two);
+  await assert.rejects(f.call('create_run',{...args,tasks:[task('z')]}),/different content/);
   const run=await until(f,one.run_id,r=>r.tasks[0].state==='needs_review'); assert.equal(run.tasks[1].attempts.length,0);
   await review(f,run,'a'); await until(f,run.id,r=>r.tasks[1].state==='needs_review');
   const events=await f.call('wait_run',{run_id:run.id,after:0,timeout_ms:0}); assert.ok(events.items.length);
@@ -38,9 +38,9 @@ test('model claims cannot override failed checks, scope violations or unavailabl
   const f=await fixture(t); const s=await submit(f,[task('a',{files:{'a.txt':'ok'},summary:'All checks passed!'},{verification:[{command:'node -e "process.exit(7)"'}]}),task('b',{files:{'outside.txt':'bad'}})]);
   const r=await until(f,s.run_id,r=>r.tasks.every(t=>t.state==='needs_review'));
   assert.equal(r.tasks[0].attempts[0].verification[0].exit_code,7);
-  const a=r.tasks[0].attempts[0]; const out=await f.call('review_task',{request_id:uid('r'),run_id:r.id,task_id:'a',attempt_id:a.id,commit:a.commit,decision:'approve'}); assert.equal(out.error.code,'CHECKS_FAILED');
+  const a=r.tasks[0].attempts[0]; const out=await f.call('approve_task',{request_id:uid('r'),run_id:r.id,task_id:'a',attempt_id:a.id,commit:a.commit}); assert.equal(out.error.code,'CHECKS_FAILED');
   assert.equal(r.tasks[1].attempts[0].state,'scope_or_context_error');
-  await callOk(f,'submit_tasks',{request_id:uid('r'),run_id:r.id,tasks:[task('c',{}, {worker:{platform:'opencode',model:{providerID:'missing',modelID:'none'}}})]});
+  await callOk(f,'add_tasks',{request_id:uid('r'),run_id:r.id,tasks:[task('c',{}, {worker:{platform:'opencode',model:{providerID:'missing',modelID:'none'}}})]});
   await until(f,r.id,r=>r.tasks[2].state==='needs_review'); assert.match(r.tasks[2].attempts[0].error,/unavailable/);
 });
 
@@ -71,7 +71,7 @@ test('global resource serialization and actual project identity check',async t=>
 test('validation freezes tasks, rejects changed source/commands and invalidates on append',async t=>{
   const f=await fixture(t); const s=await submit(f,[task('a',{files:{'a.txt':'a'}})],{final_verification:[{command:'node -e "setTimeout(()=>{},600)"'}]});
   const r=await until(f,s.run_id,r=>r.tasks[0].state==='needs_review'); await review(f,r,'a'); await callOk(f,'validate_run',{request_id:uid('r'),run_id:r.id});
-  const blocked=await f.call('submit_tasks',{request_id:uid('r'),run_id:r.id,tasks:[task('b')]}); assert.equal(blocked.error.code,'RUN_FROZEN');
+  const blocked=await f.call('add_tasks',{request_id:uid('r'),run_id:r.id,tasks:[task('b')]}); assert.equal(blocked.error.code,'RUN_FROZEN');
   await until(f,r.id,r=>r.state==='waiting_final_review');
   const old={validation_id:r.validation.id,commit:r.validation.commit,revision:r.revision};
   r.final_verification[0].command='node -e "process.exit(1)"';
@@ -79,7 +79,7 @@ test('validation freezes tasks, rejects changed source/commands and invalidates 
   r.final_verification[0].command='node -e "setTimeout(()=>{},600)"';
   fs.writeFileSync(path.join(r.validation.attempt.directory,'base.txt'),'changed');
   failed=await f.call('finalize_run',{request_id:uid('r'),run_id:r.id,...old}); assert.equal(failed.error.code,'DIRTY_WORKTREE');
-  await callOk(f,'submit_tasks',{request_id:uid('r'),run_id:r.id,tasks:[task('b')]}); assert.equal(r.validation,undefined); assert.ok(r.revision>old.revision);
+  await callOk(f,'add_tasks',{request_id:uid('r'),run_id:r.id,tasks:[task('b')]}); assert.equal(r.validation,undefined); assert.ok(r.revision>old.revision);
   failed=await f.call('finalize_run',{request_id:uid('r'),run_id:r.id,...old}); assert.equal(failed.error.code,'VALIDATION_REQUIRED');
 });
 
@@ -124,7 +124,7 @@ test('a correction told about reapplied conflicts cannot be approved until they 
   assert.match(fs.readFileSync(path.join(attempt.job_dir,'prompt.txt'),'utf8'),/merge conflicts in: base\.txt/);
   let page=await callOk(f,'get_run',{run_id:r.id}),items=page.items;while(page.next_cursor){page=await callOk(f,'get_run',{run_id:r.id,cursor:page.next_cursor});items=[...items,...page.items];}
   assert.deepEqual(items[1].attempt.conflicts,['base.txt']);
-  const denied=await f.call('review_task',{request_id:uid('approve'),run_id:r.id,task_id:'b',attempt_id:attempt.id,commit:attempt.commit,decision:'approve'});assert.equal(denied.error.code,'UNRESOLVED_CONFLICT');
+  const denied=await f.call('approve_task',{request_id:uid('approve'),run_id:r.id,task_id:'b',attempt_id:attempt.id,commit:attempt.commit});assert.equal(denied.error.code,'UNRESOLVED_CONFLICT');
   // The next correction still sees the marked files, including when it edits nothing again.
   await review(f,r,'b','request_changes',keepEverything);
   await until(f,r.id,()=>b.attempts.length===3&&b.state==='needs_review');attempt=b.attempts[2];assert.equal(attempt.state,'conflict_unresolved');
