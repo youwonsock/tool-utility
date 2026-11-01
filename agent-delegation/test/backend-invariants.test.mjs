@@ -436,6 +436,27 @@ test('Codex empty rollout reads have a fixed startup deadline and preserve termi
   );
   t.mock.restoreAll();
 });
+test('Codex does not trust an interrupted read before turn/completed or the startup deadline', async (t) => {
+  const a = await native(t, 'codex', undefined, ['--interrupted-read-once']);
+  await a.backend.createSession();
+  await a.backend.dispatch('FAKE_ACTION:{"delay":200}', a.state.prompt_id);
+  const early = await a.backend.observe();
+  assert.equal(early.complete, false);
+  assert.equal(early.error, undefined);
+  const observed = await codexInput(a.backend);
+  assert.equal(observed.complete, true);
+  assert.equal(observed.error, undefined);
+  const b = await native(t, 'codex', undefined, ['--interrupted-read-always']);
+  await b.backend.createSession();
+  await b.backend.dispatch('FAKE_ACTION:{"delay":60000}', b.state.prompt_id);
+  assert.equal((await b.backend.observe()).complete, false);
+  const now = Date.now();
+  t.mock.method(Date, 'now', () => now + 31000);
+  const late = await b.backend.observe();
+  assert.equal(late.complete, true);
+  assert.equal(late.error, 'Native turn interrupted.');
+  t.mock.restoreAll();
+});
 test('Codex waits out an early list_turns rejection within the startup deadline without replaying', async (t) => {
   const a = await native(t, 'codex', undefined, ['--list-turns-once']);
   await a.backend.createSession();

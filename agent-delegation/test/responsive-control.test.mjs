@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { Engine, Store, uid, sleep } from '../dist/index.mjs';
+import { EffectRunner, Engine, Store, uid, sleep } from '../dist/index.mjs';
 import { fixture, submit, task, callOk, cli, runDefaults } from './helpers.mjs';
 
 function gate() {
@@ -25,16 +25,16 @@ async function bounded(promise) {
 function hold(t, name) {
   const entered = gate(),
     release = gate(),
-    original = Engine.prototype[name];
+    original = EffectRunner.prototype[name];
   assert.equal(typeof original, 'function');
-  Engine.prototype[name] = async function (...args) {
+  EffectRunner.prototype[name] = async function (...args) {
     entered.resolve();
     await release.promise;
     return original.apply(this, args);
   };
   t.after(() => {
     release.resolve();
-    Engine.prototype[name] = original;
+    EffectRunner.prototype[name] = original;
   });
   return { entered, release };
 }
@@ -44,15 +44,15 @@ test('a held diagnosis leaves queries and durable cancellation responsive', asyn
   const submitted = await submit(f, [task('a')]);
   const entered = gate(),
     release = gate(),
-    original = Engine.prototype.effectDoctor;
-  Engine.prototype.effectDoctor = async () => {
+    original = EffectRunner.prototype.effectDoctor;
+  EffectRunner.prototype.effectDoctor = async () => {
     entered.resolve();
     await release.promise;
     return { compatible: true, connection: { healthy: true } };
   };
   t.after(() => {
     release.resolve();
-    Engine.prototype.effectDoctor = original;
+    EffectRunner.prototype.effectDoctor = original;
   });
   const diagnosis = f.engine.call('doctor', { worker: { platform: 'opencode' } });
   await entered.promise;
@@ -73,8 +73,8 @@ test('a detached completion must reenter the queue after its external wait', asy
     release = gate(),
     held = gate(),
     unhold = gate();
-  const original = Engine.prototype.effectDoctor;
-  Engine.prototype.effectDoctor = async function () {
+  const original = EffectRunner.prototype.effectDoctor;
+  EffectRunner.prototype.effectDoctor = async function () {
     entered.resolve();
     await release.promise;
     await this.persist();
@@ -83,7 +83,7 @@ test('a detached completion must reenter the queue after its external wait', asy
   t.after(() => {
     release.resolve();
     unhold.resolve();
-    Engine.prototype.effectDoctor = original;
+    EffectRunner.prototype.effectDoctor = original;
   });
   let finished = false;
   const diagnosis = f.engine.doctor({}).then((value) => {
@@ -396,10 +396,10 @@ test('review final state, event and response publish together even when completi
     await sleep(25);
   }
   assert.equal(run.tasks[0].state, 'needs_review');
-  const original = Engine.prototype.effectReview,
+  const original = EffectRunner.prototype.effectReview,
     entered = gate(),
     release = gate();
-  Engine.prototype.effectReview = async function (...args) {
+  EffectRunner.prototype.effectReview = async function (...args) {
     const value = await original.apply(this, args);
     entered.resolve();
     await release.promise;
@@ -407,7 +407,7 @@ test('review final state, event and response publish together even when completi
   };
   t.after(() => {
     release.resolve();
-    Engine.prototype.effectReview = original;
+    EffectRunner.prototype.effectReview = original;
   });
   const attempt = run.tasks[0].attempts[0],
     args = { request_id: 'atomic_review', run_id, task_id: 'a', attempt_id: attempt.id, commit: attempt.commit };
@@ -454,15 +454,15 @@ test('a revision change rejects an old completion and leaves an explicit uncerta
   const { run_id } = await submit(f, [task('a')]);
   const entered = gate(),
     release = gate(),
-    original = Engine.prototype.effectReconcile;
-  Engine.prototype.effectReconcile = async function (run) {
+    original = EffectRunner.prototype.effectReconcile;
+  EffectRunner.prototype.effectReconcile = async function (run) {
     run.error = 'stale effect marker';
     entered.resolve();
     await release.promise;
   };
   t.after(() => {
     release.resolve();
-    Engine.prototype.effectReconcile = original;
+    EffectRunner.prototype.effectReconcile = original;
   });
   const reconciling = f.engine.call('reconcile_run', { request_id: 'old_revision', run_id });
   await entered.promise;
@@ -479,7 +479,7 @@ test('a revision change rejects an old completion and leaves an explicit uncerta
     'uncertain',
   );
   assert.equal(new Store(f.data).request('old_revision').status, 'intent');
-  Engine.prototype.effectReconcile = original;
+  EffectRunner.prototype.effectReconcile = original;
   await f.engine.call('reconcile_run', { request_id: 'reconcile_after_stale', run_id });
 });
 
@@ -523,15 +523,15 @@ test('shutdown fences late publication and drains its external effect before a n
   const { run_id } = await submit(f, [task('a')]);
   const entered = gate(),
     release = gate(),
-    original = Engine.prototype.effectReconcile;
-  Engine.prototype.effectReconcile = async function (run) {
+    original = EffectRunner.prototype.effectReconcile;
+  EffectRunner.prototype.effectReconcile = async function (run) {
     entered.resolve();
     await release.promise;
     run.error = 'late shutdown marker';
   };
   t.after(() => {
     release.resolve();
-    Engine.prototype.effectReconcile = original;
+    EffectRunner.prototype.effectReconcile = original;
   });
   const pending = f.engine.reconcile(f.engine.getRun(run_id));
   await entered.promise;
@@ -553,7 +553,7 @@ test('shutdown fences late publication and drains its external effect before a n
     Object.values(recovered.store.state.operations).find((operation) => operation.run_id === run_id).status,
     'uncertain',
   );
-  Engine.prototype.effectReconcile = original;
+  EffectRunner.prototype.effectReconcile = original;
   await recovered.reconcile(recovered.getRun(run_id));
   f.engine = recovered;
   f.store = recovered.store;
@@ -566,15 +566,15 @@ test('canonical repository reservations also cover a new submission through a ch
   fs.symlinkSync(f.repo, alias, process.platform === 'win32' ? 'junction' : 'dir');
   const entered = gate(),
     release = gate(),
-    original = Engine.prototype.effectReview;
-  Engine.prototype.effectReview = async () => {
+    original = EffectRunner.prototype.effectReview;
+  EffectRunner.prototype.effectReview = async () => {
     entered.resolve();
     await release.promise;
     return { held: true };
   };
   t.after(() => {
     release.resolve();
-    Engine.prototype.effectReview = original;
+    EffectRunner.prototype.effectReview = original;
   });
   const reviewing = f.engine.call('request_changes', {
     request_id: 'held_repo_operation',
@@ -660,8 +660,8 @@ test('every resource-wait resume reserves a fresh slot after a previous resume b
 test('a promised progress response keeps a child event loop alive without unrelated handles', async (t) => {
   const f = await fixture(t, { service: true }),
     script = path.join(f.dir, 'progress-without-handles.mjs');
-  const source = `import assert from 'node:assert/strict';import {Engine,Store} from ${JSON.stringify(new URL('../dist/index.mjs', import.meta.url).href)};
-let release;Engine.prototype.effectSubmit=async()=>{await new Promise(resolve=>{release=resolve;});return {finished:true};};
+  const source = `import assert from 'node:assert/strict';import {EffectRunner,Engine,Store} from ${JSON.stringify(new URL('../dist/index.mjs', import.meta.url).href)};
+let release;EffectRunner.prototype.effectSubmit=async()=>{await new Promise(resolve=>{release=resolve;});return {finished:true};};
 const engine=new Engine(new Store(${JSON.stringify(path.join(f.dir, 'child-data'))}),${JSON.stringify(cli)});
 const args={request_id:'progress_without_handles',repo:${JSON.stringify(f.repo)},worker:{platform:'opencode'},final_verification:[{command:'node -e 0'}],tasks:[{id:'a',goal:'held mock effect',scope:['a.txt'],acceptance:['done'],verification:[{command:'node -e 0'}]}]};
 const progress=await engine.call('create_run',args);assert.equal(progress.in_progress,true);release();const result=await engine.call('create_run',args);assert.equal(result.finished,true);await engine.drain();await engine.store.close();console.log(JSON.stringify({progress:true,finished:true}));`;
