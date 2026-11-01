@@ -130,7 +130,7 @@ test('a correction told about reapplied conflicts cannot be approved until they 
   await until(f,r.id,()=>b.attempts.length===3&&b.state==='needs_review');attempt=b.attempts[2];assert.equal(attempt.state,'conflict_unresolved');
   await review(f,r,'b','request_changes','FAKE_ACTION:{"files":{"base.txt":"resolved\\n"}}');
   await until(f,r.id,()=>b.attempts.length===4&&b.state==='needs_review');assert.equal(b.attempts[3].state,'needs_review');
-  await review(f,r,'b');assert.equal(b.state,'integrated');assert.equal(fs.readFileSync(path.join(r.integration_dir,'base.txt'),'utf8'),'resolved\n');
+  await review(f,r,'b');assert.equal(b.state,'integrated');assert.equal(await git(r.integration_dir,'show','HEAD:base.txt'),'resolved');
 });
 
 test('a binary conflict without markers stays unresolved until the file changes',async t=>{
