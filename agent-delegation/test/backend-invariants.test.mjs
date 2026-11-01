@@ -186,6 +186,15 @@ test('Codex empty rollout reads have a fixed startup deadline and preserve termi
   await assert.rejects(()=>backend.observe(),e=>e.code==='BACKEND_RPC'&&e.details.code===-32603&&e.details.message.endsWith('is empty'));
   t.mock.restoreAll();
 });
+test('Codex waits out an early list_turns rejection within the startup deadline without replaying',async t=>{
+  const a=await native(t,'codex',undefined,['--list-turns-once']);await a.backend.createSession();await a.backend.dispatch('FAKE_ACTION:{}',a.state.prompt_id);
+  const transient=await a.backend.observe();assert.equal(transient.accepted,true);assert.equal(transient.complete,false);
+  const observed=await codexInput(a.backend);assert.equal(observed.complete,true);assert.equal(observed.transcript.thread.turns.length,1);
+  const b=await native(t,'codex',undefined,['--list-turns-always']);await b.backend.createSession();await b.backend.dispatch('FAKE_ACTION:{}',b.state.prompt_id);
+  assert.equal((await b.backend.observe()).complete,false);const now=Date.now();t.mock.method(Date,'now',()=>now+31000);
+  await assert.rejects(()=>b.backend.observe(),e=>e.code==='BACKEND_RPC'&&e.details.code===-32601);
+  t.mock.restoreAll();
+});
 test('Codex does not retry unrelated thread read errors or hold cancellation behind rollout materialization',async t=>{
   const a=await native(t,'codex',undefined,['--unrelated-read-error']);await a.backend.createSession();await a.backend.dispatch('FAKE_ACTION:{}',a.state.prompt_id);
   await assert.rejects(()=>a.backend.observe(),e=>e.code==='BACKEND_RPC'&&e.details.message.includes('unrelated permanent'));

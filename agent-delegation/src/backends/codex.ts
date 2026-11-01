@@ -479,16 +479,13 @@ export class CodexBackend implements WorkerBackend {
             : null;
         const filename = match?.[1]?.replaceAll('\\', '/').split('/').at(-1);
         // A just-accepted durable turn can precede its first rollout flush. Only
-        // this exact owned-session read error is transient; never resend a turn.
-        if (
-          !this.cancelled &&
-          this.accepted &&
-          Date.now() < this.rolloutReadDeadline &&
-          details?.code === -32603 &&
-          match?.[1] === match?.[2] &&
-          filename?.endsWith(`-${this.context.state.session_id}.jsonl`)
-        )
-          materializing = true;
+        // these exact owned-session read errors are transient; never resend a turn.
+        const flushing =
+          (details?.code === -32601 && details.message === 'list_turns is not supported yet') ||
+          (details?.code === -32603 &&
+            match?.[1] === match?.[2] &&
+            filename?.endsWith(`-${this.context.state.session_id}.jsonl`));
+        if (!this.cancelled && this.accepted && Date.now() < this.rolloutReadDeadline && flushing) materializing = true;
         else throw error;
       }
       const turn =
