@@ -95,8 +95,7 @@ let action = {},
   timer,
   pending,
   ephemeral = false,
-  dynamicTools = [],
-  readErrors = 0;
+  dynamicTools = [];
 const audit = (event) => {
   if (process.env.FAKE_AUDIT)
     fs.appendFileSync(
@@ -123,8 +122,10 @@ const finish = () => {
     }
   const turn = thread.turns.at(-1);
   turn.status = 'completed';
-  turn.items.push({ id: 'reply_mock', type: 'agentMessage', text: action.summary ?? 'Mock implementation finished.' });
-  send({ method: 'turn/completed', params: { threadId: thread.id, turn } });
+  const reply = { id: 'reply_mock', type: 'agentMessage', text: action.summary ?? 'Mock implementation finished.' };
+  turn.items.push(reply);
+  send({ method: 'item/completed', params: { threadId: thread.id, item: reply } });
+  if (!argv.includes('--lost-completed')) send({ method: 'turn/completed', params: { threadId: thread.id, turn } });
   audit({ event: 'finished' });
 };
 readline.createInterface({ input: process.stdin }).on('line', (line) => {
@@ -192,40 +193,13 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     });
   }
   if (frame.method === 'thread/read') {
-    if (ephemeral && p.includeTurns)
-      return send({ id: frame.id, error: { code: -32600, message: 'ephemeral threads do not support includeTurns' } });
-    if (
-      thread.turns.length &&
-      (argv.includes('--empty-rollout-always') || (argv.includes('--empty-rollout-once') && readErrors++ === 0))
-    ) {
-      const rollout = path.join(process.cwd(), `rollout-${thread.id}.jsonl`);
-      return send({
-        id: frame.id,
-        error: {
-          code: -32603,
-          message: `failed to read thread: thread-store internal error: failed to read session metadata ${rollout}: rollout at ${rollout} is empty`,
-        },
-      });
-    }
-    if (
-      thread.turns.length &&
-      (argv.includes('--list-turns-always') || (argv.includes('--list-turns-once') && readErrors++ === 0))
-    )
+    audit({ event: 'thread_read' });
+    return send({ id: frame.id, error: { code: -32601, message: 'thread/read must not be polled' } });
+  }
+  if (frame.method === 'thread/turns/list') {
+    if (argv.includes('--turns-list-error'))
       return send({ id: frame.id, error: { code: -32601, message: 'list_turns is not supported yet' } });
-    if (argv.includes('--unrelated-read-error'))
-      return send({
-        id: frame.id,
-        error: { code: -32603, message: 'failed to read thread: unrelated permanent metadata error' },
-      });
-    if (action.block_observe) return;
-    if (
-      thread.turns.length &&
-      (argv.includes('--interrupted-read-always') || (argv.includes('--interrupted-read-once') && readErrors++ === 0))
-    )
-      return reply({
-        thread: { ...thread, turns: thread.turns.map((t) => ({ ...t, status: 'interrupted', items: [] })) },
-      });
-    return reply({ thread });
+    return reply({ data: thread.turns.slice(-1), nextCursor: null, backwardsCursor: null });
   }
   if (frame.method === 'turn/start') {
     const text = p.input.map((i) => i.text ?? '').join('\n'),
@@ -239,6 +213,7 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     };
     thread.turns.push(turn);
     send({ method: 'turn/started', params: { threadId: thread.id, turn } });
+    send({ method: 'item/started', params: { threadId: thread.id, item: turn.items[0] } });
     if (action.drop_response)
       send({ id: frame.id, error: { code: -32000, message: 'Acknowledgement lost after dispatch' } });
     else reply({ turn });

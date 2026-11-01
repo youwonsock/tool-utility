@@ -224,6 +224,9 @@ test(
   },
 );
 
+const completedItem = (observed, type) =>
+  observed.transcript.events.find((frame) => frame.method === 'item/completed' && frame.params.item.type === type)
+    ?.params.item;
 async function codexInput(backend) {
   let observed;
   for (let i = 0; i < 100; i++) {
@@ -244,7 +247,7 @@ test('Codex dynamic read completes without a grant while native shell and unknow
   const observed = await codexInput(backend);
   assert.equal(observed.complete, true);
   assert.deepEqual(observed.inputs, []);
-  const item = observed.transcript.thread.turns.at(-1).items.find((item) => item.type === 'dynamicToolCall');
+  const item = completedItem(observed, 'dynamicToolCall');
   assert.equal(item.success, true);
   assert.equal(JSON.parse(item.contentItems[0].text).text, 'visible source');
   const hook = JSON.parse(fs.readFileSync(path.join(spec.job_dir, 'hook-policy.json')));
@@ -331,9 +334,7 @@ test('Codex dynamic shell waits for a grant, preserves its server, confirms the 
   const observed = await codexInput(backend);
   assert.equal(observed.complete, true);
   assert.ok(observed.reply_confirmations.includes(pending.inputs[0].id));
-  const result = JSON.parse(
-    observed.transcript.thread.turns.at(-1).items.find((item) => item.type === 'dynamicToolCall').contentItems[0].text,
-  );
+  const result = JSON.parse(completedItem(observed, 'dynamicToolCall').contentItems[0].text);
   assert.equal(result.status, 'passed');
   assert.equal(result.termination_confirmed, true);
   assert.match(result.output, /command result/);
@@ -392,11 +393,14 @@ test('Codex cancellation stops an executing dynamic command and retains process-
     assert.equal(JSON.parse(fs.readFileSync(path.join(spec.job_dir, 'process-records', name))).stopped, true);
 });
 
-test('Codex observes accepted owned turns with includeTurns without ephemeral API errors or prompt replay', async (t) => {
+test('Codex follows the stream without polling thread history or replaying its prompt', async (t) => {
   const { backend, state, spec } = await native(t, 'codex');
   await backend.createSession();
   assert.equal(JSON.parse(fs.readFileSync(path.join(spec.job_dir, 'session-intent.json'))).ephemeral, false);
-  await backend.dispatch('FAKE_ACTION:{"files":{"a.txt":"once"}}', state.prompt_id);
+  await backend.dispatch(
+    'FAKE_ACTION:{"files":{"a.txt":"once"},"summary":"Finished from the stream"}',
+    state.prompt_id,
+  );
   let observed;
   for (let i = 0; i < 100; i++) {
     observed = await backend.observe();
@@ -405,56 +409,36 @@ test('Codex observes accepted owned turns with includeTurns without ephemeral AP
   }
   assert.equal(observed.accepted, true);
   assert.equal(observed.complete, true);
-  assert.equal(
-    observed.transcript.thread.turns.flatMap((t) => t.items).filter((i) => i.type === 'userMessage').length,
-    1,
+  assert.equal(observed.error, undefined);
+  assert.equal(observed.summary, 'Finished from the stream');
+  const users = observed.transcript.events.filter(
+    (frame) => frame.method === 'item/started' && frame.params.item.type === 'userMessage',
   );
+  assert.equal(users.length, 1);
 });
-
-test('Codex tolerates only the initial empty rollout read and never replays its accepted turn', async (t) => {
-  const { backend, state } = await native(t, 'codex', undefined, ['--empty-rollout-once']);
+test('Codex reads a silent turn only after its interval and finds a lost completion', async (t) => {
+  const { backend, state } = await native(t, 'codex', undefined, ['--lost-completed']);
   await backend.createSession();
   await backend.dispatch('FAKE_ACTION:{}', state.prompt_id);
-  const transient = await backend.observe();
-  assert.equal(transient.accepted, true);
-  assert.equal(transient.complete, false);
-  const observed = await codexInput(backend);
-  assert.equal(observed.complete, true);
-  assert.equal(observed.transcript.thread.turns.length, 1);
-  assert.equal(observed.transcript.thread.turns[0].items.filter((item) => item.type === 'userMessage').length, 1);
-});
-test('Codex empty rollout reads have a fixed startup deadline and preserve terminal errors', async (t) => {
-  const { backend, state } = await native(t, 'codex', undefined, ['--empty-rollout-always']);
-  await backend.createSession();
-  await backend.dispatch('FAKE_ACTION:{}', state.prompt_id);
+  await sleep(200);
   assert.equal((await backend.observe()).complete, false);
   const now = Date.now();
   t.mock.method(Date, 'now', () => now + 31000);
-  await assert.rejects(
-    () => backend.observe(),
-    (e) => e.code === 'BACKEND_RPC' && e.details.code === -32603 && e.details.message.endsWith('is empty'),
-  );
+  const found = await backend.observe();
+  assert.equal(found.complete, true);
+  assert.equal(found.error, undefined);
   t.mock.restoreAll();
 });
-test('Codex does not trust an interrupted read before turn/completed or the startup deadline', async (t) => {
-  const a = await native(t, 'codex', undefined, ['--interrupted-read-once']);
-  await a.backend.createSession();
-  await a.backend.dispatch('FAKE_ACTION:{"delay":200}', a.state.prompt_id);
-  const early = await a.backend.observe();
-  assert.equal(early.complete, false);
-  assert.equal(early.error, undefined);
-  const observed = await codexInput(a.backend);
-  assert.equal(observed.complete, true);
-  assert.equal(observed.error, undefined);
-  const b = await native(t, 'codex', undefined, ['--interrupted-read-always']);
-  await b.backend.createSession();
-  await b.backend.dispatch('FAKE_ACTION:{"delay":60000}', b.state.prompt_id);
-  assert.equal((await b.backend.observe()).complete, false);
+test('Codex survives a rejected silent-turn read without failing the attempt', async (t) => {
+  const { backend, state } = await native(t, 'codex', undefined, ['--lost-completed', '--turns-list-error']);
+  await backend.createSession();
+  await backend.dispatch('FAKE_ACTION:{}', state.prompt_id);
+  await sleep(200);
   const now = Date.now();
   t.mock.method(Date, 'now', () => now + 31000);
-  const late = await b.backend.observe();
-  assert.equal(late.complete, true);
-  assert.equal(late.error, 'Native turn interrupted.');
+  const observed = await backend.observe();
+  assert.equal(observed.complete, false);
+  assert.equal(observed.error, undefined);
   t.mock.restoreAll();
 });
 test('Codex keeps completed messages and one copy of a repeated notice in its transcript', async (t) => {
@@ -479,44 +463,6 @@ test('Codex keeps completed messages and one copy of a repeated notice in its tr
   assert.equal(added.filter((frame) => frame.method === 'item/completed' && frame.params.item.id === 'kept').length, 1);
   assert.equal(added.filter((frame) => frame.method === 'deprecationNotice').length, 1);
 });
-test('Codex waits out an early list_turns rejection within the startup deadline without replaying', async (t) => {
-  const a = await native(t, 'codex', undefined, ['--list-turns-once']);
-  await a.backend.createSession();
-  await a.backend.dispatch('FAKE_ACTION:{}', a.state.prompt_id);
-  const transient = await a.backend.observe();
-  assert.equal(transient.accepted, true);
-  assert.equal(transient.complete, false);
-  const observed = await codexInput(a.backend);
-  assert.equal(observed.complete, true);
-  assert.equal(observed.transcript.thread.turns.length, 1);
-  const b = await native(t, 'codex', undefined, ['--list-turns-always']);
-  await b.backend.createSession();
-  await b.backend.dispatch('FAKE_ACTION:{}', b.state.prompt_id);
-  assert.equal((await b.backend.observe()).complete, false);
-  const now = Date.now();
-  t.mock.method(Date, 'now', () => now + 31000);
-  await assert.rejects(
-    () => b.backend.observe(),
-    (e) => e.code === 'BACKEND_RPC' && e.details.code === -32601,
-  );
-  t.mock.restoreAll();
-});
-test('Codex does not retry unrelated thread read errors or hold cancellation behind rollout materialization', async (t) => {
-  const a = await native(t, 'codex', undefined, ['--unrelated-read-error']);
-  await a.backend.createSession();
-  await a.backend.dispatch('FAKE_ACTION:{}', a.state.prompt_id);
-  await assert.rejects(
-    () => a.backend.observe(),
-    (e) => e.code === 'BACKEND_RPC' && e.details.message.includes('unrelated permanent'),
-  );
-  const b = await native(t, 'codex', undefined, ['--empty-rollout-always']);
-  await b.backend.createSession();
-  await b.backend.dispatch('FAKE_ACTION:{}', b.state.prompt_id);
-  assert.equal((await b.backend.observe()).complete, false);
-  await b.backend.cancel();
-  assert.equal(await b.backend.confirmStopped(), true);
-});
-
 for (const platform of ['opencode', 'codex', 'claude-code', 'kilo'])
   test(`${platform} rejects out-of-scope direct edits before native file mutation`, async (t) => {
     const { backend, state, spec } = await native(t, platform);
@@ -710,7 +656,9 @@ for (const platform of ['opencode', 'codex', 'kilo'])
     assert.equal(observed.complete, true);
     const users =
       platform === 'codex'
-        ? observed.transcript.thread.turns.flatMap((turn) => turn.items).filter((item) => item.type === 'userMessage')
+        ? observed.transcript.events
+            .filter((frame) => frame.method === 'item/started' && frame.params.item.type === 'userMessage')
+            .map((frame) => frame.params.item)
         : observed.transcript.filter((message) => message.info.role === 'user');
     assert.equal(users.length, 1);
     assert.equal(users[0].id ?? users[0].info.id, state.prompt_id);
