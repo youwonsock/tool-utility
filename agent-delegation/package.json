@@ -9,10 +9,12 @@
   },
   "scripts": {
     "build": "node scripts/build.mjs",
+    "format": "prettier --write src scripts",
+    "format:check": "prettier --check src scripts",
     "typecheck": "tsc --noEmit",
     "test": "npm run build && node --test --test-concurrency=1 --test-timeout=600000 test/*.test.mjs",
     "validate:plugin": "node scripts/validate-plugin.mjs",
-    "check": "npm run typecheck && npm test && npm run validate:plugin",
+    "check": "npm run format:check && npm run typecheck && npm test && npm run validate:plugin",
     "install:local": "npm run build && node scripts/install.mjs",
     "check:connections": "node scripts/connection-check.mjs"
   },
@@ -25,6 +27,7 @@
     "@types/cross-spawn": "6.0.6",
     "@types/node": "22.19.15",
     "esbuild": "0.28.2",
+    "prettier": "3.9.10",
     "typescript": "7.0.2"
   }
 }

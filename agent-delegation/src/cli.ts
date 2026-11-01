@@ -20,16 +20,39 @@ try {
   else if (command === 'command-host') await commandHost(args[0]!);
   else if (command === 'policy-hook') policyHook(args[0]!);
   else if (command === 'export-host') {
-    const body=fs.readFileSync(new URL('./workflow.md',import.meta.url),'utf8');
-    console.log(JSON.stringify(exportHost(args[0] as Platform,args[1]!,file,body),null,2));
-  }
-  else if (command === 'call') {
-    const input = args[1] ? JSON.parse(fs.readFileSync(args[1], 'utf8')) : JSON.parse(fs.readFileSync(0, 'utf8') || '{}');
+    const body = fs.readFileSync(new URL('./workflow.md', import.meta.url), 'utf8');
+    console.log(JSON.stringify(exportHost(args[0] as Platform, args[1]!, file, body), null, 2));
+  } else if (command === 'call') {
+    const input = args[1]
+      ? JSON.parse(fs.readFileSync(args[1], 'utf8'))
+      : JSON.parse(fs.readFileSync(0, 'utf8') || '{}');
     console.log(JSON.stringify(await remoteCall(dataRoot(), file, args[0]!, input), null, 2));
-  } else if (command === 'doctor' || command === 'status') console.log(JSON.stringify(await remoteCall(dataRoot(), file, command === 'doctor' ? 'doctor' : 'list_runs', command === 'doctor' && args[0] ? { repo: args[0] } : {}), null, 2));
-  else if (command === 'stop') console.log(JSON.stringify(await remoteCall(dataRoot(), file, '', { cancel: args.includes('--cancel') }, '/stop'), null, 2));
-  else if (command === 'cleanup') console.log(JSON.stringify(await remoteCall(dataRoot(), file, '', { run_id: args[0] }, '/cleanup'), null, 2));
+  } else if (command === 'doctor' || command === 'status')
+    console.log(
+      JSON.stringify(
+        await remoteCall(
+          dataRoot(),
+          file,
+          command === 'doctor' ? 'doctor' : 'list_runs',
+          command === 'doctor' && args[0] ? { repo: args[0] } : {},
+        ),
+        null,
+        2,
+      ),
+    );
+  else if (command === 'stop')
+    console.log(
+      JSON.stringify(await remoteCall(dataRoot(), file, '', { cancel: args.includes('--cancel') }, '/stop'), null, 2),
+    );
+  else if (command === 'cleanup')
+    console.log(JSON.stringify(await remoteCall(dataRoot(), file, '', { run_id: args[0] }, '/cleanup'), null, 2));
   else if (command === '--version') console.log(VERSION);
-  else if (command === 'help' || command === '--help' || command === '-h') console.log('agent-delegation: mcp | doctor [repo] | status | call <tool> [input.json] | stop [--cancel] | cleanup <run_id> | export-host <platform> <new-output-directory>\nSet AGENT_DELEGATION_HOME to select the user data directory.');
+  else if (command === 'help' || command === '--help' || command === '-h')
+    console.log(
+      'agent-delegation: mcp | doctor [repo] | status | call <tool> [input.json] | stop [--cancel] | cleanup <run_id> | export-host <platform> <new-output-directory>\nSet AGENT_DELEGATION_HOME to select the user data directory.',
+    );
   else throw new Error(`Unknown command: ${command}`);
-} catch (e) { console.error((e as Error).message); process.exitCode = 1; }
+} catch (e) {
+  console.error((e as Error).message);
+  process.exitCode = 1;
+}
