@@ -218,6 +218,13 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
         error: { code: -32603, message: 'failed to read thread: unrelated permanent metadata error' },
       });
     if (action.block_observe) return;
+    if (
+      thread.turns.length &&
+      (argv.includes('--interrupted-read-always') || (argv.includes('--interrupted-read-once') && readErrors++ === 0))
+    )
+      return reply({
+        thread: { ...thread, turns: thread.turns.map((t) => ({ ...t, status: 'interrupted', items: [] })) },
+      });
     return reply({ thread });
   }
   if (frame.method === 'turn/start') {

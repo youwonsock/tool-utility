@@ -493,7 +493,17 @@ export class CodexBackend implements WorkerBackend {
       if (turn) {
         this.accepted ||=
           turn.items?.some((i: any) => i.type === 'userMessage' && i.id === this.context.state.prompt_id) ?? false;
-        if (['completed', 'failed', 'interrupted'].includes(turn.status)) {
+        // A read just after dispatch can report a running turn as interrupted. Only
+        // turn/completed or the startup deadline confirms that; never resend a turn.
+        if (
+          turn.status === 'interrupted' &&
+          !this.complete &&
+          !this.cancelled &&
+          this.accepted &&
+          Date.now() < this.rolloutReadDeadline
+        )
+          materializing = true;
+        else if (['completed', 'failed', 'interrupted'].includes(turn.status)) {
           this.complete = true;
           this.error ??=
             turn.error?.message ?? (turn.status === 'completed' ? undefined : `Native turn ${turn.status}.`);
