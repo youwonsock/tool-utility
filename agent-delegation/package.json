@@ -9,8 +9,8 @@
   },
   "scripts": {
     "build": "node scripts/build.mjs",
-    "format": "prettier --write src scripts",
-    "format:check": "prettier --check src scripts",
+    "format": "prettier --write src scripts test",
+    "format:check": "prettier --check src scripts test",
     "typecheck": "tsc --noEmit",
     "test": "npm run build && node --test --test-concurrency=1 --test-timeout=600000 test/*.test.mjs",
     "validate:plugin": "node scripts/validate-plugin.mjs",
