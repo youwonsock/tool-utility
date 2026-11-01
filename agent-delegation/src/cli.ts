@@ -27,19 +27,12 @@ try {
       ? JSON.parse(fs.readFileSync(args[1], 'utf8'))
       : JSON.parse(fs.readFileSync(0, 'utf8') || '{}');
     console.log(JSON.stringify(await remoteCall(dataRoot(), file, args[0]!, input), null, 2));
-  } else if (command === 'doctor' || command === 'status')
-    console.log(
-      JSON.stringify(
-        await remoteCall(
-          dataRoot(),
-          file,
-          command === 'doctor' ? 'doctor' : 'list_runs',
-          command === 'doctor' && args[0] ? { repo: args[0] } : {},
-        ),
-        null,
-        2,
-      ),
-    );
+  } else if (command === 'doctor') {
+    if (!args[0]) throw new Error('Usage: doctor <platform> [repo]');
+    const input = { worker: { platform: args[0] }, ...(args[1] ? { repo: args[1] } : {}) };
+    console.log(JSON.stringify(await remoteCall(dataRoot(), file, 'doctor', input), null, 2));
+  } else if (command === 'status')
+    console.log(JSON.stringify(await remoteCall(dataRoot(), file, 'list_runs', {}), null, 2));
   else if (command === 'stop')
     console.log(
       JSON.stringify(await remoteCall(dataRoot(), file, '', { cancel: args.includes('--cancel') }, '/stop'), null, 2),
@@ -49,7 +42,7 @@ try {
   else if (command === '--version') console.log(VERSION);
   else if (command === 'help' || command === '--help' || command === '-h')
     console.log(
-      'agent-delegation: mcp | doctor [repo] | status | call <tool> [input.json] | stop [--cancel] | cleanup <run_id> | export-host <platform> <new-output-directory>\nSet AGENT_DELEGATION_HOME to select the user data directory.',
+      'agent-delegation: mcp | doctor <platform> [repo] | status | call <tool> [input.json] | stop [--cancel] | cleanup <run_id> | export-host <platform> <new-output-directory>\nSet AGENT_DELEGATION_HOME to select the user data directory.',
     );
   else throw new Error(`Unknown command: ${command}`);
 } catch (e) {

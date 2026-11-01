@@ -181,7 +181,7 @@ Windows는 실행 인자에서만 `windows.sandbox=unelevated`를 기본 선택�
 설치 출력 또는 `install/current.json`의 `cli` 경로를 사용합니다.
 
 ```sh
-node "<installed-cli-path>" doctor "/absolute/project"
+node "<installed-cli-path>" doctor codex "/absolute/project"
 node "<installed-cli-path>" status
 node "<installed-cli-path>" call get_run request.json
 node "<installed-cli-path>" stop
