@@ -56,6 +56,9 @@ import {
   targetReady,
   checkContext,
   contextHash,
+  unmergedFiles,
+  conflictHashes,
+  unresolvedConflicts,
 } from './git.js';
 import { probeResources } from './resources.js';
 
@@ -801,6 +804,7 @@ export class Engine {
             verification: a.verification,
             artifacts: a.artifacts,
             inputs: a.inputs,
+            conflicts: a.conflicts && Object.keys(a.conflicts),
             error: a.error,
             integrated_commit: a.integrated_commit,
           },
@@ -1200,8 +1204,9 @@ export class Engine {
       checkContext(run.repo, attempt.context);
       await worktree(run.repo, attempt.directory, base);
       await materialize(this.store, attempt.directory, attempt.context);
-      if (prior?.commit) {
-        const diff = (await git(prior.directory, ['diff', '--binary', prior.base, prior.commit])).stdout;
+      const previous = task.attempts.slice(0, -1).findLast((candidate) => candidate.commit);
+      if (previous) {
+        const diff = (await git(previous.directory, ['diff', '--binary', previous.base, previous.commit!])).stdout;
         mkdir(attempt.job_dir);
         const patch = path.join(attempt.job_dir, 'previous.patch');
         fs.writeFileSync(patch, diff);
@@ -1209,11 +1214,20 @@ export class Engine {
           ? await git(attempt.directory, ['apply', '--3way', '--index', patch], true)
           : { code: 0, stdout: '', stderr: '' };
         attempt.artifacts.push(this.store.artifact(run.id, 'patch-application.json', JSON.stringify(applied)));
+        const unmerged = await unmergedFiles(attempt.directory);
+        invariant(
+          applied.code === 0 || unmerged.length > 0,
+          'CORRECTION_APPLY_FAILED',
+          'The previous result could not be applied to the current integration commit, and no model request was sent. A further correction starts from the same result, so submit a new task if this repeats.',
+          { stderr: applied.stderr },
+        );
+        const carried = previous.state === 'conflict_unresolved' ? Object.keys(previous.conflicts ?? {}) : [];
+        const conflicts = [...new Set([...unmerged, ...carried])];
+        if (conflicts.length) attempt.conflicts = conflictHashes(attempt.directory, conflicts);
       }
       await probeResources(this.resources(run, attempt), attempt.directory);
-      const goal = `${task.spec.goal}${attempt.feedback ? `\n\nSupervisor correction instructions:\n${attempt.feedback}` : ''}`;
       await (this.options.spawn ?? this.spawn).call(this, run, attempt, {
-        goal,
+        goal: this.attemptGoal(task, attempt),
         acceptance: task.spec.acceptance,
         verification: task.spec.verification,
         scope: task.spec.scope,
@@ -1224,6 +1238,18 @@ export class Engine {
       await this.launchFailure(run, attempt, e);
     }
     await this.emit(run.id, 'attempt_started', { task_id: task.spec.id, attempt_id: id, state: attempt.state }, false);
+  }
+  private attemptGoal(task: Task, attempt: Attempt) {
+    const conflicts = Object.keys(attempt.conflicts ?? {});
+    return [
+      task.spec.goal,
+      ...(conflicts.length
+        ? [
+            `The previous result was reapplied to the current integration commit with merge conflicts in: ${conflicts.join(', ')}. Resolve these files and remove every conflict marker. The result cannot be approved otherwise.`,
+          ]
+        : []),
+      ...(attempt.feedback ? [`Supervisor correction instructions:\n${attempt.feedback}`] : []),
+    ].join('\n\n');
   }
   resources(run: Run, attempt: Attempt): Resource[] {
     return attempt.resources.map((key) => run.resources.find((r) => r.resource_key === key)!);
@@ -1318,7 +1344,13 @@ export class Engine {
     attempt: Attempt,
     result: Extract<
       AttemptState,
-      'failed' | 'cancelled' | 'interrupted' | 'verified' | 'needs_review' | 'scope_or_context_error'
+      | 'failed'
+      | 'cancelled'
+      | 'interrupted'
+      | 'verified'
+      | 'needs_review'
+      | 'scope_or_context_error'
+      | 'conflict_unresolved'
     >,
   ) {
     const next = run.state === 'cancelling' ? 'cancelled' : result;
@@ -1490,7 +1522,9 @@ export class Engine {
               (await git(attempt.directory, ['show', '--format=fuller', '--binary', attempt.commit])).stdout,
             ),
           );
-          this.finishAttempt(run, attempt, 'needs_review');
+          const unresolved = unresolvedConflicts(attempt.directory, attempt.conflicts ?? {});
+          if (unresolved.length) attempt.error = `Merge conflicts remain in: ${unresolved.join(', ')}`;
+          this.finishAttempt(run, attempt, unresolved.length ? 'conflict_unresolved' : 'needs_review');
         } catch (e) {
           if (this.store.uncertain) throw e;
           attempt.error = (e as Error).message;
@@ -1583,6 +1617,11 @@ export class Engine {
       await this.emit(run.id, 'correction_requested', { task_id: task.spec.id, previous_attempt: attempt.id }, false);
       return { run_id: run.id, task_id: task.spec.id, state: task.state, revision: run.revision };
     }
+    invariant(
+      attempt.state !== 'conflict_unresolved',
+      'UNRESOLVED_CONFLICT',
+      'Merge conflicts remain in this result. Request a correction.',
+    );
     invariant(
       attempt.commit && attempt.state === 'needs_review',
       'REVIEW',
@@ -1755,7 +1794,7 @@ export class Engine {
           );
           const spec = task
             ? {
-                goal: `${task.spec.goal}${attempt.feedback ? `\n\nSupervisor correction instructions:\n${attempt.feedback}` : ''}`,
+                goal: this.attemptGoal(task, attempt),
                 acceptance: task.spec.acceptance,
                 verification: task.spec.verification,
                 scope: task.spec.scope,

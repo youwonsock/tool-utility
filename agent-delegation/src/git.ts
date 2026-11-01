@@ -111,6 +111,28 @@ export function checkContext(cwd: string, files: ContextFile[]) {
     );
 }
 export const contextHash = (files: ContextFile[]) => digest(files.map((f) => ({ path: f.path, hash: f.hash })));
+export async function unmergedFiles(cwd: string) {
+  return (await git(cwd, ['diff', '--name-only', '-z', '--diff-filter=U'])).stdout.split('\0').filter(Boolean);
+}
+function conflictFileHash(cwd: string, file: string) {
+  const absolute = inside(cwd, file);
+  return fs.existsSync(absolute) && fs.statSync(absolute).isFile() ? hash(fs.readFileSync(absolute)) : null;
+}
+export function conflictHashes(cwd: string, files: string[]) {
+  return Object.fromEntries(files.map((file) => [file, conflictFileHash(cwd, file)]));
+}
+// A binary conflict leaves no marker, so an unchanged file also counts as unresolved.
+const conflictMarker = /^(?:<{7}|>{7}) /m;
+export function unresolvedConflicts(cwd: string, conflicts: Record<string, string | null>) {
+  return Object.entries(conflicts)
+    .filter(([file, applied]) => {
+      const current = conflictFileHash(cwd, file);
+      return (
+        current === applied || (current !== null && conflictMarker.test(fs.readFileSync(inside(cwd, file), 'latin1')))
+      );
+    })
+    .map(([file]) => file);
+}
 export async function resultCommit(cwd: string, base: string, scope: string[], context: ContextFile[], title: string) {
   invariant(
     (await head(cwd)) === base,

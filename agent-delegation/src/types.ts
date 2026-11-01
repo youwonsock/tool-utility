@@ -202,6 +202,7 @@ export const attemptStates = [
   'cancelled',
   'needs_review',
   'scope_or_context_error',
+  'conflict_unresolved',
   'integrating',
   'integrated',
   'integration_conflict',
@@ -316,6 +317,8 @@ export type Attempt = {
   launch_boot?: string;
   runtime_error?: { code: string; message: string };
   commit_intent?: boolean;
+  // Files the reapplied previous result left conflicted, with their content hash at that moment.
+  conflicts?: Record<string, string | null>;
 };
 export type Task = { spec: TaskSpec; state: TaskState; attempts: Attempt[]; revision: number; worker: WorkerConfig };
 export type Validation = {
