@@ -1,12 +1,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { CallToolResultSchema } from '@modelcontextprotocol/sdk/types.js';
-import { schemas, invariant, type ToolName } from './types.js';
+import { schemas, type ToolName } from './types.js';
 import { remoteCall } from './service.js';
-import { samePath } from './io.js';
-import { currentMcpExecutable, deploymentVersion } from './deployment.js';
+import { deploymentVersion } from './deployment.js';
 
 const descriptions: Record<ToolName, string> = {
   doctor: 'Check the selected local worker runtime, version, configuration and resource registrations. No model call.',
@@ -46,41 +42,6 @@ export async function mcp(root: string, executableFile: string) {
       },
       async (args: any) => {
         try {
-          const selected = currentMcpExecutable(executableFile);
-          if (!samePath(selected, executableFile)) {
-            invariant(
-              process.env.AGENT_DELEGATION_MCP_RELAY !== '1',
-              'UPDATE_PENDING',
-              'The installation changed during MCP handoff. Retry only with the same request ID.',
-            );
-            // Keep this conversation's stdio transport alive, but let the newly
-            // installed client enforce its own RPC/storage/worker compatibility.
-            // A failed/uncertain call is returned once; it is never replayed here.
-            const client = new Client({
-              name: 'agent-delegation-update-relay',
-              version: deploymentVersion(executableFile),
-            });
-            const env = Object.fromEntries(
-              Object.entries({ ...process.env, AGENT_DELEGATION_HOME: root, AGENT_DELEGATION_MCP_RELAY: '1' }).filter(
-                (entry): entry is [string, string] => typeof entry[1] === 'string',
-              ),
-            );
-            const transport = new StdioClientTransport({
-              command: process.execPath,
-              args: [selected, 'mcp'],
-              env,
-              stderr: 'inherit',
-              maxBufferSize: 2 * 1024 * 1024,
-            });
-            try {
-              await client.connect(transport);
-              return CallToolResultSchema.parse(
-                await client.callTool({ name, arguments: args }, CallToolResultSchema, { timeout: 60000 }),
-              );
-            } finally {
-              await client.close();
-            }
-          }
           const result: any = await remoteCall(root, executableFile, name, args, '/call', 'mcp');
           return { content: [{ type: 'text' as const, text: JSON.stringify(result) }], isError: !!result?.error };
         } catch (e) {

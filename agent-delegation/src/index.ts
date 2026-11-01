@@ -6,6 +6,7 @@ export * from './persistence.js';
 export * from './engine.js';
 export * from './service.js';
 export * from './opencode.js';
+export * from './resources.js';
 export * from './lifecycle.js';
 export * from './evidence.js';
 export * from './profiles.js';

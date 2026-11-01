@@ -186,14 +186,14 @@ export class CodexBackend implements WorkerBackend {
   private async launch(overrides: Record<string, unknown>) {
     const { spec } = this.context;
     const args = [
-      ...spec.executable_args,
+      ...spec.worker.executable_args,
       ...(spec.worker?.native_profile ? ['--profile', spec.worker.native_profile] : []),
       ...Object.entries(overrides).flatMap(([key, value]) => ['-c', `${key}=${codexToml(value)}`]),
       'app-server',
       '--listen',
       'stdio://',
     ];
-    const runtime = await spawnRuntime(this.context, spec.executable, args, workerEnvironment(spec.worker!));
+    const runtime = await spawnRuntime(this.context, spec.worker.executable, args, workerEnvironment(spec.worker!));
     this.peer = new JsonRpcPeer(runtime.child, (frame) => this.receive(frame));
     const initialization = await this.peer.request('initialize', {
       clientInfo: { name: 'delegate-worker', version: '1.0.0' },
@@ -388,8 +388,8 @@ export class CodexBackend implements WorkerBackend {
           );
     }
     this.model =
-      typeof spec.model === 'string'
-        ? spec.model
+      typeof spec.worker.model === 'string'
+        ? spec.worker.model
         : typeof initial.model === 'string' && initial.model.length
           ? initial.model
           : undefined;
@@ -627,14 +627,6 @@ export class CodexBackend implements WorkerBackend {
     this.peer!.write({ id: frame.id, result });
     this.pending.delete(input.id);
     return 'uncertain';
-  }
-  async reconcile() {
-    return {
-      session_present: !!this.context.state.session_id,
-      prompt_present: this.accepted,
-      turn_id: this.context.state.turn_id,
-      complete: this.complete,
-    };
   }
   async cancel() {
     this.cancelled = true;

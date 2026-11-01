@@ -25,6 +25,7 @@ import {
   type SubmitArgs,
   type WorkerSelection,
   type WorkerConfig,
+  type WorkerModel,
   type DurableOperation,
 } from './types.js';
 import {
@@ -56,7 +57,7 @@ import {
   checkContext,
   contextHash,
 } from './git.js';
-import { probeResources } from './opencode.js';
+import { probeResources } from './resources.js';
 
 import {
   transition,
@@ -100,7 +101,7 @@ export class Engine {
   constructor(
     public store: Store,
     public executableFile: string,
-    public options = {
+    public options: { concurrency: number; spawn?: Engine['spawn'] } = {
       concurrency: Number(process.env.AGENT_DELEGATION_CONCURRENCY || 2),
     },
   ) {
@@ -377,33 +378,12 @@ export class Engine {
       (kind === 'validate_run' ? run?.tasks.flatMap((t) => t.spec.resources) : []) ??
       [];
     if (slot) {
-      const reserved = active.filter(
-        (op) =>
-          !(kind === 'reconcile_run' && op.run_id === run?.id && op.status === 'uncertain') &&
-          op.reservations.slot &&
-          !this.allAttempts().some((a) => occupiesSlot(a) && a.id === op.reservations.attempt_id),
+      this.assertCapacity(
+        run,
+        resources,
+        waiting?.id,
+        (op) => kind === 'reconcile_run' && op.run_id === run?.id && op.status === 'uncertain',
       );
-      invariant(
-        this.allAttempts().filter(occupiesSlot).length + reserved.length < this.options.concurrency,
-        'CAPACITY',
-        'Wait for a free worker slot.',
-      );
-      invariant(
-        !run ||
-          this.allAttempts(run).filter(occupiesSlot).length + reserved.filter((op) => op.run_id === run.id).length <
-            run.settings.concurrency,
-        'CAPACITY',
-        'Wait for a free run worker slot.',
-      );
-      const locks = new Set(
-        this.allAttempts()
-          .filter((attempt) => holdsResources(attempt) && attempt.id !== waiting?.id)
-          .flatMap((attempt) => attempt.resources),
-      );
-      for (const op of active)
-        if (!(op.run_id === run?.id && op.status === 'uncertain' && kind === 'reconcile_run'))
-          for (const resource of op.reservations.resources ?? []) locks.add(resource);
-      invariant(!resources.some((key: string) => locks.has(key)), 'RESOURCE_BUSY', 'A resource is reserved.');
     }
     const now = this.store.clock();
     const operation: DurableOperation = {
@@ -431,11 +411,46 @@ export class Engine {
     this.store.save();
     return JSON.parse(JSON.stringify(operation)) as DurableOperation;
   }
+  // Counts attempts in progress and operations that have reserved a slot but not started their attempt.
+  private assertCapacity(
+    run: Run | undefined,
+    resources: string[],
+    attemptID: string | undefined,
+    ignored: (operation: DurableOperation) => boolean,
+  ) {
+    const active = this.activeOperations().filter((operation) => !ignored(operation));
+    const reserved = active.filter(
+      (operation) =>
+        operation.reservations.slot &&
+        !this.allAttempts().some(
+          (attempt) => occupiesSlot(attempt) && attempt.id === operation.reservations.attempt_id,
+        ),
+    );
+    invariant(
+      this.allAttempts().filter(occupiesSlot).length + reserved.length < this.options.concurrency,
+      'CAPACITY',
+      'Wait for a free service worker slot.',
+    );
+    invariant(
+      !run ||
+        this.allAttempts(run).filter(occupiesSlot).length +
+          reserved.filter((operation) => operation.run_id === run.id).length <
+          run.settings.concurrency,
+      'CAPACITY',
+      'Wait for a free run worker slot.',
+    );
+    const locks = new Set(
+      this.allAttempts()
+        .filter((attempt) => holdsResources(attempt) && attempt.id !== attemptID)
+        .flatMap((attempt) => attempt.resources),
+    );
+    for (const operation of active) for (const key of operation.reservations.resources ?? []) locks.add(key);
+    invariant(!resources.some((key) => locks.has(key)), 'RESOURCE_BUSY', 'A resource is reserved.');
+  }
   private execute(operation: DurableOperation, args: any, archivedRun?: Run): Promise<unknown> {
     const isolated = effectStore(this.store, operation.run_id, archivedRun),
       actor = new Engine(isolated.store, this.executableFile, this.options);
     actor.preparationsRecovered = true;
-    if (Object.hasOwn(this, 'spawn')) actor.spawn = this.spawn.bind(actor);
     if (operation.request_id)
       isolated.store.state.requests[operation.request_id] = JSON.parse(
         JSON.stringify(this.store.state.requests[operation.request_id]),
@@ -457,6 +472,7 @@ export class Engine {
         'STALE_OPERATION',
         'Run generation or revision changed.',
       );
+      return { live, run };
     };
     actor.bindRepository = async (commonDir) =>
       this.serial(async () => {
@@ -485,34 +501,12 @@ export class Engine {
           'STALE_OPERATION',
           'The waiting attempt changed before resource admission.',
         );
-        const pending = this.activeOperations().filter(
-          (other) =>
-            other.id !== operation.id &&
-            !(other.run_id === run.id && other.status === 'uncertain') &&
-            other.reservations.slot &&
-            !this.allAttempts().some((value) => occupiesSlot(value) && value.id === other.reservations.attempt_id),
+        this.assertCapacity(
+          run,
+          attempt.resources,
+          attempt.id,
+          (other) => other.id === operation.id || (other.run_id === run.id && other.status === 'uncertain'),
         );
-        invariant(
-          this.allAttempts().filter(occupiesSlot).length + pending.length < this.options.concurrency,
-          'CAPACITY',
-          'Wait for a free service worker slot before resuming.',
-        );
-        invariant(
-          this.allAttempts(run).filter(occupiesSlot).length +
-            pending.filter((other) => other.run_id === run.id).length <
-            run.settings.concurrency,
-          'CAPACITY',
-          'Wait for a free run worker slot before resuming.',
-        );
-        const locks = new Set(
-          this.allAttempts()
-            .filter((value) => holdsResources(value) && value.id !== attempt.id)
-            .flatMap((value) => value.resources),
-        );
-        for (const other of this.activeOperations())
-          if (other.id !== operation.id && !(other.run_id === run.id && other.status === 'uncertain'))
-            for (const key of other.reservations.resources ?? []) locks.add(key);
-        invariant(!attempt.resources.some((key) => locks.has(key)), 'RESOURCE_BUSY', 'A shared resource is reserved.');
         const live = this.store.state.operations[operation.id]!;
         live.reservations.slot = true;
         live.reservations.attempt_id = attempt.id;
@@ -521,21 +515,7 @@ export class Engine {
         this.store.save();
       });
     const publish = (final = false) => {
-      invariant(
-        !this.stopping,
-        'REQUEST_UNCERTAIN',
-        'Service shutdown fenced the external completion; reconcile on restart.',
-      );
-      const live = this.store.state.operations[operation.id];
-      invariant(live?.status === 'running', 'REQUEST_UNCERTAIN', 'Operation ownership changed.');
-      const run = operation.run_id ? this.store.state.runs.find((value) => value.id === operation.run_id) : undefined;
-      invariant(
-        !run ||
-          (run.control_generation === operation.generation && run.revision === operation.expected_revision) ||
-          run.state === 'cancelling',
-        'STALE_OPERATION',
-        'Run generation or revision changed.',
-      );
+      const { live, run } = verify();
       const cancelling = run?.state === 'cancelling';
       const cancelledAttempts = new Set(
         run && cancelling
@@ -898,9 +878,6 @@ export class Engine {
         context: [],
         timeout_ms: 30000,
         validation: false,
-        model: selected.model,
-        executable: selected.executable,
-        executable_args: selected.executable_args,
         password: uid('secret'),
       };
       writeJson(path.join(jobDir, 'spec.json'), spec);
@@ -1235,7 +1212,7 @@ export class Engine {
       }
       await probeResources(this.resources(run, attempt), attempt.directory);
       const goal = `${task.spec.goal}${attempt.feedback ? `\n\nSupervisor correction instructions:\n${attempt.feedback}` : ''}`;
-      await this.spawn(run, attempt, {
+      await (this.options.spawn ?? this.spawn).call(this, run, attempt, {
         goal,
         acceptance: task.spec.acceptance,
         verification: task.spec.verification,
@@ -1254,7 +1231,12 @@ export class Engine {
   async spawn(
     run: Run,
     attempt: Attempt,
-    task: Pick<WorkerSpec, 'goal' | 'acceptance' | 'verification' | 'scope' | 'model' | 'validation'>,
+    {
+      model,
+      ...task
+    }: Pick<WorkerSpec, 'goal' | 'acceptance' | 'verification' | 'scope' | 'validation'> & {
+      model?: WorkerModel;
+    },
   ) {
     invariant(run.state !== 'cancelling', 'CANCELLED', 'Cancellation prevents worker dispatch.');
     mkdir(attempt.job_dir);
@@ -1262,7 +1244,7 @@ export class Engine {
     const spec: WorkerSpec = {
       protocol: WORKER_FORMAT,
       host_executable: this.executableFile,
-      worker: { ...selected, model: task.model ?? selected.model },
+      worker: { ...selected, model: model ?? selected.model },
       id: attempt.id,
       directory: attempt.directory,
       job_dir: attempt.job_dir,
@@ -1270,8 +1252,6 @@ export class Engine {
       resources: this.resources(run, attempt),
       context: attempt.context,
       timeout_ms: run.settings.timeout_ms,
-      executable: selected.executable,
-      executable_args: selected.executable_args,
       password: uid('secret'),
     };
     writeJson(path.join(attempt.job_dir, 'spec.json'), spec);
@@ -1789,7 +1769,7 @@ export class Engine {
                 scope: [],
                 validation: true,
               };
-          await this.spawn(run, attempt, spec);
+          await (this.options.spawn ?? this.spawn).call(this, run, attempt, spec);
           attempt.error = undefined;
           if (task) moveTask(task, 'running');
           else if (run.validation) moveValidation(run.validation, 'running');
@@ -2000,7 +1980,7 @@ export class Engine {
       await worktree(run.repo, attempt.directory, run.integration_commit);
       await materialize(this.store, attempt.directory, context);
       await probeResources(this.resources(run, attempt), attempt.directory);
-      await this.spawn(run, attempt, {
+      await (this.options.spawn ?? this.spawn).call(this, run, attempt, {
         goal: 'Execute only the frozen final verification commands.',
         acceptance: [],
         verification: run.final_verification,
@@ -2026,7 +2006,7 @@ export class Engine {
     invariant(
       run.state === 'waiting_final_review' && validation?.state === 'passed',
       'VALIDATION_REQUIRED',
-      'A successful final validation and Codex review are required.',
+      'A successful final validation and supervisor review are required.',
     );
     invariant(
       args.validation_id === validation.id &&

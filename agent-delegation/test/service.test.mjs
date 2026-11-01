@@ -6,7 +6,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { remoteCall, connect, Store, sleep, exec, terminate, processIdentity, uid } from '../dist/index.mjs';
+import { remoteCall, connect, serve, Store, sleep, exec, terminate, processIdentity, uid } from '../dist/index.mjs';
 import { fixture, task, cli, fake, root, readState, temporaryRoot } from './helpers.mjs';
 import { mockSdks } from './mock-sdks.mjs';
 
@@ -71,4 +71,11 @@ test('owned process tree termination includes a child that ignores SIGTERM',{ski
   const child=spawn(process.execPath,['--input-type=module','-e',code],{detached:true,stdio:'ignore'});child.unref();
   const identity=await processIdentity(child.pid);for(let i=0;i<50&&!fs.existsSync(ready);i++)await sleep(50);
   assert.equal(await terminate(identity,true),true);await sleep(100);assert.equal(fs.existsSync(marker),false);
+});
+
+test('an interrupted lock recovery names the leftover lock and keeps it',async t=>{
+  const data=fs.mkdtempSync(path.join(temporaryRoot,'service-recovery-'));t.after(()=>fs.rmSync(data,{recursive:true,force:true}));
+  const lock=path.join(data,'service.lock'),reap=path.join(data,'service-reaping.lock');fs.mkdirSync(lock);fs.mkdirSync(reap);
+  await assert.rejects(serve(data,cli),error=>error.code==='SERVICE_RECOVERY'&&error.message.includes(reap));
+  assert.equal(fs.existsSync(reap),true);assert.equal(fs.existsSync(lock),true);
 });

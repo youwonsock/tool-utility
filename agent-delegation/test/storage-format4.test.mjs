@@ -73,12 +73,6 @@ test('only current typed storage entry points are exported',()=>{
   assert.equal(typeof loadState,'function');assert.equal(typeof deltaRecord,'function');
 });
 
-for(const format of [2,3,4,99])test(`full-state journal format ${format} is rejected with all original bytes preserved`,t=>{
-  const dir=root(t),store=new Store(dir);store.event('r','acknowledged',{});
-  const state={...emptyState(),protocol:format,revision:100},record=JSON.stringify({hash:digest(state),state});
-  fs.appendFileSync(activeJournal(dir),record+'\n'+ '{"torn":');const before=storageTree(dir);
-  assert.throws(()=>loadState(dir),e=>e.code==='UPDATE_PENDING');assert.throws(()=>new Store(dir),e=>e.code==='UPDATE_PENDING');assert.deepEqual(storageTree(dir),before);
-});
 for(const format of [2,3,99,undefined])test(`typed transaction with unsupported protocol ${format} is rejected without writes`,t=>{
   const dir=root(t),store=new Store(dir),file=activeJournal(dir);
   fs.appendFileSync(file,deltaRecord({protocol:format,previous:0,revision:1,changes:[]}));const before=storageTree(dir);
@@ -148,8 +142,3 @@ test('covered prefixes must be unique and contiguous even when the snapshot alre
   for(const records of [[lines[0],lines[0],lines[1]],[lines[1],lines[0]],[lines[0],lines[2]]]){fs.writeFileSync(file,records.join('\n')+'\n');assert.throws(()=>new Store(dir),e=>e.code==='JOURNAL_CORRUPT');}
 });
 
-for(const marker of ['{"from":3,"to":4,"backup":"backups/old"}', 'null', 'unfinished marker'])test(`an incomplete storage marker is preserved without resuming it: ${marker}`,async t=>{
-  const dir=root(t),store=new Store(dir);await store.mutation('acknowledged',{value:1},async()=>({acknowledged:true}));await store.close();
-  fs.writeFileSync(path.join(dir,'migration.json'),marker);writeJson(path.join(dir,'backups','old','target.json'),{protocol:3,revision:1});const before=storageTree(dir);
-  assert.throws(()=>loadState(dir),e=>e.code==='UPDATE_PENDING');assert.throws(()=>new Store(dir),e=>e.code==='UPDATE_PENDING');assert.deepEqual(storageTree(dir),before);
-});

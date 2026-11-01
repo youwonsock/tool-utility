@@ -110,11 +110,6 @@ export function visitJournal(file: string, visit: (item: any) => void, maximum =
   return { records, completeBytes, bytes };
 }
 export function loadState(root: string, selected?: StorageManifest, limits?: Record<string, number>) {
-  invariant(
-    !fs.existsSync(path.join(root, 'migration.json')),
-    'UPDATE_PENDING',
-    'Incomplete storage preparation is unsupported; existing files were preserved.',
-  );
   if (selected !== undefined) validateStorageManifest(root, selected);
   const manifest = selected ?? readStorageManifest(root);
   const snapshot = inside(root, manifest?.snapshot.file ?? 'state.json'),
@@ -125,11 +120,6 @@ export function loadState(root: string, selected?: StorageManifest, limits?: Rec
       (state && typeof state === 'object' && !Array.isArray(state) && state.protocol === STORE_FORMAT),
     'UPDATE_PENDING',
     'Only the current storage format is supported; existing files were preserved.',
-  );
-  invariant(
-    state || manifest || !fs.existsSync(path.join(root, 'journal.jsonl')),
-    'UPDATE_PENDING',
-    'Journal-only storage is unsupported; existing files were preserved.',
   );
   if (state)
     invariant(
@@ -168,11 +158,7 @@ export function loadState(root: string, selected?: StorageManifest, limits?: Rec
           'JOURNAL_CORRUPT',
           'Invalid journal record.',
         );
-        invariant(
-          !Object.hasOwn(item, 'state') && typeof item.payload === 'string',
-          'UPDATE_PENDING',
-          'Only typed journal transactions are supported; existing files were preserved.',
-        );
+        invariant(typeof item.payload === 'string', 'JOURNAL_CORRUPT', 'Invalid journal record.');
         invariant(item.hash === hash(item.payload), 'JOURNAL_CORRUPT', 'A committed transaction failed its checksum.');
         let transaction: TransactionRecord;
         try {

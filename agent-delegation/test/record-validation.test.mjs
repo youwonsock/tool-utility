@@ -25,10 +25,9 @@ test('process ownership uses only the launch ledger and permits a job that never
   assert.equal(await stopOwned(ctx),true);assert.equal(await confirmedStopped(ctx.spec,ctx.state),true);
   intent(root,{record:{failed:true,stopped:true}});
   assert.equal(await stopOwned(ctx),true);assert.equal(await confirmedStopped(ctx.spec,ctx.state),true);
-  assert.equal(fs.existsSync(path.join(root,'server-intent.json')),false);
 });
 
-for(const scenario of ['missing ledger','empty ledger','orphan record','unknown intent','unregistered intent','invalid identity','failed record with identity','old single-server marker'])test(`process ${scenario} stays uncertain without terminating from snapshot pointers`,async t=>{
+for(const scenario of ['missing ledger','empty ledger','orphan record','unknown intent','unregistered intent','invalid identity','failed record with identity'])test(`process ${scenario} stays uncertain without terminating from snapshot pointers`,async t=>{
   const root=directory(t),live=await processIdentity(process.pid),state={stopped:true},ctx=context(root,state);
   if(scenario==='missing ledger')state.server=live;
   if(scenario==='empty ledger'){fs.mkdirSync(path.join(root,'process-intents'));state.processes=[live];}
@@ -37,7 +36,6 @@ for(const scenario of ['missing ledger','empty ledger','orphan record','unknown 
   if(scenario==='unregistered intent')intent(root);
   if(scenario==='invalid identity')intent(root,{record:{identity:{pid:0,birth:''},stopped:true}});
   if(scenario==='failed record with identity')intent(root,{record:{identity:live,stopped:true,failed:true}});
-  if(scenario==='old single-server marker')writeJson(path.join(root,'server-intent.json'),{at:Date.now()});
   assert.equal(processEvidence(root,state).uncertain,true);
   assert.equal(await stopOwned(ctx),false);assert.equal(await confirmedStopped(ctx.spec,state),false);
   assert.equal(state.stopped,true);

@@ -18,7 +18,6 @@ export interface WorkerBackend {
   dispatch(prompt: string, requestID: string): Promise<void>;
   observe(): Promise<Observation>;
   reply(input: InputRequest, answer: Answer): Promise<'sent' | 'uncertain'>;
-  reconcile(): Promise<unknown>;
   cancel(): Promise<void>;
   confirmStopped(): Promise<boolean>;
 }
