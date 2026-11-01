@@ -70,7 +70,7 @@ export function exportHost(platform: Platform, output: string, cli: string, body
     );
   durableWrite(
     path.join(output, 'README.md'),
-    `# ${platform} supervisor binding\n\nThis export does not change global configuration. Merge the MCP entry using the\nplatform's official configuration UI or CLI and copy the generated skills to\nits supported project or user skill directory. Keep the absolute Node/runtime\npaths. Kilo's IDE variant is ide-mcp.json; its CLI/runtime variant is kilo.json.\n\nThe supervisor is your current conversation. Choose any of the four worker\nplatforms using submit_tasks.worker. Installed runtimes must pass doctor.\n\nCLI/API connectivity does not prove model-task or IDE/desktop GUI behavior.\nThese exports do not activate the installed plugin.\n`,
+    `# ${platform} supervisor binding\n\nThis export does not change global configuration. Merge the MCP entry using the\nplatform's official configuration UI or CLI and copy the generated skills to\nits supported project or user skill directory. Keep the absolute Node/runtime\npaths. Kilo's IDE variant is ide-mcp.json; its CLI/runtime variant is kilo.json.\n\nThe supervisor is your current conversation. Choose any of the four worker\nplatforms using create_run.worker. Installed runtimes must pass doctor.\n\nCLI/API connectivity does not prove model-task or IDE/desktop GUI behavior.\nThese exports do not activate the installed plugin.\n`,
   );
   return { platform, output, runtime: cli, registered: false };
 }
