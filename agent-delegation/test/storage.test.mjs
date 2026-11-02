@@ -3,7 +3,17 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { Store, responseBytes, inside, snapshot, materialize, worktree, writeJson, readJson } from '../dist/index.mjs';
+import {
+  Store,
+  responseBytes,
+  taskSummary,
+  inside,
+  snapshot,
+  materialize,
+  worktree,
+  writeJson,
+  readJson,
+} from '../dist/index.mjs';
 import { fixture, git } from './helpers.mjs';
 
 function windows(t) {
@@ -110,6 +120,17 @@ test('response and artifact budgets account for UTF-8, escaping and MCP envelope
     cursor = page.next_cursor;
   } while (cursor);
   assert.deepEqual(all, items);
+  const oversized = {
+    task_id: 'a',
+    state: 'needs_review',
+    attempt: { id: 'attempt', state: 'stopped', commit: 'abc', verification: [{ status: 'passed', exit_code: 0 }] },
+    text: 'x'.repeat(5000),
+  };
+  const summarized = store.page([oversized], undefined, {}, taskSummary).items[0];
+  assert.equal(summarized.attempt.commit, 'abc');
+  assert.deepEqual(summarized.attempt.verification, [{ status: 'passed', exit_code: 0 }]);
+  assert.equal(summarized.text, undefined);
+  assert.deepEqual(JSON.parse(store.artifactPage(summarized.artifact_id, 0, 16384).text), oversized);
   const bounded = store.bounded({ text: content });
   assert.ok(bounded.artifact_id);
   assert.ok(responseBytes(bounded) <= 4096);

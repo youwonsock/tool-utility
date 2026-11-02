@@ -24,10 +24,27 @@ import {
 import { StateTracker, type Delta } from './storage-delta.js';
 import { readVerified, readRunArchive, readArchiveEvents, appendArchiveEvent } from './storage-archives.js';
 import { publicWorker } from './profiles.js';
-import { publicRuntime } from './runtime.js';
+import { runtimeVersions } from './runtime.js';
 
 export const responseBytes = (value: unknown) =>
   Buffer.byteLength(JSON.stringify({ content: [{ type: 'text', text: JSON.stringify(value) }], isError: false }));
+// A verification entry already names its artifact, so get_run lists only the others.
+export const otherArtifacts = (attempt: { artifacts: string[]; verification?: { artifact?: string }[] }) =>
+  attempt.artifacts.filter((id) => !attempt.verification?.some((check) => check.artifact === id));
+// What a supervisor needs to keep going when a task item does not fit in a page.
+export const taskSummary = (item: any) => ({
+  task_id: item.task_id,
+  state: item.state,
+  attempt: item.attempt && {
+    id: item.attempt.id,
+    state: item.attempt.state,
+    commit: item.attempt.commit,
+    verification: item.attempt.verification?.map((check: any) => ({
+      status: check.status,
+      exit_code: check.exit_code,
+    })),
+  },
+});
 export type PreparedArchive = {
   kind: 'run' | 'request';
   id: string;
@@ -747,41 +764,45 @@ export class Store {
           model: a.model,
           backend: a.worker?.backend,
           backend_version: a.worker?.backend_version,
-          runtime: publicRuntime(a.worker?.runtime ?? a.execution?.runtime),
+          runtime: runtimeVersions(a.worker?.runtime ?? a.execution?.runtime),
           runtime_error: a.runtime_error,
           verification: a.verification,
-          artifacts: a.artifacts,
+          artifacts: otherArtifacts(a),
           inputs: a.inputs,
           error: a.error,
           integrated_commit: a.integrated_commit,
         },
       };
     });
-    const page = this.page(items, undefined, {
-      run_id: id,
-      state: run.state,
-      revision: run.revision,
-      base: run.base,
-      integration_commit: run.integration_commit,
-      worker: publicWorker(run.worker),
-      ended_at: run.ended_at,
-      archived: true,
-      archived_at: ref.archived_at,
-      validation: run.validation && {
-        id: run.validation.id,
-        state: run.validation.state,
-        commit: run.validation.commit,
-        revision: run.validation.revision,
-        attempt_id: run.validation.attempt.id,
-        directory: run.validation.attempt.directory,
-        artifacts: run.validation.attempt.artifacts,
-        verification: run.validation.attempt.verification,
-        inputs: run.validation.attempt.inputs,
-        error: run.validation.attempt.error,
+    const page = this.page(
+      items,
+      undefined,
+      {
+        run_id: id,
+        state: run.state,
+        revision: run.revision,
+        base: run.base,
+        integration_commit: run.integration_commit,
+        worker: publicWorker(run.worker),
+        ended_at: run.ended_at,
+        archived: true,
+        archived_at: ref.archived_at,
+        validation: run.validation && {
+          id: run.validation.id,
+          state: run.validation.state,
+          commit: run.validation.commit,
+          revision: run.validation.revision,
+          directory: run.validation.attempt.directory,
+          artifacts: otherArtifacts(run.validation.attempt),
+          verification: run.validation.attempt.verification,
+          inputs: run.validation.attempt.inputs,
+          error: run.validation.attempt.error,
+        },
+        error: run.error,
+        event_cursor: ref.summary.event_cursor,
       },
-      error: run.error,
-      event_cursor: ref.summary.event_cursor,
-    });
+      taskSummary,
+    );
     const consumed = page.next_cursor ? Number(page.next_cursor) : items.length;
     page.next_cursor = start + consumed < total ? String(start + consumed) : null;
     return page;
@@ -793,7 +814,13 @@ export class Store {
       process.stderr.write(`metrics: ${(error as Error).message}\n`);
     }
   }
-  page(items: unknown[], cursor?: string, extra: Record<string, unknown> = {}, budget = 3900) {
+  page(
+    items: unknown[],
+    cursor?: string,
+    extra: Record<string, unknown> = {},
+    summary: (item: any) => object = () => ({}),
+    budget = 3900,
+  ) {
     const start = cursor ? Number(cursor) : 0;
     invariant(Number.isSafeInteger(start) && start >= 0 && start <= items.length, 'CURSOR', 'Invalid cursor.');
     const result: { items: unknown[]; next_cursor: string | null; [key: string]: unknown } = {
@@ -809,7 +836,7 @@ export class Store {
         result.next_cursor = String(i);
         if (!result.items.length) {
           const artifact = this.artifact('responses', 'entry.json', JSON.stringify(items[i]));
-          result.items.push({ artifact_id: artifact });
+          result.items.push({ ...summary(items[i]), artifact_id: artifact });
           result.next_cursor = i + 1 < items.length ? String(i + 1) : null;
         }
         break;

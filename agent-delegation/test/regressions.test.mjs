@@ -15,8 +15,9 @@ import {
   transition,
   moveRun,
   rejectedEvidence,
+  responseBytes,
 } from '../dist/index.mjs';
-import { fixture, task, submit, review, callOk, cli, git, runDefaults } from './helpers.mjs';
+import { fixture, task, submit, review, ready, until, callOk, cli, git, runDefaults } from './helpers.mjs';
 
 function processFixture(jobDir, identity, stopped = false) {
   const id = uid('process');
@@ -101,6 +102,36 @@ test('invalid submissions publish no empty run, worktree, context or partial app
   assert.ok(result.error);
   assert.equal(JSON.stringify(f.engine.getRun(s.run_id)), before);
   assert.equal(fs.existsSync(path.join(f.data, 'runs', s.run_id, 'b.json')), false);
+});
+
+test('get_run keeps task items inline after validation', async (t) => {
+  const f = await fixture(t),
+    verification = [{ command: 'node -e "process.exit(0)"' }, { command: 'node -e "process.exit(0)" # second check' }],
+    s = await submit(f, [
+      task('a', { files: { 'a.txt': 'a' } }, { verification }),
+      task('b', { files: { 'b.txt': 'b' } }, { verification }),
+    ]);
+  const run = await until(f, s.run_id, (r) => r.tasks.every((value) => value.state === 'needs_review'));
+  await ready(f, run);
+  const items = [];
+  let cursor;
+  do {
+    const page = await callOk(f, 'get_run', { run_id: run.id, cursor });
+    assert.ok(responseBytes(page) <= 4096);
+    t.diagnostic(`get_run page ${responseBytes(page)} bytes`);
+    items.push(...page.items);
+    cursor = page.next_cursor;
+  } while (cursor);
+  assert.deepEqual(
+    items.map((item) => item.task_id),
+    ['a', 'b'],
+  );
+  for (const item of items) {
+    assert.ok(item.attempt.commit);
+    assert.equal(item.attempt.runtime.cli, item.attempt.backend_version);
+    assert.equal(item.attempt.verification.length, 2);
+    for (const check of item.attempt.verification) assert.ok(!item.attempt.artifacts.includes(check.artifact));
+  }
 });
 
 test('cancel wins over an already completed final verification snapshot', async (t) => {

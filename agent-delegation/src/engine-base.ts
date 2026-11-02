@@ -1,10 +1,10 @@
 import path from 'node:path';
-import { Store } from './store.js';
+import { Store, otherArtifacts, taskSummary } from './store.js';
 import { Fault, invariant, type Attempt, type Run, type WorkerState } from './types.js';
 import { readJson } from './io.js';
 import { holdsResources, validateWorkerState } from './lifecycle.js';
 import { publicWorker } from './profiles.js';
-import { publicRuntime } from './runtime.js';
+import { runtimeVersions } from './runtime.js';
 import type { EffectRunner } from './effects.js';
 
 export type EngineOptions = { concurrency: number; spawn?: EffectRunner['spawn'] };
@@ -90,10 +90,10 @@ export class EngineBase {
             last_activity_at: a.last_activity_at,
             backend: a.worker?.backend,
             backend_version: a.worker?.backend_version,
-            runtime: publicRuntime(a.worker?.runtime ?? a.execution?.runtime),
+            runtime: runtimeVersions(a.worker?.runtime ?? a.execution?.runtime),
             runtime_error: a.runtime_error,
             verification: a.verification,
-            artifacts: a.artifacts,
+            artifacts: otherArtifacts(a),
             inputs: a.inputs,
             conflicts: a.conflicts && Object.keys(a.conflicts),
             error: a.error,
@@ -119,9 +119,8 @@ export class EngineBase {
           state: run.validation.state,
           commit: run.validation.commit,
           revision: run.validation.revision,
-          attempt_id: run.validation.attempt.id,
           directory: run.validation.attempt.directory,
-          artifacts: run.validation.attempt.artifacts,
+          artifacts: otherArtifacts(run.validation.attempt),
           verification: run.validation.attempt.verification,
           inputs: run.validation.attempt.inputs,
           error: run.validation.attempt.error,
@@ -137,6 +136,7 @@ export class EngineBase {
             updated: operation.updated,
           })),
       },
+      taskSummary,
     );
   }
 }

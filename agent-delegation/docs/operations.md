@@ -52,6 +52,8 @@
 
 `get_run`의 `last_activity_at`은 구현자의 기록이 마지막으로 바뀐 시각이며, 작업이 멈췄는지 판단할 때 씁니다. 모델 출력은 응답에 넣지 않습니다.
 
+`get_run`의 작업 항목이 4 KiB 페이지에 들어가지 않으면 `task_id`, `state`, 시도의 `id`·`state`·`commit`, 검사 결과만 남기고 전체 내용은 `artifact_id`로 돌려줍니다. 검사 로그와 결과는 `verification[].artifact`로 찾으며 `artifacts`에는 중복해서 넣지 않습니다.
+
 서비스 전체 동시 실행 수는 `AGENT_DELEGATION_CONCURRENCY`(기본 2)로 정하며, 실행의 `settings.concurrency`는 이 값을 넘지 못합니다. 넘게 지정하면 `create_run` 응답의 `service_concurrency_limit`으로 알리고, `get_run`의 `effective_concurrency`로 실제 값을 보여 줍니다. 값을 바꾸면 `stop` 후 서비스를 다시 시작해야 합니다. 워커 하나의 메모리는 측정에서 약 115MB였습니다.
 
 `doctor.connection.model_warning`은 기본 모델을 쓸 수 없을 때의 경고입니다. 모델을 지정하지 않아도 진단은 가능하므로 `compatible`은 그대로이며, 실제 실행에서는 이 모델로 실패합니다. 구독 부족처럼 호출해 봐야 아는 문제는 잡지 못합니다.
@@ -102,7 +104,7 @@ journal은 256개 레코드 또는 `max(32 MiB, 최신 레코드 바이트 수 �
 
 `export-host <opencode|codex|claude-code|kilo> <새 출력 경로>`는 MCP 설정과 delegate-agents 스킬·도구 계약을 생성하며 전역 설정을 등록하지 않습니다. Kilo는 CLI/runtime용 kilo.json과 IDE용 ide-mcp.json을 구분합니다. 같은 데이터 폴더에 연결하면 같은 서비스가 작업과 자원을 관리합니다.
 
-자동화된 16개 조합은 네 지시자 설정과 모의 네이티브 워커를 사용하는 MCP 계약 검사입니다. 실제 CLI/SDK 연결 검사는 별도 임시 경로에 준비한 테스트 설치본을 사용합니다. 실제 모델 작업과 IDE·데스크톱 GUI는 확인하지 않았다면 미확인으로 유지합니다. `npm run e2e`는 Claude Code가 Haiku로 지시자 역할을 맡아 MCP 도구로 계획·검토·최종 반영을 하고, Kilo가 `kilo/kilo-auto/free`로 구현하는 실제 흐름을 임시 저장소에서 실행합니다. `npm run e2e:platform -- <플랫폼> [모델]`은 지시자 없이 스크립트가 도구를 호출해 플랫폼별 병렬 작업, 충돌, 수정 지시, 최종 반영을 실행합니다. 둘 다 모델 비용이 들어 `npm run check`에는 포함하지 않습니다. 실패하면 로그 경로를 출력하고 임시 폴더를 남기며, `--installed`를 붙이면 빌드 대신 설치본을 검사합니다. OpenCode와 Kilo 모델은 `공급자/모델` 형식입니다. macOS에서 충돌 수정부터 `finalize_run`까지 실제 모델로 확인한 조합은 Codex 0.162.1, OpenCode 1.19.0 + SDK 1.19.5, Claude Code 2.1.316 + SDK 0.3.316, Kilo 7.4.23 + SDK 7.8.18입니다. GUI 구현자 자동 제어는 제공하지 않습니다. Codex app-server는 실험 연동입니다. SDK·CLI 버전 일치 대신 필수 API·권한 정책·세션 연결을 검사합니다. `doctor.compatible`은 초기화 검사와 종료 확인 결과이며 유료 모델 작업의 성공을 보장하지 않습니다. `backend_version`은 실제 CLI 버전이고 `runtime`은 SDK와 CLI의 식별 정보입니다.
+자동화된 16개 조합은 네 지시자 설정과 모의 네이티브 워커를 사용하는 MCP 계약 검사입니다. 실제 CLI/SDK 연결 검사는 별도 임시 경로에 준비한 테스트 설치본을 사용합니다. 실제 모델 작업과 IDE·데스크톱 GUI는 확인하지 않았다면 미확인으로 유지합니다. `npm run e2e`는 Claude Code가 Haiku로 지시자 역할을 맡아 MCP 도구로 계획·검토·최종 반영을 하고, Kilo가 `kilo/kilo-auto/free`로 구현하는 실제 흐름을 임시 저장소에서 실행합니다. `npm run e2e:platform -- <플랫폼> [모델]`은 지시자 없이 스크립트가 도구를 호출해 플랫폼별 병렬 작업, 충돌, 수정 지시, 최종 반영을 실행합니다. 둘 다 모델 비용이 들어 `npm run check`에는 포함하지 않습니다. 실패하면 로그 경로를 출력하고 임시 폴더를 남기며, `--installed`를 붙이면 빌드 대신 설치본을 검사합니다. OpenCode와 Kilo 모델은 `공급자/모델` 형식입니다. macOS에서 충돌 수정부터 `finalize_run`까지 실제 모델로 확인한 조합은 Codex 0.162.1, OpenCode 1.19.0 + SDK 1.19.5, Claude Code 2.1.316 + SDK 0.3.316, Kilo 7.4.23 + SDK 7.8.18입니다. GUI 구현자 자동 제어는 제공하지 않습니다. Codex app-server는 실험 연동입니다. SDK·CLI 버전 일치 대신 필수 API·권한 정책·세션 연결을 검사합니다. `doctor.compatible`은 초기화 검사와 종료 확인 결과이며 유료 모델 작업의 성공을 보장하지 않습니다. `backend_version`은 실제 CLI 버전입니다. `doctor.runtime`은 SDK와 CLI의 경로·해시·버전이고, `get_run`의 `runtime`은 버전만 담습니다. 실행에 쓴 전체 식별 정보는 `jobs/<attempt-id>/worker.json`에 남습니다.
 
 ## 외부 설치본과 재시도
 
@@ -124,7 +126,7 @@ Codex의 네이티브 셸·exec·write_stdin은 명시적으로 거절합니다.
 
 현재 Codex `PreToolUse`의 `ask`는 파싱되지만 지원되지 않아 훅 오류 뒤 도구가 계속 실행될 수 있습니다. 따라서 소유 훅은 `allow`·`deny`만 출력하며, 두 동적 도구·범위가 확인된 `apply_patch`·기존 질문 응답으로 연결되는 `request_user_input`만 허용합니다. 나머지 네이티브 도구는 거절합니다. 선언된 MCP 도구도 네이티브 승인이 필요한 호출은 거절되며, 이 게이트웨이는 MCP 도구 승인을 아직 제공하지 않습니다. 자원 연결 진단 성공이 Codex에서 해당 도구를 실행할 수 있다는 뜻은 아닙니다.
 
-Codex 세션은 소유한 비임시 thread입니다. 임시 thread가 모델 요청 수락 후 `thread/read(includeTurns:true)`를 거절하는 API 조합을 피하고, 같은 세션의 실제 턴으로 전달 여부를 확인합니다. 수락 직후 rollout 파일이 아직 비어 있는 정확한 메타데이터 오류만 전송 후 최대 30초 동안 같은 세션의 다음 관찰에서 다시 읽습니다. 오류의 두 경로가 같고 해당 세션 ID의 rollout 파일이어야 하며, 다른 오류·기한 초과는 실패로 유지합니다. 이 읽기 관찰은 취소를 지연하지 않습니다. 세션 생성·요청 의도와 소유권을 유지하며 관찰 실패를 이유로 모델 요청을 다시 보내지 않습니다.
+Codex 세션은 스트림이 멈췄을 때 다시 읽을 수 있도록 소유한 비임시 thread를 씁니다. 완료 여부는 app-server 이벤트 스트림으로 판단합니다. `thread/turns/list`는 스트림이 전달 확인 전 5초, 확인 후 30초 동안 조용할 때만 최근 턴을 읽습니다. 읽기가 실패하면 무시하고 스트림이나 시도 제한 시간이 결과를 정합니다. 이 읽기 관찰은 취소를 지연하지 않습니다. 세션 생성·요청 의도와 소유권을 유지하며 관찰 실패를 이유로 모델 요청을 다시 보내지 않습니다.
 
 ## 실행 중 범위 보호
 
