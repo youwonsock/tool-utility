@@ -17,7 +17,7 @@ import {
 import { fixture, cli } from './helpers.mjs';
 import { mockProfiles, selection } from './native-helpers.mjs';
 
-async function diagnose(t, platform, args = []) {
+async function diagnose(t, platform, args = [], worker = {}) {
   const f = await fixture(t);
   f.engine.stop();
   mockProfiles(f);
@@ -35,7 +35,7 @@ async function diagnose(t, platform, args = []) {
     env_refs: { FAKE_AUDIT: 'AGENT_DELEGATION_TEST_AUDIT' },
   });
   fs.writeFileSync(file, JSON.stringify(profiles));
-  const result = await f.engine.doctor({ worker: selection(platform), repo: f.repo });
+  const result = await f.engine.doctor({ worker: { ...selection(platform), ...worker }, repo: f.repo });
   const events = fs.existsSync(audit) ? fs.readFileSync(audit, 'utf8').trim().split('\n').map(JSON.parse) : [];
   assert.equal(events.filter((e) => e.event === 'prompt').length, 0);
   return result;
@@ -414,6 +414,17 @@ for (const platform of ['opencode', 'kilo'])
     assert.equal(finished.complete, true);
     assert.equal(finished.error, undefined);
   });
+for (const platform of ['opencode', 'kilo'])
+  for (const [flag, reason] of [
+    ['--stale-model', /unavailable/],
+    ['--no-toolcall', /cannot call tools/],
+  ])
+    test(`${platform} doctor warns about its default model with ${flag} and stays compatible`, async (t) => {
+      const result = await diagnose(t, platform, [flag], { model: undefined });
+      assert.equal(result.compatible, true);
+      assert.match(result.connection.model_warning, reason);
+      assert.equal(result.connection.model, undefined);
+    });
 test('OpenCode still fails an attempt whose model never takes its next step', async (t) => {
   const { backend, state } = await native(t, 'opencode');
   await backend.createSession();

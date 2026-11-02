@@ -50,6 +50,7 @@ export class ScopeGuard {
   private timer?: NodeJS.Timeout;
   private watchdog?: NodeJS.Timeout;
   private lastHealthyAt = Date.now();
+  private lastHeartbeatAt = Date.now();
   private pending = new Set<string>();
   // Directories whose individual notifications no longer fit the bounded backlog.
   private collapsed = new Set<string>();
@@ -228,6 +229,9 @@ export class ScopeGuard {
     return this.failure;
   }
   checkHeartbeat(at = Date.now()) {
+    // This timer ticks every 250ms. A long gap means the machine slept, not that an inspection stuck.
+    if (at - this.lastHeartbeatAt >= 5000) this.lastHealthyAt = at;
+    this.lastHeartbeatAt = at;
     if (!this.closed && !this.failure && at - this.lastHealthyAt >= 10000)
       this.fail(new Fault('SCOPE_GUARD_UNKNOWN', 'Scope inspection stopped reporting healthy progress.'));
   }
