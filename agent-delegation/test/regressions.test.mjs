@@ -104,6 +104,25 @@ test('invalid submissions publish no empty run, worktree, context or partial app
   assert.equal(fs.existsSync(path.join(f.data, 'runs', s.run_id, 'b.json')), false);
 });
 
+test('wait_run waits through engine changes until its run has a new event', async (t) => {
+  const f = await fixture(t),
+    s = await submit(f, [task('a', { files: { 'a.txt': 'a' } })]);
+  await until(f, s.run_id, (r) => r.tasks[0].state === 'needs_review');
+  const { after } = await f.call('wait_run', { run_id: s.run_id, after: 0, timeout_ms: 0 });
+  const churn = setInterval(() => f.engine.notify(), 20);
+  t.after(() => clearInterval(churn));
+  let started = Date.now();
+  const empty = await f.call('wait_run', { run_id: s.run_id, after, timeout_ms: 1000 });
+  assert.deepEqual(empty.items, []);
+  assert.ok(Date.now() - started >= 900, `Returned after ${Date.now() - started} ms.`);
+  started = Date.now();
+  const waiting = f.call('wait_run', { run_id: s.run_id, after, timeout_ms: 20000 });
+  f.store.event(s.run_id, 'test_event', {});
+  const woken = await waiting;
+  assert.equal(woken.items.at(-1).type, 'test_event');
+  assert.ok(Date.now() - started < 5000, `Returned after ${Date.now() - started} ms.`);
+});
+
 test('get_run keeps task items inline after validation', async (t) => {
   const f = await fixture(t),
     verification = [{ command: 'node -e "process.exit(0)"' }, { command: 'node -e "process.exit(0)" # second check' }],
