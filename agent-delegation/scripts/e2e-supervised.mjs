@@ -164,6 +164,7 @@ async function verify(exit) {
     items = [...items, ...page.items];
   }
   // A task too large for its response page arrives as an artifact reference.
+  log('oversized task items', items.filter((item) => item.artifact_id).length);
   items = await Promise.all(
     items.map(async (item) =>
       item.artifact_id

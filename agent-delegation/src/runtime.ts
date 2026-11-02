@@ -257,6 +257,10 @@ export function publicRuntime(runtime?: RuntimeIdentity) {
   const { path, real_path, hash, version } = runtime.cli;
   return { cli: { path, real_path, hash, version }, sdk: runtime.sdk };
 }
+// get_run pages stay small; the complete identity remains in jobs/<attempt>/worker.json and doctor.
+export function runtimeVersions(runtime?: RuntimeIdentity) {
+  return runtime && { cli: runtime.cli.version, sdk: runtime.sdk?.version };
+}
 export async function assertRuntimeUnchanged(worker: WorkerConfig, expected: RuntimeIdentity) {
   try {
     const current = await resolveRuntime({ ...worker, ...(expected.sdk ? { sdk_root: expected.sdk.root } : {}) });

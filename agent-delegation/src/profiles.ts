@@ -117,7 +117,6 @@ export function publicWorker(worker?: WorkerConfig) {
     platform: worker.platform,
     profile: worker.profile,
     model: worker.model,
-    config_hash: worker.config_hash,
   };
 }
 export function workerEnvironment(worker: WorkerConfig): NodeJS.ProcessEnv {

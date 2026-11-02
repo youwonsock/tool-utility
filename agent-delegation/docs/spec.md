@@ -99,13 +99,12 @@ reported only after termination proof and cannot be approved. Uncertain stops
 retain the live worker/monitor and bounded confirmation retries without replay.
 A crashed worker requires explicit ownership reconciliation and retains leases.
 
-Codex owns a non-ephemeral thread because ephemeral thread/read(includeTurns)
-is rejected after accepted dispatch. The same owned thread is read to reconcile
-messages; observation failure never resends a model prompt. During the first
-30 seconds after dispatch, only the exact empty-rollout metadata error for that
-accepted owned session may be observed again on the next normal polling cycle.
-Other errors and expiration remain failures, and cancellation does not wait for
-rollout materialization.
+Codex owns a non-ephemeral thread so a silent stream can be read back. The
+app-server stream reports completion, and thread/turns/list reads the latest
+turn only after 5 seconds of silence before delivery is confirmed or 30 seconds
+after. A failed read is ignored, so the stream or the attempt timeout decides.
+Observation failure never resends a model prompt, and cancellation does not
+wait for a read.
 
 Submission checks only the actual task workers before preparing artifacts.
 Runtime identities retain real executable/SDK paths, argument-file identities,
