@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { Fault, invariant, type InputRequest } from '../types.js';
+import { invariant, type InputRequest } from '../types.js';
 import { writeJson, digest } from '../io.js';
 import { workerEnvironment } from '../profiles.js';
 import { connection, workerPermissionKey, toolPolicy } from '../policy.js';
@@ -26,6 +26,8 @@ function quote(value: string) {
   }
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
+const silentTurnRead = 30000;
+const undeliveredTurnRead = 5000;
 export class CodexBackend implements WorkerBackend {
   private peer?: JsonRpcPeer;
   private frames: RpcFrame[] = [];
@@ -36,7 +38,8 @@ export class CodexBackend implements WorkerBackend {
   private dynamicAnswers = new Map<string, string>();
   private executing = new Set<string>();
   private cancelled = false;
-  private rolloutReadDeadline = 0;
+  private lastFrameAt = 0;
+  private lastReadAt = 0;
   private accepted = false;
   private complete = false;
   private error?: string;
@@ -58,6 +61,7 @@ export class CodexBackend implements WorkerBackend {
     this.frames.push(frame);
   }
   private receive(frame: RpcFrame) {
+    this.lastFrameAt = Date.now();
     const { state, save, spec } = this.context;
     const p = frame.params ?? {};
     this.retain(frame, p);
@@ -414,8 +418,7 @@ export class CodexBackend implements WorkerBackend {
   async createSession() {
     const { spec, state, save } = this.context;
     writeJson(path.join(spec.job_dir, 'session-intent.json'), { at: Date.now(), id: spec.id, ephemeral: false });
-    // Durable owned threads support thread/read(includeTurns); ephemeral threads
-    // reject that API after an accepted prompt. Never retry a turn to recover it.
+    // A durable thread can be read back if its stream goes silent. Never retry a turn to recover it.
     const response = await this.peer!.request('thread/start', {
       cwd: spec.directory,
       model: this.model ?? null,
@@ -461,7 +464,7 @@ export class CodexBackend implements WorkerBackend {
   async dispatch(prompt: string, requestID: string) {
     const { state, save, spec } = this.context;
     assertScopeMonitor(spec, state);
-    this.rolloutReadDeadline = Date.now() + 30000;
+    this.lastFrameAt = Date.now();
     const response = await this.peer!.request('turn/start', {
       threadId: state.session_id,
       clientUserMessageId: requestID,
@@ -471,67 +474,41 @@ export class CodexBackend implements WorkerBackend {
     this.accepted = true;
     save();
   }
-  async observe(): Promise<Observation> {
-    let materializing = false;
-    if (this.context.state.session_id) {
-      try {
-        const response = await this.peer!.request('thread/read', {
-          threadId: this.context.state.session_id,
-          includeTurns: true,
-        });
-        this.thread = response.thread;
-      } catch (error) {
-        const details =
-          error instanceof Fault && error.code === 'BACKEND_RPC'
-            ? (error.details as { code?: number; message?: string })
-            : undefined;
-        const match =
-          typeof details?.message === 'string'
-            ? details.message.match(
-                /^failed to read thread: thread-store internal error: failed to read session metadata (.+): rollout at (.+) is empty$/,
-              )
-            : null;
-        const filename = match?.[1]?.replaceAll('\\', '/').split('/').at(-1);
-        // A just-accepted durable turn can precede its first rollout flush. Only
-        // these exact owned-session read errors are transient; never resend a turn.
-        const flushing =
-          (details?.code === -32601 && details.message === 'list_turns is not supported yet') ||
-          (details?.code === -32603 &&
-            match?.[1] === match?.[2] &&
-            filename?.endsWith(`-${this.context.state.session_id}.jsonl`));
-        if (!this.cancelled && this.accepted && Date.now() < this.rolloutReadDeadline && flushing) materializing = true;
-        else throw error;
+  // The stream reports completion. Reads race the rollout just after dispatch and thread/read
+  // history is deprecated, so a read only covers a stream that has gone silent.
+  private async readSilentTurn() {
+    const { state } = this.context;
+    if (!state.session_id || this.complete || this.cancelled) return;
+    const interval = this.accepted ? silentTurnRead : undeliveredTurnRead;
+    if (Date.now() - this.lastFrameAt < interval || Date.now() - this.lastReadAt < interval) return;
+    this.lastReadAt = Date.now();
+    try {
+      const response = await this.peer!.request('thread/turns/list', {
+        threadId: state.session_id,
+        limit: 1,
+        sortDirection: 'desc',
+        itemsView: this.accepted ? 'summary' : 'full',
+      });
+      const turn = response.data?.[0];
+      if (!turn || (state.turn_id && turn.id !== state.turn_id)) return;
+      this.accepted ||= turn.items?.some((i: any) => i.type === 'userMessage' && i.id === state.prompt_id) ?? false;
+      if (this.accepted && ['completed', 'failed', 'interrupted'].includes(turn.status)) {
+        this.complete = true;
+        this.error ??= turn.error?.message ?? (turn.status === 'completed' ? undefined : `Native turn ${turn.status}.`);
       }
-      const turn =
-        this.thread.turns?.find((t: any) => t.id === this.context.state.turn_id) ?? this.thread.turns?.at(-1);
-      if (turn) {
-        this.accepted ||=
-          turn.items?.some((i: any) => i.type === 'userMessage' && i.id === this.context.state.prompt_id) ?? false;
-        // A read just after dispatch can report a running turn as interrupted. Only
-        // turn/completed or the startup deadline confirms that; never resend a turn.
-        if (
-          turn.status === 'interrupted' &&
-          !this.complete &&
-          !this.cancelled &&
-          this.accepted &&
-          Date.now() < this.rolloutReadDeadline
-        )
-          materializing = true;
-        else if (['completed', 'failed', 'interrupted'].includes(turn.status)) {
-          this.complete = true;
-          this.error ??=
-            turn.error?.message ?? (turn.status === 'completed' ? undefined : `Native turn ${turn.status}.`);
-        }
-      }
+    } catch {
+      /* The stream or the attempt timeout still decides. */
     }
-    const summary = this.thread?.turns
-      ?.flatMap((t: any) => t.items ?? [])
-      .filter((i: any) => i.type === 'agentMessage')
-      .map((i: any) => i.text)
+  }
+  async observe(): Promise<Observation> {
+    await this.readSilentTurn();
+    const summary = this.frames
+      .filter((frame) => frame.method === 'item/completed' && (frame.params as any)?.item?.type === 'agentMessage')
+      .map((frame) => (frame.params as any).item.text)
       .join('\n');
     return {
       accepted: this.accepted,
-      complete: this.complete && !this.pending.size && !materializing,
+      complete: this.complete && !this.pending.size,
       inputs: [...this.pending.values()].map((p) => p.input),
       transcript: { thread: this.thread, events: this.frames },
       summary,
