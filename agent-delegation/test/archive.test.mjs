@@ -18,7 +18,7 @@ import {
   alive,
   sleep,
 } from '../dist/index.mjs';
-import { cli } from './helpers.mjs';
+import { cli, fixture, task, submit, until, ready, finalize } from './helpers.mjs';
 import { storageTree } from './storage-preservation.mjs';
 
 const epoch = 1_800_000_000_000;
@@ -119,6 +119,42 @@ test('archive queries, cursors, artifacts, mutation guards and request deduplica
   reopened.event('another', 'next', {});
   assert.equal(reopened.events('run_old').at(-1).seq, 2);
   assert.equal(reopened.events('another')[0].seq, 3);
+});
+
+test('get_run reports the same task items and usage before and after archiving', async (t) => {
+  const f = await fixture(t),
+    s = await submit(f, [task('a', { files: { 'a.txt': 'a' } }), task('b', { files: { 'b.txt': 'b' } })]);
+  const run = await until(f, s.run_id, (r) => r.tasks.every((value) => value.state === 'needs_review'));
+  await finalize(f, await ready(f, run));
+  await until(f, run.id, (r) => r.state === 'completed');
+  const read = async () => {
+    const pages = [];
+    let cursor;
+    do {
+      const page = JSON.parse(JSON.stringify(await f.call('get_run', { run_id: run.id, cursor })));
+      pages.push(page);
+      cursor = page.next_cursor;
+    } while (cursor);
+    return pages;
+  };
+  const live = await read();
+  assert.ok(live[0].usage);
+  assert.ok(live[0].items[0].attempt.usage);
+  assert.ok(live[0].items[0].attempt.last_activity_at);
+  assert.equal(live[0].archived, false);
+  f.store.clock = () => Date.now() + ARCHIVE_AGE;
+  assert.equal(await f.store.archiveNext(), true);
+  assert.equal(f.store.isArchived(run.id), true);
+  const archived = await read();
+  assert.deepEqual(
+    archived.flatMap((page) => page.items),
+    live.flatMap((page) => page.items),
+  );
+  assert.deepEqual(archived[0].usage, live[0].usage);
+  assert.deepEqual(archived[0].validation, live[0].validation);
+  assert.equal(archived[0].archived, true);
+  assert.equal(archived[0].effective_concurrency, undefined);
+  assert.equal(archived[0].operations, undefined);
 });
 
 test('prepared submissions and unconfirmed or live processes prevent archiving', async (t) => {

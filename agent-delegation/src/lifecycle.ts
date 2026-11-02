@@ -176,6 +176,20 @@ const leased = new Set<AttemptState>([
   'stop_uncertain',
 ]);
 export const holdsResources = (a: Attempt) => leased.has(a.state);
+// Null cost means at least one attempt's platform did not report one, so a sum would mislead.
+export function totalUsage(run: Run) {
+  const attempts = [...run.tasks.flatMap((task) => task.attempts), ...(run.validation ? [run.validation.attempt] : [])];
+  const reported = attempts.flatMap((attempt) => (attempt.usage ? [attempt.usage] : []));
+  if (!reported.length) return undefined;
+  return {
+    input_tokens: reported.reduce((sum, usage) => sum + usage.input_tokens, 0),
+    output_tokens: reported.reduce((sum, usage) => sum + usage.output_tokens, 0),
+    cached_input_tokens: reported.reduce((sum, usage) => sum + usage.cached_input_tokens, 0),
+    cost_usd: reported.every((usage) => usage.cost_usd !== null)
+      ? reported.reduce((sum, usage) => sum + (usage.cost_usd ?? 0), 0)
+      : null,
+  };
+}
 export const occupiesSlot = (a: Attempt) => holdsResources(a) && a.state !== 'resource_wait';
 export const canSchedule = (run: Run, task: Task) =>
   run.state === 'active' &&

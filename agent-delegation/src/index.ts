@@ -2,6 +2,7 @@ export * from './types.js';
 export * from './io.js';
 export * from './git.js';
 export * from './store.js';
+export * from './run-view.js';
 export * from './persistence.js';
 export * from './engine-base.js';
 export * from './effects.js';

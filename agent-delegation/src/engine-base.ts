@@ -1,27 +1,13 @@
 import path from 'node:path';
-import { Store, otherArtifacts, taskSummary } from './store.js';
+import { Store } from './store.js';
 import { Fault, invariant, type Attempt, type Run, type WorkerState } from './types.js';
 import { readJson } from './io.js';
-import { holdsResources, validateWorkerState } from './lifecycle.js';
-import { publicWorker } from './profiles.js';
-import { runtimeVersions } from './runtime.js';
+import { holdsResources, totalUsage, validateWorkerState } from './lifecycle.js';
+import { runView, taskSummary, taskView } from './run-view.js';
 import type { EffectRunner } from './effects.js';
 
 export type EngineOptions = { concurrency: number; spawn?: EffectRunner['spawn'] };
 // Read-only views of the store, shared by the controller and the effect runner.
-// Null cost means at least one attempt's platform did not report one, so a sum would mislead.
-function totalUsage(attempts: Attempt[]) {
-  const reported = attempts.flatMap((attempt) => (attempt.usage ? [attempt.usage] : []));
-  if (!reported.length) return undefined;
-  return {
-    input_tokens: reported.reduce((sum, usage) => sum + usage.input_tokens, 0),
-    output_tokens: reported.reduce((sum, usage) => sum + usage.output_tokens, 0),
-    cached_input_tokens: reported.reduce((sum, usage) => sum + usage.cached_input_tokens, 0),
-    cost_usd: reported.every((usage) => usage.cost_usd !== null)
-      ? reported.reduce((sum, usage) => sum + (usage.cost_usd ?? 0), 0)
-      : null,
-  };
-}
 export class EngineBase {
   constructor(
     public store: Store,
@@ -72,60 +58,14 @@ export class EngineBase {
   }
   view(run: Run, cursor?: string) {
     return this.store.page(
-      run.tasks.map((t) => {
-        const a = t.attempts.at(-1);
-        return {
-          task_id: t.spec.id,
-          state: t.state,
-          dependencies: t.spec.dependencies,
-          worker: publicWorker(t.worker),
-          attempt: a && {
-            id: a.id,
-            number: a.number,
-            state: a.state,
-            directory: a.directory,
-            commit: a.commit,
-            model: a.model,
-            usage: a.usage,
-            last_activity_at: a.last_activity_at,
-            backend: a.worker?.backend,
-            backend_version: a.worker?.backend_version,
-            runtime: runtimeVersions(a.worker?.runtime ?? a.execution?.runtime),
-            runtime_error: a.runtime_error,
-            verification: a.verification,
-            artifacts: otherArtifacts(a),
-            inputs: a.inputs,
-            conflicts: a.conflicts && Object.keys(a.conflicts),
-            error: a.error,
-            integrated_commit: a.integrated_commit,
-          },
-        };
-      }),
+      run.tasks.map(taskView),
       cursor,
       {
-        run_id: run.id,
-        state: run.state,
-        revision: run.revision,
-        base: run.base,
-        integration_commit: run.integration_commit,
-        worker: publicWorker(run.worker),
-        usage: totalUsage(this.allAttempts(run)),
+        ...runView(run),
+        usage: totalUsage(run),
         effective_concurrency: Math.min(run.settings.concurrency, this.options.concurrency),
-        ended_at: run.ended_at,
         archived: this.store.isArchived(run.id),
         archived_at: this.store.state.archived_runs[run.id]?.archived_at ?? null,
-        validation: run.validation && {
-          id: run.validation.id,
-          state: run.validation.state,
-          commit: run.validation.commit,
-          revision: run.validation.revision,
-          directory: run.validation.attempt.directory,
-          artifacts: otherArtifacts(run.validation.attempt),
-          verification: run.validation.attempt.verification,
-          inputs: run.validation.attempt.inputs,
-          error: run.validation.attempt.error,
-        },
-        error: run.error,
         event_cursor: this.store.eventCursor(run.id),
         operations: this.activeOperations()
           .filter((operation) => operation.run_id === run.id)
