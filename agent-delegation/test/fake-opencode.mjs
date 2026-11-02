@@ -170,7 +170,10 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/question') return send(pending?.kind === 'question' ? [pending] : []);
   if (/\/(permission|question)\/req_test\/(reply|reject)/.test(url.pathname)) {
     audit({ event: 'permission_reply', reply: input.reply });
-    if (input.reply === 'reject') action.files = {};
+    if (input.reply === 'reject') {
+      action.files = {};
+      if (input.message) action.summary = `Rejected: ${input.message}`;
+    }
     pending = undefined;
     if (resumeShell) {
       const resume = resumeShell;

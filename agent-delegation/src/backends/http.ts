@@ -20,6 +20,11 @@ import { loadSdk, requireSdkMethods, callSdkFactory } from '../runtime.js';
 import { assertScopeMonitor, scopeMonitorHealthy } from '../scope.js';
 
 const unfinishedStepGrace = 5000;
+// Without a message the native loop ends the turn on a rejection, discarding valid edits.
+const policyRejection =
+  'The delegation policy blocked this request. Do not retry it. Continue without it and finish; the supervisor runs the declared verification commands.';
+const supervisorRejection =
+  'The supervisor rejected this request. Do not retry it. Continue without it and finish, reporting anything left undone.';
 // Each generated SDK remains owned by its corresponding native runtime.
 export class HttpBackend implements WorkerBackend {
   private client: any;
@@ -209,7 +214,9 @@ export class HttpBackend implements WorkerBackend {
       if (decision === 'ask') allowedPermissions.push(permission);
       else
         await this.client.permission.reply(
-          { requestID: permission.id, reply: decision === 'allow' ? 'once' : 'reject' },
+          decision === 'allow'
+            ? { requestID: permission.id, reply: 'once' }
+            : { requestID: permission.id, reply: 'reject', message: policyRejection },
           { throwOnError: true },
         );
     }
@@ -327,7 +334,9 @@ export class HttpBackend implements WorkerBackend {
       );
       // Framework grants are attempt-local. Never save native global permission rules.
       await this.client.permission.reply(
-        { requestID: input.id, reply: answer.decision === 'always' ? 'once' : answer.decision },
+        answer.decision === 'reject'
+          ? { requestID: input.id, reply: 'reject', message: supervisorRejection }
+          : { requestID: input.id, reply: answer.decision === 'always' ? 'once' : answer.decision },
         { throwOnError: true },
       );
     } else if (answer.decision === 'reject')
