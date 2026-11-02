@@ -29,6 +29,7 @@ function quote(value: string) {
 export class CodexBackend implements WorkerBackend {
   private peer?: JsonRpcPeer;
   private frames: RpcFrame[] = [];
+  private notices = new Set<string>();
   private pending = new Map<string, { frame: RpcFrame; input: InputRequest }>();
   private answered = new Map<string, string>();
   private confirmed = new Set<string>();
@@ -43,10 +44,23 @@ export class CodexBackend implements WorkerBackend {
   private model?: string;
   private windowsSandbox?: string;
   constructor(private context: BackendContext) {}
+  // The transcript is evidence, not a stream log: a completed message replaces its deltas,
+  // and thread/read repeats the same notice on every poll.
+  private retain(frame: RpcFrame, p: any) {
+    if (frame.method === 'deprecationNotice') {
+      if (this.notices.has(p.summary)) return;
+      this.notices.add(p.summary);
+    }
+    if (frame.method === 'item/completed' && p.item?.type === 'agentMessage')
+      this.frames = this.frames.filter(
+        (prior) => prior.method !== 'item/agentMessage/delta' || (prior.params as any)?.itemId !== p.item.id,
+      );
+    this.frames.push(frame);
+  }
   private receive(frame: RpcFrame) {
     const { state, save, spec } = this.context;
-    this.frames.push(frame);
     const p = frame.params ?? {};
+    this.retain(frame, p);
     if (p.threadId && p.threadId !== state.session_id) {
       if (frame.id !== undefined && frame.method === 'item/tool/call')
         this.dynamicResult(frame, false, { error: 'Dynamic call is not owned by this worker thread.' });

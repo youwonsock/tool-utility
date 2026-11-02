@@ -457,6 +457,28 @@ test('Codex does not trust an interrupted read before turn/completed or the star
   assert.equal(late.error, 'Native turn interrupted.');
   t.mock.restoreAll();
 });
+test('Codex keeps completed messages and one copy of a repeated notice in its transcript', async (t) => {
+  const { backend, state } = await native(t, 'codex');
+  await backend.createSession();
+  await backend.dispatch('FAKE_ACTION:{"delay":500}', state.prompt_id);
+  const threadId = state.session_id;
+  const before = (await backend.observe()).transcript.events.length;
+  for (const delta of ['one', 'two'])
+    backend.receive({ method: 'item/agentMessage/delta', params: { threadId, itemId: 'kept', delta } });
+  backend.receive({ method: 'item/agentMessage/delta', params: { threadId, itemId: 'open', delta: 'partial' } });
+  backend.receive({
+    method: 'item/completed',
+    params: { threadId, item: { id: 'kept', type: 'agentMessage', text: 'onetwo' } },
+  });
+  for (let i = 0; i < 3; i++) backend.receive({ method: 'deprecationNotice', params: { summary: 'same' } });
+  const added = (await backend.observe()).transcript.events.slice(before);
+  assert.deepEqual(
+    added.filter((frame) => frame.method === 'item/agentMessage/delta').map((frame) => frame.params.itemId),
+    ['open'],
+  );
+  assert.equal(added.filter((frame) => frame.method === 'item/completed' && frame.params.item.id === 'kept').length, 1);
+  assert.equal(added.filter((frame) => frame.method === 'deprecationNotice').length, 1);
+});
 test('Codex waits out an early list_turns rejection within the startup deadline without replaying', async (t) => {
   const a = await native(t, 'codex', undefined, ['--list-turns-once']);
   await a.backend.createSession();

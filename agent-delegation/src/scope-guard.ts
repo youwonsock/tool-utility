@@ -61,6 +61,7 @@ export class ScopeGuard {
   private initialHead = '';
   private initialRef = '';
   private verification?: Map<string, string>;
+  private digests = new Map<string, { stamp: string; digest: string }>();
   private failure?: Fault;
   private closed = false;
   constructor(
@@ -267,7 +268,17 @@ export class ScopeGuard {
     for (const file of [...new Set(paths)].sort()) {
       const absolute = path.resolve(spec.directory, file);
       try {
-        result.set(file, await fileDigest(absolute));
+        // ctime changes on every write, including one that restores mtime.
+        const stat = fs.lstatSync(absolute, { bigint: true }),
+          stamp = `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}`,
+          known = this.digests.get(file);
+        if (known?.stamp === stamp) {
+          result.set(file, known.digest);
+          continue;
+        }
+        const digested = await fileDigest(absolute);
+        this.digests.set(file, { stamp, digest: digested });
+        result.set(file, digested);
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') result.set(file, '<absent>');
         else throw error;
@@ -283,7 +294,7 @@ export class ScopeGuard {
     this.assertHealthy();
   }
   private async inspect() {
-    const { spec, state, save } = this.context;
+    const { spec, state, save, refresh } = this.context;
     const changes = (await status(spec.directory)).filter((change) => !savingInScope(spec.scope, change.path));
     invariant((await head(spec.directory)) === this.initialHead, 'WORKER_CHANGED_HEAD', 'Worker changed HEAD.');
     invariant(
@@ -321,7 +332,7 @@ export class ScopeGuard {
       policy_hash: workerPolicyHash(spec),
       ...(this.notificationsLost ? { notifications_lost: this.notificationsLost } : {}),
     };
-    save();
+    (refresh ?? save)();
   }
   async stop() {
     this.closed = true;
