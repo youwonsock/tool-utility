@@ -2,7 +2,7 @@ import path from 'node:path';
 import { Store } from './store.js';
 import { Fault, invariant, type Attempt, type Run, type WorkerState } from './types.js';
 import { readJson } from './io.js';
-import { holdsResources, totalUsage, validateWorkerState } from './lifecycle.js';
+import { holdsResources, currentAttempts, totalUsage, validateWorkerState } from './lifecycle.js';
 import { runView, taskSummary, taskView } from './run-view.js';
 import type { EffectRunner } from './effects.js';
 
@@ -41,10 +41,7 @@ export class EngineBase {
     return run;
   }
   allAttempts(run?: Run) {
-    return (run ? [run] : this.store.state.runs).flatMap((r) => [
-      ...r.tasks.flatMap((t) => t.attempts),
-      ...(r.validation ? [r.validation.attempt] : []),
-    ]);
+    return (run ? [run] : this.store.state.runs).flatMap(currentAttempts);
   }
   protected activeOperations() {
     return Object.values(this.store.state.operations).filter((operation) => operation.status !== 'completed');
