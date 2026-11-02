@@ -267,7 +267,7 @@ export type WorkerState = {
   replies: Record<string, 'intent' | 'sent' | 'uncertain'>;
   summary?: string;
   transcript?: string;
-  usage?: unknown;
+  usage?: UsageSummary;
   error?: string;
   stopped?: boolean;
 };
@@ -289,6 +289,13 @@ export type WorkerSpec = {
   host_executable: string;
   diagnostic?: boolean;
 };
+// Totals as the platform reported them. cost_usd is null when it reports no cost.
+export type UsageSummary = {
+  input_tokens: number;
+  output_tokens: number;
+  cached_input_tokens: number;
+  cost_usd: number | null;
+};
 export type Attempt = {
   id: string;
   number: number;
@@ -301,6 +308,7 @@ export type Attempt = {
   artifacts: string[];
   verification: Evidence[];
   model?: WorkerModel;
+  usage?: UsageSummary;
   inputs: InputRequest[];
   error?: string;
   execution?: WorkerConfig;

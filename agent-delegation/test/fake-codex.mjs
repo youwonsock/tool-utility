@@ -125,6 +125,11 @@ const finish = () => {
   const reply = { id: 'reply_mock', type: 'agentMessage', text: action.summary ?? 'Mock implementation finished.' };
   turn.items.push(reply);
   send({ method: 'item/completed', params: { threadId: thread.id, item: reply } });
+  const total = { totalTokens: 30, inputTokens: 20, cachedInputTokens: 5, outputTokens: 10 };
+  send({
+    method: 'thread/tokenUsage/updated',
+    params: { threadId: thread.id, turnId: turn.id, tokenUsage: { total, last: total } },
+  });
   if (!argv.includes('--lost-completed')) send({ method: 'turn/completed', params: { threadId: thread.id, turn } });
   audit({ event: 'finished' });
 };

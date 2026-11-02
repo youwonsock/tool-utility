@@ -9,6 +9,19 @@ import type { EffectRunner } from './effects.js';
 
 export type EngineOptions = { concurrency: number; spawn?: EffectRunner['spawn'] };
 // Read-only views of the store, shared by the controller and the effect runner.
+// Null cost means at least one attempt's platform did not report one, so a sum would mislead.
+function totalUsage(attempts: Attempt[]) {
+  const reported = attempts.flatMap((attempt) => (attempt.usage ? [attempt.usage] : []));
+  if (!reported.length) return undefined;
+  return {
+    input_tokens: reported.reduce((sum, usage) => sum + usage.input_tokens, 0),
+    output_tokens: reported.reduce((sum, usage) => sum + usage.output_tokens, 0),
+    cached_input_tokens: reported.reduce((sum, usage) => sum + usage.cached_input_tokens, 0),
+    cost_usd: reported.every((usage) => usage.cost_usd !== null)
+      ? reported.reduce((sum, usage) => sum + (usage.cost_usd ?? 0), 0)
+      : null,
+  };
+}
 export class EngineBase {
   constructor(
     public store: Store,
@@ -73,6 +86,7 @@ export class EngineBase {
             directory: a.directory,
             commit: a.commit,
             model: a.model,
+            usage: a.usage,
             backend: a.worker?.backend,
             backend_version: a.worker?.backend_version,
             runtime: publicRuntime(a.worker?.runtime ?? a.execution?.runtime),
@@ -94,6 +108,7 @@ export class EngineBase {
         base: run.base,
         integration_commit: run.integration_commit,
         worker: publicWorker(run.worker),
+        usage: totalUsage(this.allAttempts(run)),
         ended_at: run.ended_at,
         archived: this.store.isArchived(run.id),
         archived_at: this.store.state.archived_runs[run.id]?.archived_at ?? null,

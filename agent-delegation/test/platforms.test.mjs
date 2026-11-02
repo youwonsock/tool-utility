@@ -123,3 +123,19 @@ test('mixed workers preserve dependency gates, resource leases and correction co
   assert.equal((await finalize(f, run)).state, 'completed');
   assert.equal(fs.readFileSync(path.join(f.repo, 'a.txt'), 'utf8'), 'corrected');
 });
+
+for (const [platform, expected] of Object.entries({
+  codex: { input_tokens: 20, output_tokens: 10, cached_input_tokens: 5, cost_usd: null },
+  opencode: { input_tokens: 10, output_tokens: 20, cached_input_tokens: 0, cost_usd: 0 },
+  kilo: { input_tokens: 10, output_tokens: 20, cached_input_tokens: 0, cost_usd: 0 },
+  'claude-code': { input_tokens: 1, output_tokens: 1, cached_input_tokens: 0, cost_usd: 0 },
+}))
+  test(`${platform} usage reaches get_run for the attempt and the run`, async (t) => {
+    const f = await fixture(t);
+    mockProfiles(f);
+    const started = await submit(f, [task('a', { files: { 'a.txt': 'x' } })], { worker: selection(platform) });
+    await until(f, started.run_id, (run) => run.tasks[0].state === 'needs_review', 60000);
+    const view = await f.call('get_run', { run_id: started.run_id });
+    assert.deepEqual(view.items[0].attempt.usage, expected);
+    assert.deepEqual(view.usage, expected);
+  });

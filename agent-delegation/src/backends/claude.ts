@@ -324,7 +324,12 @@ export class ClaudeBackend implements WorkerBackend {
       inputs,
       transcript: this.messages,
       summary: result?.result ?? texts.join('\n'),
-      usage: result?.usage,
+      usage: result?.usage && {
+        input_tokens: result.usage.input_tokens ?? 0,
+        output_tokens: result.usage.output_tokens ?? 0,
+        cached_input_tokens: result.usage.cache_read_input_tokens ?? 0,
+        cost_usd: result.total_cost_usd ?? null,
+      },
       error: this.error,
       reply_confirmations: [...this.confirmed],
     };

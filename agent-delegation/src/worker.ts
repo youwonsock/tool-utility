@@ -162,6 +162,7 @@ export async function worker(jobDir: string) {
         transcript = JSON.stringify(observed.transcript);
         writeTranscript(observed.complete || observed.error !== undefined || observed.inputs.length > 0);
         state.prompt_accepted ||= observed.accepted;
+        state.usage = observed.usage ?? state.usage;
         state.inputs = observed.inputs;
         if (state.inputs.length && state.phase !== 'needs_input') {
           resumePhase = state.phase;
@@ -195,7 +196,6 @@ export async function worker(jobDir: string) {
         invariant(!observed.error, 'MODEL_ERROR', observed.error ?? 'Native implementation failed.');
         if (observed.accepted && observed.complete && !state.inputs.length) {
           state.summary = observed.summary;
-          state.usage = observed.usage;
           state.error = undefined;
           moveWorker(state, 'verifying');
           save();
