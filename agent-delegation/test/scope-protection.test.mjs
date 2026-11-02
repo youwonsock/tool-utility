@@ -367,6 +367,23 @@ test('uncertain owned stop keeps monitoring with bounded backoff and never repea
   assert.equal(checks, 5);
   assert.deepEqual(waits, [100, 200, 400, 800]);
 });
+test('the heartbeat survives machine sleep and still stops an inspection held after waking', async (t) => {
+  const f = await monitored(t);
+  let release;
+  const held = new Promise((resolve) => {
+    release = resolve;
+  });
+  const woke = Date.now() + 3_600_000;
+  f.guard.checkHeartbeat(woke);
+  assert.equal(f.guard.fault(), undefined);
+  assert.equal(f.stopped(), 0);
+  t.mock.method(f.guard, 'inspect', () => held);
+  const checking = f.guard.check();
+  for (const later of [4000, 8000, 11000]) f.guard.checkHeartbeat(woke + later);
+  assert.equal(f.guard.fault().code, 'SCOPE_GUARD_UNKNOWN');
+  release();
+  await checking;
+});
 test('independent heartbeat stops owned execution while an inspection is held without another native callback', async (t) => {
   const f = await monitored(t);
   let release;
@@ -375,7 +392,8 @@ test('independent heartbeat stops owned execution while an inspection is held wi
   });
   t.mock.method(f.guard, 'inspect', () => held);
   const checking = f.guard.check();
-  f.guard.checkHeartbeat(Date.now() + 11000);
+  const now = Date.now();
+  for (const later of [4000, 8000, 11000]) f.guard.checkHeartbeat(now + later);
   assert.equal(f.guard.fault().code, 'SCOPE_GUARD_UNKNOWN');
   assert.equal(f.stopped(), 1);
   assert.equal(f.state.scope_guard.status, 'unknown');
