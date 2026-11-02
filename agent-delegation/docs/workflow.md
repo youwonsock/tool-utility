@@ -8,6 +8,8 @@ worktrees. Keep this division when changing either platform.
    analysis is allowed in the supervisor; delegate implementation and command
    execution. Identify the relevant instruction files, including ignored
    AGENTS.md, CLAUDE.md and platform rules, and include them in context_files.
+   List only rules there. A worker shell command that names a context file is
+   blocked, so keep verification scripts and source files out of context_files.
 2. Call doctor with the selected worker. Resolve version, policy, installation
    or connection problems before submitting tasks. Doctor does not test model
    credentials or perform a paid model invocation.

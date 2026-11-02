@@ -425,6 +425,22 @@ for (const platform of ['opencode', 'kilo'])
       assert.match(result.connection.model_warning, reason);
       assert.equal(result.connection.model, undefined);
     });
+for (const platform of ['opencode', 'kilo'])
+  test(`${platform} tells the model why a request was rejected so its turn can continue`, async (t) => {
+    const { backend, state } = await native(t, platform);
+    await backend.createSession();
+    const permission = { permission: 'bash', patterns: ['git push'], metadata: { command: 'git push' } };
+    await backend.dispatch(`FAKE_ACTION:${JSON.stringify({ permission })}`, state.prompt_id);
+    let observed;
+    for (let i = 0; i < 100; i++) {
+      observed = await backend.observe();
+      if (observed.complete) break;
+      await sleep(30);
+    }
+    assert.equal(observed.complete, true);
+    assert.equal(observed.error, undefined);
+    assert.match(observed.summary, /delegation policy blocked/);
+  });
 test('OpenCode still fails an attempt whose model never takes its next step', async (t) => {
   const { backend, state } = await native(t, 'opencode');
   await backend.createSession();

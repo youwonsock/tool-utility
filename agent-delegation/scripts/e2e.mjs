@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dataRoot, remoteCall } from '../dist/index.mjs';
 
-const usage = 'Usage: npm run e2e -- <codex|opencode|claude-code|kilo> [model] [--installed]';
+const usage = 'Usage: npm run e2e:platform -- <codex|opencode|claude-code|kilo> [model] [--installed]';
 const positional = process.argv.slice(2).filter((value) => !value.startsWith('--'));
 const installed = process.argv.includes('--installed');
 const [platform, modelArg] = positional;
