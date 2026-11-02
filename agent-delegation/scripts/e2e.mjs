@@ -1,15 +1,17 @@
 // Real-model check on a throwaway repository: parallel tasks, a conflict, a correction, finalize.
+// --restart instead kills the service while a worker holds an accepted model request.
 // It spends model requests, so `npm run check` does not run it. Logs stay on disk after a failure.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { dataRoot, remoteCall } from '../dist/index.mjs';
+import { dataRoot, readJson, remoteCall } from '../dist/index.mjs';
 
-const usage = 'Usage: npm run e2e:platform -- <codex|opencode|claude-code|kilo> [model] [--installed]';
+const usage = 'Usage: npm run e2e:platform -- <codex|opencode|claude-code|kilo> [model] [--installed] [--restart]';
 const positional = process.argv.slice(2).filter((value) => !value.startsWith('--'));
 const installed = process.argv.includes('--installed');
+const restart = process.argv.includes('--restart');
 const [platform, modelArg] = positional;
 if (!['codex', 'opencode', 'claude-code', 'kilo'].includes(platform)) {
   console.error(usage);
@@ -137,51 +139,18 @@ async function settle(run_id, id, attempts, limit = 15 * 60_000) {
   throw new Error(`Timed out waiting for ${id}.`);
 }
 
-async function run() {
-  const check = { command: 'node check.js' };
-  const task = (id) => ({
-    id,
-    goal: `Replace the second line of greeting.txt with exactly "${id}". Keep the other lines. Edit only that file with your file editing tool. Do not run any commands; the supervisor runs the checks.`,
-    scope: ['greeting.txt'],
-    acceptance: [`The second line of greeting.txt is ${id}`],
-    verification: [check],
-  });
+const check = { command: 'node check.js' };
+const task = (id) => ({
+  id,
+  goal: `Replace the second line of greeting.txt with exactly "${id}". Keep the other lines. Edit only that file with your file editing tool. Do not run any commands; the supervisor runs the checks.`,
+  scope: ['greeting.txt'],
+  acceptance: [`The second line of greeting.txt is ${id}`],
+  verification: [check],
+});
+const approve = (run_id, item) =>
+  call('approve_task', { run_id, task_id: item.task_id, attempt_id: item.attempt.id, commit: item.attempt.commit });
 
-  const doctor = await call('doctor', { repo, worker });
-  log('doctor', doctor.compatible, doctor.runtime?.cli?.version, doctor.runtime?.sdk?.version ?? '');
-  if (!doctor.compatible) throw new Error(JSON.stringify(doctor.connection));
-
-  const created = await call('create_run', {
-    repo,
-    worker,
-    tasks: [task('alpha'), task('beta')],
-    final_verification: [check],
-    settings: { timeout_ms: 900000 },
-  });
-  if (created.error) throw new Error(JSON.stringify(created.error));
-  const run_id = created.run_id;
-  log('run', run_id);
-
-  const alpha = await settle(run_id, 'alpha', 1);
-  const beta = await settle(run_id, 'beta', 1);
-  const approve = (item) =>
-    call('approve_task', { run_id, task_id: item.task_id, attempt_id: item.attempt.id, commit: item.attempt.commit });
-  log('approve alpha', (await approve(alpha)).state);
-  const conflict = await approve(beta);
-  log('approve beta', conflict.state);
-  if (conflict.state !== 'integration_conflict') throw new Error('Expected an integration conflict.');
-
-  await call('request_changes', {
-    run_id,
-    task_id: 'beta',
-    attempt_id: beta.attempt.id,
-    feedback:
-      'Resolve the conflict so that the second line of greeting.txt is exactly "alpha beta". Keep the other lines and leave no conflict markers.',
-  });
-  const corrected = await settle(run_id, 'beta', 2);
-  log('conflicts', corrected.attempt.conflicts);
-  log('approve correction', (await approve(corrected)).state);
-
+async function finish(run_id, expected) {
   await call('validate_run', { run_id });
   let current;
   for (let i = 0; i < 100; i++) {
@@ -202,15 +171,100 @@ async function run() {
   log('finalize', finalized.state, finalized.error ?? '');
   const text = fs.readFileSync(path.join(repo, 'greeting.txt'), 'utf8').replaceAll('\r\n', '\n');
   log('greeting.txt', JSON.stringify(text));
-  if (finalized.state !== 'completed' || text !== 'first\nalpha beta\nthird\n')
-    throw new Error('Final state is wrong.');
+  if (finalized.state !== 'completed' || text !== expected) throw new Error('Final state is wrong.');
   if (git('status', '--short')) throw new Error('The repository is not clean.');
+}
+
+async function checkedDoctor() {
+  const doctor = await call('doctor', { repo, worker });
+  log('doctor', doctor.compatible, doctor.runtime?.cli?.version, doctor.runtime?.sdk?.version ?? '');
+  if (!doctor.compatible) throw new Error(JSON.stringify(doctor.connection));
+}
+
+async function run() {
+  await checkedDoctor();
+  const created = await call('create_run', {
+    repo,
+    worker,
+    tasks: [task('alpha'), task('beta')],
+    final_verification: [check],
+    settings: { timeout_ms: 900000 },
+  });
+  if (created.error) throw new Error(JSON.stringify(created.error));
+  const run_id = created.run_id;
+  log('run', run_id);
+
+  const alpha = await settle(run_id, 'alpha', 1);
+  const beta = await settle(run_id, 'beta', 1);
+  log('approve alpha', (await approve(run_id, alpha)).state);
+  const conflict = await approve(run_id, beta);
+  log('approve beta', conflict.state);
+  if (conflict.state !== 'integration_conflict') throw new Error('Expected an integration conflict.');
+
+  await call('request_changes', {
+    run_id,
+    task_id: 'beta',
+    attempt_id: beta.attempt.id,
+    feedback:
+      'Resolve the conflict so that the second line of greeting.txt is exactly "alpha beta". Keep the other lines and leave no conflict markers.',
+  });
+  const corrected = await settle(run_id, 'beta', 2);
+  log('conflicts', corrected.attempt.conflicts);
+  log('approve correction', (await approve(run_id, corrected)).state);
+
+  await finish(run_id, 'first\nalpha beta\nthird\n');
+}
+
+// Killing the service must neither stop the worker nor send its model request again.
+async function runRestart() {
+  await checkedDoctor();
+  const created = await call('create_run', {
+    repo,
+    worker,
+    tasks: [task('alpha')],
+    final_verification: [check],
+    settings: { timeout_ms: 900000 },
+  });
+  if (created.error) throw new Error(JSON.stringify(created.error));
+  const run_id = created.run_id;
+  log('run', run_id);
+
+  const end = Date.now() + 5 * 60_000;
+  let attempt, before;
+  while (Date.now() < end) {
+    attempt ??= (await loadRun(run_id)).items[0]?.attempt;
+    before = attempt?.id && readJson(path.join(data, 'jobs', attempt.id, 'worker.json'));
+    if (before?.prompt_accepted) break;
+    await answerInputs(run_id, 'alpha', attempt);
+    await sleep(100);
+  }
+  if (!before?.prompt_accepted) throw new Error('The model request was never accepted.');
+  if (before.stopped) throw new Error('The worker finished before the service could be killed.');
+
+  const { owner } = readJson(path.join(data, 'service.json'));
+  process.kill(owner.pid, 'SIGKILL');
+  log('killed service', owner.pid, 'worker phase', before.phase);
+  await sleep(1000);
+
+  const alpha = await settle(run_id, 'alpha', 1);
+  const after = readJson(path.join(data, 'jobs', attempt.id, 'worker.json'));
+  const service = readJson(path.join(data, 'service.json'));
+  log('new service', service.owner.pid, 'prompt_intent', before.prompt_intent, after.prompt_intent);
+  if (service.owner.pid === owner.pid) throw new Error('The service did not restart.');
+  for (const field of ['prompt_id', 'prompt_intent', 'session_id'])
+    if (before[field] !== after[field])
+      throw new Error(`The restart changed ${field}: the prompt may have been resent.`);
+  if (before.host.pid !== after.host.pid) throw new Error('The restart replaced the worker process.');
+  if (alpha.attempt.id !== attempt.id) throw new Error('The restart started another attempt.');
+
+  log('approve alpha', (await approve(run_id, alpha)).state);
+  await finish(run_id, 'first\nalpha\nthird\n');
 }
 
 let failure;
 try {
   prepare();
-  await run();
+  await (restart ? runRestart() : run());
 } catch (error) {
   failure = error;
 }
@@ -221,4 +275,4 @@ if (failure) {
   process.exit(1);
 }
 fs.rmSync(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
-log('E2E PASSED', platform, modelArg ?? 'default model');
+log('E2E PASSED', platform, modelArg ?? 'default model', restart ? 'with a service restart' : '');
