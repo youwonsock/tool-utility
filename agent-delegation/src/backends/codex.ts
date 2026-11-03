@@ -61,10 +61,9 @@ export class CodexBackend implements WorkerBackend {
       );
     this.frames.push(frame);
   }
-  // oxlint-disable-next-line max-lines-per-function
   private receive(frame: RpcFrame) {
     this.lastFrameAt = Date.now();
-    const { state, save, spec } = this.context;
+    const { state } = this.context;
     const p = frame.params ?? {};
     this.retain(frame, p);
     if (p.threadId && p.threadId !== state.session_id) {
@@ -72,6 +71,18 @@ export class CodexBackend implements WorkerBackend {
         this.dynamicResult(frame, false, { error: 'Dynamic call is not owned by this worker thread.' });
       return;
     }
+    this.recordNotice(frame, p);
+    if (frame.id === undefined || !frame.method) return;
+    const id = `input_${digest({ method: frame.method, id: frame.id, session: state.session_id }).slice(0, 32)}`;
+    if (frame.method === 'item/tool/call') {
+      this.dynamicCall(frame, p, id);
+      return;
+    }
+    this.nativeRequest(frame, p, id);
+  }
+  // Notifications that change the turn, usage and reply confirmations.
+  private recordNotice(frame: RpcFrame, p: any) {
+    const { state, save } = this.context;
     if (frame.method === 'serverRequest/resolved') {
       for (const [key, pending] of this.pending)
         if (String(pending.frame.id) === String(p.requestId)) this.pending.delete(key);
@@ -105,42 +116,43 @@ export class CodexBackend implements WorkerBackend {
     }
     if (frame.method === 'item/started' && p.item?.type === 'userMessage' && p.item.id === state.prompt_id)
       this.accepted = true;
-    if (frame.id === undefined || !frame.method) return;
-    const id = `input_${digest({ method: frame.method, id: frame.id, session: state.session_id }).slice(0, 32)}`;
-    if (frame.method === 'item/tool/call') {
-      try {
-        assertScopeMonitor(spec, state);
-        invariant(
-          !this.cancelled &&
-            p.threadId === state.session_id &&
-            p.turnId === state.turn_id &&
-            p.namespace == null &&
-            typeof p.callId === 'string' &&
-            p.callId.length > 0 &&
-            p.callId.length <= 4096 &&
-            !/[\x00-\x1f\x7f]/.test(p.callId),
-          'MCP_POLICY',
-          'Dynamic call is not owned by this worker turn.',
-        );
-        if (p.tool === CODEX_READ_TOOL) {
-          this.dynamicResult(frame, true, readCodexFile(spec, p.arguments));
-          return;
-        }
-        invariant(p.tool === CODEX_COMMAND_TOOL, 'MCP_POLICY', 'Unknown dynamic worker tool.');
-        const command = codexCommand(spec, p.arguments);
-        const input: InputRequest = {
-          id,
-          kind: 'permission',
-          details: { tool: p.tool, ...command },
-          supported_decisions: ['once', 'always', 'reject'],
-          grant_key: workerPermissionKey(spec, p.tool, command),
-        };
-        this.pending.set(id, { frame, input });
-      } catch (error) {
-        this.dynamicResult(frame, false, { error: (error as Error).message });
+  }
+  private dynamicCall(frame: RpcFrame, p: any, id: string) {
+    const { state, spec } = this.context;
+    try {
+      assertScopeMonitor(spec, state);
+      invariant(
+        !this.cancelled &&
+          p.threadId === state.session_id &&
+          p.turnId === state.turn_id &&
+          p.namespace == null &&
+          typeof p.callId === 'string' &&
+          p.callId.length > 0 &&
+          p.callId.length <= 4096 &&
+          !/[\x00-\x1f\x7f]/.test(p.callId),
+        'MCP_POLICY',
+        'Dynamic call is not owned by this worker turn.',
+      );
+      if (p.tool === CODEX_READ_TOOL) {
+        this.dynamicResult(frame, true, readCodexFile(spec, p.arguments));
+        return;
       }
-      return;
+      invariant(p.tool === CODEX_COMMAND_TOOL, 'MCP_POLICY', 'Unknown dynamic worker tool.');
+      const command = codexCommand(spec, p.arguments);
+      const input: InputRequest = {
+        id,
+        kind: 'permission',
+        details: { tool: p.tool, ...command },
+        supported_decisions: ['once', 'always', 'reject'],
+        grant_key: workerPermissionKey(spec, p.tool, command),
+      };
+      this.pending.set(id, { frame, input });
+    } catch (error) {
+      this.dynamicResult(frame, false, { error: (error as Error).message });
     }
+  }
+  private nativeRequest(frame: RpcFrame, p: any, id: string) {
+    const { spec } = this.context;
     const question = frame.method === 'item/tool/requestUserInput' || frame.method === 'mcpServer/elicitation/request';
     const supported = [
       'item/commandExecution/requestApproval',
@@ -149,7 +161,7 @@ export class CodexBackend implements WorkerBackend {
       'item/tool/requestUserInput',
       'mcpServer/elicitation/request',
     ];
-    if (!supported.includes(frame.method)) {
+    if (!supported.includes(frame.method!)) {
       this.error = `Unsupported native server request: ${frame.method}`;
       this.peer?.write({
         id: frame.id,
@@ -157,7 +169,7 @@ export class CodexBackend implements WorkerBackend {
       });
       return;
     }
-    const decision = question ? 'ask' : this.permissionDecision(frame.method, p);
+    const decision = question ? 'ask' : this.permissionDecision(frame.method!, p);
     if (!question && decision !== 'ask') {
       this.peer!.write({
         id: frame.id,
@@ -185,7 +197,7 @@ export class CodexBackend implements WorkerBackend {
       kind: question ? 'question' : 'permission',
       details: p,
       supported_decisions: question ? ['answer', 'reject'] : ['once', 'always', 'reject'],
-      ...(question ? {} : { grant_key: workerPermissionKey(spec, frame.method, logical) }),
+      ...(question ? {} : { grant_key: workerPermissionKey(spec, frame.method!, logical) }),
     };
     this.pending.set(id, { frame, input });
   }
@@ -235,7 +247,6 @@ export class CodexBackend implements WorkerBackend {
     );
     this.peer.write({ method: 'initialized' });
   }
-  // oxlint-disable-next-line max-lines-per-function
   async start() {
     const { spec, state, save } = this.context;
     const version = await executableVersion(spec);
@@ -254,34 +265,11 @@ export class CodexBackend implements WorkerBackend {
       hooks: false,
     };
     // Probe configuration without starting a thread or model; stop it before the owned execution server.
-    await this.launch({ features });
-    const initial = (await this.peer!.request('config/read', { cwd: spec.directory, includeLayers: false })).config;
-    invariant(
-      initial && typeof initial === 'object',
-      'BACKEND_API',
-      'Codex config/read API returned an incompatible response.',
-    );
-    invariant(await stopOwned(this.context), 'STOP_UNCERTAIN', 'Codex configuration probe did not stop.');
-    this.windowsSandbox = codexWindowsSandbox(initial);
-    const mcp: Record<string, unknown> = Object.fromEntries(
-      Object.keys(initial.mcp_servers ?? {}).map((name) => [name, { enabled: false }]),
-    );
-    for (const resource of spec.resources) {
-      const c = connection(resource, spec.directory);
-      invariant(c.type !== 'sse', 'MCP_POLICY', 'Codex requires stdio or streamable HTTP resources.');
-      mcp[resource.connection.name] =
-        c.type === 'stdio'
-          ? { command: c.command, args: c.args, env: c.env, enabled: true }
-          : { url: c.url, http_headers: c.headers, enabled: true };
-    }
+    const initial = await this.probeConfig(features);
+    const mcp = this.workerMcp(initial);
     const cli = spec.host_executable;
     const hookCommand = [process.execPath, cli, 'policy-hook', spec.job_dir].map(quote).join(' ');
-    const hooks: Record<string, unknown> = Object.fromEntries(
-      Object.keys(initial.hooks ?? {})
-        .filter((event) => event !== 'state')
-        .map((event) => [event, []]),
-    );
-    hooks.state = {};
+    const hooks = this.workerHooks(initial);
     hooks.PreToolUse = [{ matcher: '.*', hooks: [{ type: 'command', command: hookCommand, timeout: 15 }] }];
     const discovery = {
       features: { ...features, hooks: true, default_mode_request_user_input: true },
@@ -293,63 +281,115 @@ export class CodexBackend implements WorkerBackend {
       ...(this.windowsSandbox ? { 'windows.sandbox': this.windowsSandbox } : {}),
     };
     await this.launch(discovery);
-    const inspectHook = async (trusted: boolean, key?: string, hash?: string) => {
-      const listing = await this.peer!.request('hooks/list', { cwds: [spec.directory] });
-      invariant(
-        Array.isArray(listing?.data) && listing.data.length === 1,
-        'MCP_POLICY',
-        'Codex hook inventory is unavailable.',
-      );
-      const entry = listing.data[0];
-      invariant(
-        entry.cwd === spec.directory &&
-          Array.isArray(entry.hooks) &&
-          entry.hooks.length === 1 &&
-          !entry.errors?.length &&
-          !entry.warnings?.length,
-        'MCP_POLICY',
-        'Codex hook inventory contains unexpected entries or errors.',
-      );
-      const hook = entry.hooks[0];
-      invariant(
-        hook.eventName === 'preToolUse' &&
-          hook.source === 'sessionFlags' &&
-          hook.handlerType === 'command' &&
-          hook.command === hookCommand &&
-          hook.matcher === '.*' &&
-          hook.async === false &&
-          hook.enabled === true &&
-          hook.timeoutSec === 15 &&
-          typeof hook.key === 'string' &&
-          hook.key.length > 0 &&
-          hook.key.length <= 8192 &&
-          !/[\x00-\x1f\x7f]/.test(hook.key) &&
-          typeof hook.currentHash === 'string' &&
-          /^sha256:[a-f0-9]{64}$/.test(hook.currentHash),
-        'MCP_POLICY',
-        'Codex did not retain the exact owned synchronous tool hook.',
-      );
-      invariant(
-        !trusted || (hook.trustStatus === 'trusted' && hook.key === key && hook.currentHash === hash),
-        'MCP_POLICY',
-        'Codex worker hook is not trusted with the discovered content hash.',
-      );
-      return hook;
-    };
-    const discovered = await inspectHook(false);
+    const discovered = await this.inspectHook(hookCommand, false);
     invariant(await stopOwned(this.context), 'STOP_UNCERTAIN', 'Codex hook discovery did not stop.');
     hooks.state = { [discovered.key]: { enabled: true, trusted_hash: discovered.currentHash } };
     const overrides = { ...discovery, features: { ...discovery.features, code_mode_host: true } };
     await this.launch(overrides);
-    const trusted = await inspectHook(true, discovered.key, discovered.currentHash);
+    const trusted = await this.inspectHook(hookCommand, true, discovered.key, discovered.currentHash);
     const effective = (await this.peer!.request('config/read', { cwd: spec.directory, includeLayers: false })).config;
     invariant(
       effective && typeof effective === 'object',
       'BACKEND_API',
       'Codex config/read API returned an incompatible response.',
     );
+    this.checkEffectivePolicy(effective, overrides.features);
+    this.recordHookPolicy(effective, hookCommand, trusted);
+    this.checkEffectiveMcp(effective, mcp);
+    this.model =
+      typeof spec.worker.model === 'string'
+        ? spec.worker.model
+        : typeof initial.model === 'string' && initial.model.length
+          ? initial.model
+          : undefined;
+    state.backend = 'codex';
+    state.backend_version = version;
+    save();
+  }
+  private async probeConfig(features: Record<string, boolean>) {
+    const { spec } = this.context;
+    await this.launch({ features });
+    const initial = (await this.peer!.request('config/read', { cwd: spec.directory, includeLayers: false })).config;
     invariant(
-      Object.entries(overrides.features).every(([key, value]) => effective.features?.[key] === value) &&
+      initial && typeof initial === 'object',
+      'BACKEND_API',
+      'Codex config/read API returned an incompatible response.',
+    );
+    invariant(await stopOwned(this.context), 'STOP_UNCERTAIN', 'Codex configuration probe did not stop.');
+    this.windowsSandbox = codexWindowsSandbox(initial);
+    return initial;
+  }
+  private workerMcp(initial: any) {
+    const { spec } = this.context;
+    const mcp: Record<string, unknown> = Object.fromEntries(
+      Object.keys(initial.mcp_servers ?? {}).map((name) => [name, { enabled: false }]),
+    );
+    for (const resource of spec.resources) {
+      const c = connection(resource, spec.directory);
+      invariant(c.type !== 'sse', 'MCP_POLICY', 'Codex requires stdio or streamable HTTP resources.');
+      mcp[resource.connection.name] =
+        c.type === 'stdio'
+          ? { command: c.command, args: c.args, env: c.env, enabled: true }
+          : { url: c.url, http_headers: c.headers, enabled: true };
+    }
+    return mcp;
+  }
+  private workerHooks(initial: any) {
+    const hooks: Record<string, unknown> = Object.fromEntries(
+      Object.keys(initial.hooks ?? {})
+        .filter((event) => event !== 'state')
+        .map((event) => [event, []]),
+    );
+    hooks.state = {};
+    return hooks;
+  }
+  private async inspectHook(hookCommand: string, trusted: boolean, key?: string, hash?: string) {
+    const { spec } = this.context;
+    const listing = await this.peer!.request('hooks/list', { cwds: [spec.directory] });
+    invariant(
+      Array.isArray(listing?.data) && listing.data.length === 1,
+      'MCP_POLICY',
+      'Codex hook inventory is unavailable.',
+    );
+    const entry = listing.data[0];
+    invariant(
+      entry.cwd === spec.directory &&
+        Array.isArray(entry.hooks) &&
+        entry.hooks.length === 1 &&
+        !entry.errors?.length &&
+        !entry.warnings?.length,
+      'MCP_POLICY',
+      'Codex hook inventory contains unexpected entries or errors.',
+    );
+    const hook = entry.hooks[0];
+    invariant(
+      hook.eventName === 'preToolUse' &&
+        hook.source === 'sessionFlags' &&
+        hook.handlerType === 'command' &&
+        hook.command === hookCommand &&
+        hook.matcher === '.*' &&
+        hook.async === false &&
+        hook.enabled === true &&
+        hook.timeoutSec === 15 &&
+        typeof hook.key === 'string' &&
+        hook.key.length > 0 &&
+        hook.key.length <= 8192 &&
+        !/[\x00-\x1f\x7f]/.test(hook.key) &&
+        typeof hook.currentHash === 'string' &&
+        /^sha256:[a-f0-9]{64}$/.test(hook.currentHash),
+      'MCP_POLICY',
+      'Codex did not retain the exact owned synchronous tool hook.',
+    );
+    invariant(
+      !trusted || (hook.trustStatus === 'trusted' && hook.key === key && hook.currentHash === hash),
+      'MCP_POLICY',
+      'Codex worker hook is not trusted with the discovered content hash.',
+    );
+    return hook;
+  }
+  private checkEffectivePolicy(effective: any, features: Record<string, boolean>) {
+    invariant(
+      Object.entries(features).every(([key, value]) => effective.features?.[key] === value) &&
         effective.web_search === 'disabled',
       'MCP_POLICY',
       'Effective Codex feature policy differs.',
@@ -370,6 +410,9 @@ export class CodexBackend implements WorkerBackend {
           : 'unsupported',
       },
     );
+  }
+  private recordHookPolicy(effective: any, hookCommand: string, trusted: any) {
+    const { spec } = this.context;
     const actualHooks = effective.hooks?.PreToolUse;
     const hookCheck =
       Array.isArray(actualHooks) &&
@@ -398,6 +441,9 @@ export class CodexBackend implements WorkerBackend {
         : null,
     });
     invariant(hookCheck, 'MCP_POLICY', 'Effective Codex tool hook differs.');
+  }
+  private checkEffectiveMcp(effective: any, mcp: Record<string, unknown>) {
+    const { spec } = this.context;
     const allowed = new Set(spec.resources.map((r) => r.connection.name));
     invariant(
       Object.entries(effective.mcp_servers ?? {}).every(
@@ -417,15 +463,6 @@ export class CodexBackend implements WorkerBackend {
             'Effective Codex resource differs from its verified profile.',
           );
     }
-    this.model =
-      typeof spec.worker.model === 'string'
-        ? spec.worker.model
-        : typeof initial.model === 'string' && initial.model.length
-          ? initial.model
-          : undefined;
-    state.backend = 'codex';
-    state.backend_version = version;
-    save();
   }
   async createSession() {
     const { spec, state, save } = this.context;
@@ -529,62 +566,65 @@ export class CodexBackend implements WorkerBackend {
       reply_confirmations: [...this.confirmed],
     };
   }
-  // oxlint-disable-next-line max-lines-per-function
   async reply(input: InputRequest, answer: Answer): Promise<'uncertain'> {
     const pending = this.pending.get(input.id);
     invariant(pending, 'INPUT', 'Native request is no longer pending.');
     const { frame } = pending,
       p = frame.params ?? {};
-    let result: unknown;
-    if (frame.method === 'item/tool/call') {
-      invariant(
-        ['once', 'always', 'reject'].includes(answer.decision),
-        'INPUT_UNSUPPORTED',
-        'Dynamic shell requires a permission decision.',
-      );
-      invariant(
-        !this.executing.has(input.id),
-        'INPUT',
-        'Dynamic command is already executing and will not be replayed.',
-      );
-      invariant(
-        answer.decision === 'reject' ||
-          (!this.cancelled &&
-            p.threadId === this.context.state.session_id &&
-            p.turnId === this.context.state.turn_id &&
-            scopeMonitorHealthy(this.context.spec, this.context.state)),
-        'MCP_POLICY',
-        'Permission no longer satisfies the hard worker policy.',
-      );
-      const command = codexCommand(this.context.spec, p.arguments);
-      this.executing.add(input.id);
-      let value: unknown = { error: 'Supervisor rejected command.' },
-        success = false;
-      if (answer.decision !== 'reject') {
-        value = await runSupervisedCommand(
-          this.context,
-          input.id,
-          command,
-          command.cwd,
-          () =>
-            this.cancelled ||
-            !this.pending.has(input.id) ||
-            p.turnId !== this.context.state.turn_id ||
-            !scopeMonitorHealthy(this.context.spec, this.context.state),
-        );
-        success = (value as { status: string }).status === 'passed';
-      }
-      this.answered.set(String(frame.id), input.id);
-      this.dynamicAnswers.set(String(p.callId), input.id);
-      this.dynamicResult(frame, success, value);
-      this.pending.delete(input.id);
-      return 'uncertain';
-    }
+    if (frame.method === 'item/tool/call') return this.replyDynamic(input, answer, frame, p);
     invariant(
       input.kind === 'question' || answer.decision === 'reject' || this.permissionDecision(frame.method!, p) !== 'deny',
       'MCP_POLICY',
       'Permission no longer satisfies the hard worker policy.',
     );
+    const result = this.nativeResult(answer, frame, p);
+    this.answered.set(String(frame.id), input.id);
+    this.peer!.write({ id: frame.id, result });
+    this.pending.delete(input.id);
+    return 'uncertain';
+  }
+  private async replyDynamic(input: InputRequest, answer: Answer, frame: RpcFrame, p: any): Promise<'uncertain'> {
+    invariant(
+      ['once', 'always', 'reject'].includes(answer.decision),
+      'INPUT_UNSUPPORTED',
+      'Dynamic shell requires a permission decision.',
+    );
+    invariant(!this.executing.has(input.id), 'INPUT', 'Dynamic command is already executing and will not be replayed.');
+    invariant(
+      answer.decision === 'reject' ||
+        (!this.cancelled &&
+          p.threadId === this.context.state.session_id &&
+          p.turnId === this.context.state.turn_id &&
+          scopeMonitorHealthy(this.context.spec, this.context.state)),
+      'MCP_POLICY',
+      'Permission no longer satisfies the hard worker policy.',
+    );
+    const command = codexCommand(this.context.spec, p.arguments);
+    this.executing.add(input.id);
+    let value: unknown = { error: 'Supervisor rejected command.' },
+      success = false;
+    if (answer.decision !== 'reject') {
+      value = await runSupervisedCommand(
+        this.context,
+        input.id,
+        command,
+        command.cwd,
+        () =>
+          this.cancelled ||
+          !this.pending.has(input.id) ||
+          p.turnId !== this.context.state.turn_id ||
+          !scopeMonitorHealthy(this.context.spec, this.context.state),
+      );
+      success = (value as { status: string }).status === 'passed';
+    }
+    this.answered.set(String(frame.id), input.id);
+    this.dynamicAnswers.set(String(p.callId), input.id);
+    this.dynamicResult(frame, success, value);
+    this.pending.delete(input.id);
+    return 'uncertain';
+  }
+  private nativeResult(answer: Answer, frame: RpcFrame, p: any) {
+    let result: unknown;
     if (frame.method === 'item/tool/requestUserInput') {
       const questions = p.questions ?? [];
       invariant(
@@ -635,10 +675,7 @@ export class CodexBackend implements WorkerBackend {
     } else if (frame.method === 'item/permissions/requestApproval')
       result = { permissions: answer.decision === 'reject' ? {} : p.permissions, scope: 'turn' };
     else result = { decision: answer.decision === 'reject' ? 'decline' : 'accept' };
-    this.answered.set(String(frame.id), input.id);
-    this.peer!.write({ id: frame.id, result });
-    this.pending.delete(input.id);
-    return 'uncertain';
+    return result;
   }
   async cancel() {
     this.cancelled = true;
