@@ -25,6 +25,35 @@
       "rules": {
         "max-lines-per-function": "off"
       }
+    },
+    {
+      "files": [
+        "src/*.ts"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "./backends/*",
+                  "!./backends/index.js"
+                ],
+                "message": "Core code reaches platform backends only through backends/index.js."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/index.ts"
+      ],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
     }
   ]
 }

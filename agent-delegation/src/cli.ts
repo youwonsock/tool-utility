@@ -6,7 +6,7 @@ import { worker } from './worker.js';
 import { serve, remoteCall } from './service.js';
 import { VERSION } from './types.js';
 import { commandHost } from './verification.js';
-import { policyHook } from './policy-hook.js';
+import { policyHook } from './backends/index.js';
 import { exportHost } from './hosts.js';
 import type { Platform } from './types.js';
 

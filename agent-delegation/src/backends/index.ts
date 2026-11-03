@@ -1,7 +1,7 @@
 import { HttpBackend } from './http.js';
 import { CodexBackend } from './codex.js';
 import { ClaudeBackend } from './claude.js';
-import type { BackendContext, WorkerBackend } from './contract.js';
+import type { BackendContext, WorkerBackend } from '../worker-backend.js';
 import { resolveRuntime, assertRuntimeUnchanged, runtimeFault } from '../runtime.js';
 import { executableVersion } from './version.js';
 import { Fault } from '../types.js';
@@ -60,4 +60,6 @@ export function createBackend(context: BackendContext): WorkerBackend {
   };
   return backend;
 }
-export type { WorkerBackend, BackendContext, Answer, Observation } from './contract.js';
+export type { WorkerBackend, BackendContext, Answer, Observation } from '../worker-backend.js';
+export { inspectHttpSession } from './http.js';
+export { policyHook } from './codex-policy-hook.js';

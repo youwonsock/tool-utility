@@ -12,7 +12,7 @@ import {
 } from './opencode.js';
 import { workerEnvironment } from '../profiles.js';
 import { spawnRuntime, stopOwned } from '../process.js';
-import type { Answer, BackendContext, Observation, WorkerBackend } from './contract.js';
+import type { Answer, BackendContext, Observation, WorkerBackend } from '../worker-backend.js';
 import { workerPermissionKey, toolPolicy, mutationPaths } from '../policy.js';
 import { verificationShell } from '../shell.js';
 import { executableVersion, reportedVersion } from './version.js';

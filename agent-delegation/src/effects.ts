@@ -73,7 +73,7 @@ import { submitTasks } from './submission.js';
 import { rejectedEvidence } from './evidence.js';
 import { resolveWorker, publicWorker } from './profiles.js';
 import { resolveRuntime, assertRuntimeUnchanged, publicRuntime } from './runtime.js';
-import { inspectHttpSession } from './backends/http.js';
+import { inspectHttpSession } from './backends/index.js';
 import { attemptsStopped } from './persistence.js';
 import { confirmedStopped, stopOwned, processEvidence } from './process.js';
 import { deploymentVersion } from './deployment.js';

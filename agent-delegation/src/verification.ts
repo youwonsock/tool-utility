@@ -5,7 +5,7 @@ import { invariant, type Evidence, type ShellSpec, type Command } from './types.
 import { readJson, writeJson, mkdir, uid, digest, sleep, alive } from './io.js';
 import { workerEnvironment } from './profiles.js';
 import { spawnRuntime, stopOwned, stopRuntimeIntent } from './process.js';
-import type { BackendContext } from './backends/contract.js';
+import type { BackendContext } from './worker-backend.js';
 import { verificationInvocation, verificationShell } from './shell.js';
 export { verificationShell } from './shell.js';
 

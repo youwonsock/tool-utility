@@ -5,7 +5,7 @@ import { workerEnvironment } from '../profiles.js';
 import { connection, workerPermissionKey, toolPolicy } from '../policy.js';
 import { spawnRuntime, stopOwned } from '../process.js';
 import { JsonRpcPeer, type RpcFrame } from './json-rpc.js';
-import type { Answer, BackendContext, Observation, WorkerBackend } from './contract.js';
+import type { Answer, BackendContext, Observation, WorkerBackend } from '../worker-backend.js';
 import { executableVersion } from './version.js';
 import { assertScopeMonitor, scopeMonitorHealthy } from '../scope.js';
 import {
