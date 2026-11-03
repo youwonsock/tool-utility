@@ -24,15 +24,7 @@ export async function resolvedConfig(executable: string, args: string[], directo
     throw new Fault('OPENCODE_CONFIG', 'OpenCode configuration output was not JSON.');
   }
 }
-export function restrictions(
-  config: Record<string, any>,
-  resources: Resource[],
-  directory: string,
-  contextPaths: string[] = [],
-) {
-  const mcp: Record<string, any> = Object.fromEntries(
-    Object.keys(config.mcp ?? {}).map((name) => [name, { enabled: false }]),
-  );
+function workerPermission(directory: string, contextPaths: string[]) {
   const permission: Record<string, any> = {
     '*': 'deny',
     read: 'allow',
@@ -69,35 +61,50 @@ export function restrictions(
     task: 'deny',
     skill: 'deny',
   };
+  return permission;
+}
+function resourceMcp(r: Resource, directory: string) {
+  invariant(
+    !/codex|delegat|opencode/i.test(r.connection.name + JSON.stringify(r.connection.config)),
+    'RECURSION',
+    'Delegation MCP connections cannot be exposed to workers.',
+  );
+  const expand = (value: unknown): unknown =>
+    typeof value === 'string'
+      ? value.replaceAll('{{worktree}}', directory)
+      : Array.isArray(value)
+        ? value.map(expand)
+        : value && typeof value === 'object'
+          ? Object.fromEntries(Object.entries(value).map(([key, item]) => [key, expand(item)]))
+          : value;
+  const portable = connection(r, directory);
+  const native =
+    portable.type === 'stdio'
+      ? {
+          type: 'local',
+          command: [portable.command, ...portable.args],
+          ...(portable.env ? { environment: portable.env } : {}),
+        }
+      : { type: 'remote', url: portable.url, ...(portable.headers ? { headers: portable.headers } : {}) };
+  return expand({
+    ...native,
+    ...(r.connection.config.timeout === undefined ? {} : { timeout: r.connection.config.timeout }),
+    ...(r.connection.config.oauth === undefined ? {} : { oauth: r.connection.config.oauth }),
+    enabled: true,
+  });
+}
+export function restrictions(
+  config: Record<string, any>,
+  resources: Resource[],
+  directory: string,
+  contextPaths: string[] = [],
+) {
+  const mcp: Record<string, any> = Object.fromEntries(
+    Object.keys(config.mcp ?? {}).map((name) => [name, { enabled: false }]),
+  );
+  const permission = workerPermission(directory, contextPaths);
   for (const r of resources) {
-    invariant(
-      !/codex|delegat|opencode/i.test(r.connection.name + JSON.stringify(r.connection.config)),
-      'RECURSION',
-      'Delegation MCP connections cannot be exposed to workers.',
-    );
-    const expand = (value: unknown): unknown =>
-      typeof value === 'string'
-        ? value.replaceAll('{{worktree}}', directory)
-        : Array.isArray(value)
-          ? value.map(expand)
-          : value && typeof value === 'object'
-            ? Object.fromEntries(Object.entries(value).map(([key, item]) => [key, expand(item)]))
-            : value;
-    const portable = connection(r, directory);
-    const native =
-      portable.type === 'stdio'
-        ? {
-            type: 'local',
-            command: [portable.command, ...portable.args],
-            ...(portable.env ? { environment: portable.env } : {}),
-          }
-        : { type: 'remote', url: portable.url, ...(portable.headers ? { headers: portable.headers } : {}) };
-    mcp[r.connection.name] = expand({
-      ...native,
-      ...(r.connection.config.timeout === undefined ? {} : { timeout: r.connection.config.timeout }),
-      ...(r.connection.config.oauth === undefined ? {} : { oauth: r.connection.config.oauth }),
-      enabled: true,
-    });
+    mcp[r.connection.name] = resourceMcp(r, directory);
     permission[`${r.connection.name}_*`] = 'ask';
   }
   // A key the policy does not name would otherwise keep the user's own grant.
@@ -198,7 +205,77 @@ export async function selectModel(
   );
   return model;
 }
-// oxlint-disable-next-line max-lines-per-function
+// OpenCode and Kilo serve the same HTTP protocol under their own names.
+type ServerNames = { label: string; user: string };
+// Resolve again with the overlay before starting the server, so managed config cannot silently re-enable a connection.
+export async function checkedConfig(
+  spec: WorkerSpec,
+  env: NodeJS.ProcessEnv,
+  overlay: ReturnType<typeof restrictions>,
+) {
+  const effective = await resolvedConfig(spec.worker.executable, spec.worker.executable_args, spec.directory, env);
+  const allowed = new Set(spec.resources.map((r) => r.connection.name));
+  invariant(
+    Object.entries(effective.mcp ?? {}).every(([name, cfg]) => (cfg as any).enabled === false || allowed.has(name)),
+    'MCP_POLICY',
+    'Managed configuration enables an unregistered MCP connection.',
+  );
+  for (const name of allowed)
+    for (const [key, value] of Object.entries(overlay.mcp[name]))
+      invariant(
+        digest(effective.mcp?.[name]?.[key]) === digest(value),
+        'MCP_POLICY',
+        `Effective MCP connection differs from the verified profile: ${name}.${key}`,
+      );
+  enforceHttpPolicy(effective, overlay);
+}
+export async function awaitEndpoint(
+  child: ChildProcess,
+  output: () => string,
+  state: WorkerState,
+  save: () => void,
+  label: string,
+) {
+  for (let i = 0; i < 300; i++) {
+    const url = output().match(/https?:\/\/127\.0\.0\.1:\d+/)?.[0];
+    if (url) {
+      state.url = url;
+      save();
+      break;
+    }
+    invariant(
+      child.exitCode === null && !state.error,
+      'BACKEND_START',
+      `${label} exited before announcing its endpoint. See the local server log.`,
+    );
+    await sleep(100);
+  }
+  invariant(state.url, 'BACKEND_START', `${label} did not announce its localhost endpoint.`);
+}
+export async function connectServer(
+  sdk: Awaited<ReturnType<typeof loadSdk>>,
+  spec: WorkerSpec,
+  state: WorkerState,
+  version: string,
+  names: ServerNames,
+) {
+  const client = callSdkFactory(sdk, spec.worker, {
+    baseUrl: state.url,
+    directory: spec.directory,
+    headers: { authorization: `Basic ${Buffer.from(`${names.user}:${spec.password}`).toString('base64')}` },
+    fetch: ((input: any, init?: any) =>
+      fetch(input, { ...init, signal: init?.signal ?? AbortSignal.timeout(30000) })) as typeof fetch,
+  });
+  requireSdkMethods(client, httpSdkMethods, spec.worker);
+  const health = (await client.global.health({ throwOnError: true })).data!;
+  invariant(
+    health?.healthy === true && reportedVersion(health.version, names.label) === version,
+    'BACKEND_API',
+    `${names.label} health API did not identify the launched runtime.`,
+  );
+  return { client, health };
+}
+
 export async function launchOpenCode(spec: WorkerSpec, state: WorkerState, save: () => void) {
   const sdk = await loadSdk(spec.worker, state.runtime!);
   const version = await executableVersion(spec);
@@ -223,22 +300,7 @@ export async function launchOpenCode(spec: WorkerSpec, state: WorkerState, save:
     OPENCODE_CONFIG_CONTENT: JSON.stringify(overlay),
     AGENT_DELEGATION_WORKER: '1',
   };
-  // Resolve twice before starting the server, so managed config cannot silently re-enable a connection.
-  const effective = await resolvedConfig(spec.worker.executable, spec.worker.executable_args, spec.directory, env);
-  const allowed = new Set(spec.resources.map((r) => r.connection.name));
-  invariant(
-    Object.entries(effective.mcp ?? {}).every(([name, cfg]) => (cfg as any).enabled === false || allowed.has(name)),
-    'MCP_POLICY',
-    'Managed configuration enables an unregistered MCP connection.',
-  );
-  for (const name of allowed)
-    for (const [key, value] of Object.entries(overlay.mcp[name]))
-      invariant(
-        digest(effective.mcp?.[name]?.[key]) === digest(value),
-        'MCP_POLICY',
-        `Effective MCP connection differs from the verified profile: ${name}.${key}`,
-      );
-  enforceHttpPolicy(effective, overlay);
+  await checkedConfig(spec, env, overlay);
   const context = { spec, state, save },
     intent = beginProcess(context);
   const child: ChildProcess = spawn(
@@ -265,35 +327,8 @@ export async function launchOpenCode(spec: WorkerSpec, state: WorkerState, save:
     output = (output + data.toString()).slice(-65536);
   });
   child.stderr!.on('data', (data) => log.write(data));
-  for (let i = 0; i < 300; i++) {
-    const url = output.match(/https?:\/\/127\.0\.0\.1:\d+/)?.[0];
-    if (url) {
-      state.url = url;
-      save();
-      break;
-    }
-    invariant(
-      child.exitCode === null && !state.error,
-      'OPENCODE_START',
-      'OpenCode exited before listening. See the local server log.',
-    );
-    await sleep(100);
-  }
-  invariant(state.url, 'OPENCODE_START', 'OpenCode did not announce its localhost endpoint.');
-  const client = callSdkFactory(sdk, spec.worker, {
-    baseUrl: state.url,
-    directory: spec.directory,
-    headers: { authorization: `Basic ${Buffer.from(`opencode:${spec.password}`).toString('base64')}` },
-    fetch: ((input: any, init?: any) =>
-      fetch(input, { ...init, signal: init?.signal ?? AbortSignal.timeout(30000) })) as typeof fetch,
-  });
-  requireSdkMethods(client, httpSdkMethods, spec.worker);
-  const health = (await client.global.health({ throwOnError: true })).data!;
-  invariant(
-    health?.healthy === true && reportedVersion(health.version, 'OpenCode') === version,
-    'OPENCODE_HEALTH',
-    'OpenCode health API did not identify the launched runtime.',
-  );
+  await awaitEndpoint(child, () => output, state, save, 'OpenCode');
+  const { client, health } = await connectServer(sdk, spec, state, version, { label: 'OpenCode', user: 'opencode' });
   state.backend = 'opencode';
   state.backend_version = health.version;
   try {
