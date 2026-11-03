@@ -305,9 +305,24 @@ npm ci
 npm run check
 ```
 
-`npm run check`는 서식, oxlint, 타입, 자동 테스트, 플러그인 계약을 차례로 검사합니다. oxlint는 경고도 실패로 처리하며 100줄이 넘는 함수를 막습니다. 아직 나누지 않은 함수에는 `oxlint-disable-next-line max-lines-per-function`이 붙어 있습니다.
+`npm run check`는 서식, oxlint, 타입, 자동 테스트, 플러그인 계약을 차례로 검사합니다. oxlint 규칙은 다음과 같습니다.
 
-네 플랫폼의 모의 네이티브 프로토콜, 실제 임시 Git 저장소·프로세스, 16개 지시자 설정/구현자 조합으로 MCP 계약을 검증합니다. `npm run check:connections`는 실제 CLI·SDK 초기화와 연결을 모델 호출 없이 별도 검사합니다. 모델 작업과 IDE·데스크톱 GUI를 실제 확인하지 않았다면 미확인으로 표시합니다. 전용 GitHub Actions는 Windows·macOS의 Node 22에서 타입 검사, 자동 테스트, 플러그인 검사를 실행합니다. 로컬 형식 검사는 `plugin-creator`와 `skill-creator`의 공식 검증기로도 수행했습니다.
+- 경고도 실패로 처리합니다.
+- `src`의 함수는 100줄을 넘을 수 없습니다. 아직 나누지 않은 5개(`serve`, `StateTracker.changed`, `loadState`, `effectDoctor`, `effectStore`)에는 `oxlint-disable-next-line max-lines-per-function`이 붙어 있습니다.
+- `src` 바로 아래 파일은 구현자 코드를 `backends/index.js`로만 가져옵니다. 테스트용 공개 내보내기인 `src/index.ts`는 예외입니다.
+- 모듈 간 순환 import를 막습니다.
+
+| 영역 | 파일 |
+| --- | --- |
+| 진입점 | `cli.ts`(명령), `mcp.ts`(MCP 브리지), `service.ts`(백그라운드 서비스) |
+| 실행 제어 | `engine.ts`(도구 요청과 예약), `effects.ts`(외부 작업 실행), `lifecycle.ts`(상태 전이), `submission.ts`(작업 제출), `control.ts`(외부 작업용 격리 저장소와 변경 반영) |
+| 저장 | `store.ts`, `persistence.ts`, `storage-delta.ts`, `storage-archives.ts`, `storage-worker.ts` |
+| 워커 | `worker.ts`(별도 워커 프로세스), `worker-backend.ts`(구현자가 지켜야 할 계약), `process.ts`(소유 프로세스 기록) |
+| 구현자 | `backends/index.ts`(등록과 공통 시작), `claude.ts`, `codex.ts`, `http.ts`(Kilo), `opencode.ts`(OpenCode와 Kilo 공통 HTTP 단계) |
+| 안전 장치 | `policy.ts`(도구 정책), `scope.ts`, `scope-guard.ts`(수정 범위 감시), `verification.ts`, `shell.ts`(검증 명령 실행) |
+| 조회 | `run-view.ts`(`get_run` 응답), `engine-base.ts`(읽기 전용 조회) |
+
+네 플랫폼의 모의 네이티브 프로토콜, 실제 임시 Git 저장소·프로세스, 16개 지시자 설정/구현자 조합으로 MCP 계약을 검증합니다. `npm run check:connections`는 실제 CLI·SDK 초기화와 연결을 모델 호출 없이 별도 검사합니다. 모델 작업과 IDE·데스크톱 GUI를 실제 확인하지 않았다면 미확인으로 표시합니다. 전용 GitHub Actions는 Windows·macOS의 Node 22에서 `npm run check` 전체(서식, oxlint, 타입, 자동 테스트, 플러그인 검사)를 실행합니다. 로컬 형식 검사는 `plugin-creator`와 `skill-creator`의 공식 검증기로도 수행했습니다.
 
 CI의 실제 연결 검사만 별도 임시 경로에 테스트용 CLI·SDK를 설치합니다. 이 준비는 일반 설치·빌드·업데이트에서 실행하지 않습니다. 수동 테스트 환경은 `node scripts/prepare-connections.mjs <절대-임시-경로>`로 준비하고 `npm run check:connections -- <같은-경로>`로 검사합니다. 인수를 생략한 연결 검사는 사용자의 현재 설치본을 검사합니다.
 
