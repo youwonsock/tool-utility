@@ -1,17 +1,20 @@
 // Real-model check on a throwaway repository: parallel tasks, a conflict, a correction, finalize.
-// --restart instead kills the service while a worker holds an accepted model request.
+// --restart instead kills the service while a worker holds an accepted model request, and
+// --cancel cancels the run at that point and checks that the worker stops and nothing is applied.
 // It spends model requests, so `npm run check` does not run it. Logs stay on disk after a failure.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { dataRoot, readJson, remoteCall } from '../dist/index.mjs';
+import { alive, dataRoot, readJson, remoteCall } from '../dist/index.mjs';
 
-const usage = 'Usage: npm run e2e:platform -- <codex|opencode|claude-code|kilo> [model] [--installed] [--restart]';
+const usage =
+  'Usage: npm run e2e:platform -- <codex|opencode|claude-code|kilo> [model] [--installed] [--restart|--cancel]';
 const positional = process.argv.slice(2).filter((value) => !value.startsWith('--'));
 const installed = process.argv.includes('--installed');
 const restart = process.argv.includes('--restart');
+const cancel = process.argv.includes('--cancel');
 const [platform, modelArg] = positional;
 if (!['codex', 'opencode', 'claude-code', 'kilo'].includes(platform)) {
   console.error(usage);
@@ -215,8 +218,8 @@ async function run() {
   await finish(run_id, 'first\nalpha beta\nthird\n');
 }
 
-// Killing the service must neither stop the worker nor send its model request again.
-async function runRestart() {
+// One task whose worker holds an accepted model request, for the restart and cancel checks.
+async function acceptedAttempt() {
   await checkedDoctor();
   const created = await call('create_run', {
     repo,
@@ -239,7 +242,13 @@ async function runRestart() {
     await sleep(100);
   }
   if (!before?.prompt_accepted) throw new Error('The model request was never accepted.');
-  if (before.stopped) throw new Error('The worker finished before the service could be killed.');
+  if (before.stopped) throw new Error('The worker finished before the check could start.');
+  return { run_id, attempt, before };
+}
+
+// Killing the service must neither stop the worker nor send its model request again.
+async function runRestart() {
+  const { run_id, attempt, before } = await acceptedAttempt();
 
   const { owner } = readJson(path.join(data, 'service.json'));
   process.kill(owner.pid, 'SIGKILL');
@@ -261,10 +270,38 @@ async function runRestart() {
   await finish(run_id, 'first\nalpha\nthird\n');
 }
 
+// Cancelling mid-request must stop the worker, record the cancellation and leave the checkout as it was.
+async function runCancel() {
+  const { run_id, attempt, before } = await acceptedAttempt();
+  const head = git('rev-parse', 'HEAD');
+  const reply = await call('cancel_run', { run_id });
+  log('cancel_run', reply.state ?? '', reply.error ? JSON.stringify(reply.error) : '');
+  if (reply.error) throw new Error(JSON.stringify(reply.error));
+
+  const end = Date.now() + 3 * 60_000;
+  let current;
+  while (Date.now() < end) {
+    current = await loadRun(run_id);
+    if (current.state === 'cancelled') break;
+    await sleep(1000);
+  }
+  const item = current.items[0];
+  const after = readJson(path.join(data, 'jobs', attempt.id, 'worker.json'));
+  log('cancelled', current.state, item?.state, item?.attempt?.state, 'worker phase', after?.phase);
+  if (current.state !== 'cancelled') throw new Error(`The run ended as ${current.state}.`);
+  if (item?.state !== 'cancelled' || item.attempt?.state !== 'cancelled')
+    throw new Error(`The task ended as ${item?.state}/${item?.attempt?.state}.`);
+  if (await alive(before.host)) throw new Error('The worker process is still running.');
+  if (git('rev-parse', 'HEAD') !== head || git('status', '--short')) throw new Error('The checkout changed.');
+  const cleaned = await remoteCall(data, cli, '', { run_id }, '/cleanup');
+  log('cleanup', JSON.stringify(cleaned));
+  if (cleaned.cleaned !== run_id) throw new Error('The cancelled run could not be cleaned up.');
+}
+
 let failure;
 try {
   prepare();
-  await (restart ? runRestart() : run());
+  await (restart ? runRestart() : cancel ? runCancel() : run());
 } catch (error) {
   failure = error;
 }
@@ -275,4 +312,9 @@ if (failure) {
   process.exit(1);
 }
 fs.rmSync(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
-log('E2E PASSED', platform, modelArg ?? 'default model', restart ? 'with a service restart' : '');
+log(
+  'E2E PASSED',
+  platform,
+  modelArg ?? 'default model',
+  restart ? 'with a service restart' : cancel ? 'with a cancellation' : '',
+);
