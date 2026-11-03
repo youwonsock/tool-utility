@@ -645,10 +645,13 @@ export class Engine extends EngineBase {
   private async wait(args: { run_id: string; after: number; timeout_ms: number }) {
     const exists = this.store.isArchived(args.run_id) || this.store.state.runs.some((run) => run.id === args.run_id);
     invariant(exists, 'NOT_FOUND', 'Run not found.');
-    if (
+    // Any engine change wakes waiters, so only this run's next event or the deadline ends the wait.
+    const deadline = Date.now() + args.timeout_ms;
+    while (
+      !this.stopping &&
       !this.store.isArchived(args.run_id) &&
       !this.store.events(args.run_id).some((event) => event.seq > args.after) &&
-      args.timeout_ms
+      Date.now() < deadline
     )
       await new Promise<void>((resolve) => {
         const done = () => {
@@ -656,7 +659,7 @@ export class Engine extends EngineBase {
           this.eventsChanged.delete(done);
           resolve();
         };
-        const timer = setTimeout(done, args.timeout_ms);
+        const timer = setTimeout(done, deadline - Date.now());
         this.eventsChanged.add(done);
       });
     const events = await this.store.eventsAsync(args.run_id, args.after, 128);
