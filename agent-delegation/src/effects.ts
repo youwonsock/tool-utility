@@ -103,6 +103,7 @@ export class EffectRunner extends EngineBase {
     this.store.event(run_id, type, data);
     if (durable) await this.hooks.checkpoint();
   }
+  // oxlint-disable-next-line max-lines-per-function
   async effectDoctor(args: { repo?: string; worker: WorkerSelection; operation_id?: string }) {
     const doctorID = args.operation_id ?? uid('doctor'),
       jobDir = path.join(this.store.root, 'diagnostics', doctorID);

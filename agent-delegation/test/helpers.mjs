@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Store, Engine, exec, uid, sleep, remoteCall, loadState } from '../dist/index.mjs';
+import { Store, Engine, exec, uid, sleep, loadState } from '../dist/index.mjs';
 import { mockSdks } from './mock-sdks.mjs';
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const cli = path.join(root, 'dist/cli.mjs');

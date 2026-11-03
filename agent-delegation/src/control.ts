@@ -84,6 +84,7 @@ function mutableRun(run: Run): Run {
 }
 
 /** The effect has private mutable inputs. Publication consists solely of captured writes. */
+// oxlint-disable-next-line max-lines-per-function
 export function effectStore(source: Store, runID: string | undefined, archivedRun?: Run) {
   const changes: EffectChange[] = [],
     events: EffectEvent[] = [];

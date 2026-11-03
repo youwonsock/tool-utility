@@ -305,6 +305,8 @@ npm ci
 npm run check
 ```
 
+`npm run check`는 서식, oxlint, 타입, 자동 테스트, 플러그인 계약을 차례로 검사합니다. oxlint는 경고도 실패로 처리하며 100줄이 넘는 함수를 막습니다. 아직 나누지 않은 함수에는 `oxlint-disable-next-line max-lines-per-function`이 붙어 있습니다.
+
 네 플랫폼의 모의 네이티브 프로토콜, 실제 임시 Git 저장소·프로세스, 16개 지시자 설정/구현자 조합으로 MCP 계약을 검증합니다. `npm run check:connections`는 실제 CLI·SDK 초기화와 연결을 모델 호출 없이 별도 검사합니다. 모델 작업과 IDE·데스크톱 GUI를 실제 확인하지 않았다면 미확인으로 표시합니다. 전용 GitHub Actions는 Windows·macOS의 Node 22에서 타입 검사, 자동 테스트, 플러그인 검사를 실행합니다. 로컬 형식 검사는 `plugin-creator`와 `skill-creator`의 공식 검증기로도 수행했습니다.
 
 CI의 실제 연결 검사만 별도 임시 경로에 테스트용 CLI·SDK를 설치합니다. 이 준비는 일반 설치·빌드·업데이트에서 실행하지 않습니다. 수동 테스트 환경은 `node scripts/prepare-connections.mjs <절대-임시-경로>`로 준비하고 `npm run check:connections -- <같은-경로>`로 검사합니다. 인수를 생략한 연결 검사는 사용자의 현재 설치본을 검사합니다.

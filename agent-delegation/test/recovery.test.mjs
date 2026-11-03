@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { uid, writeJson, bootId, terminate, sleep, Store, remoteCall, connect, alive } from '../dist/index.mjs';
+import { uid, bootId, terminate, sleep, remoteCall, connect, alive } from '../dist/index.mjs';
 import { fixture, task, submit, until, review, ready, git, callOk, cli, readState, runDefaults } from './helpers.mjs';
 
 test('source edits during final verification invalidate it', async (t) => {

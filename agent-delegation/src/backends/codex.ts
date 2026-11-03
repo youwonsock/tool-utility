@@ -61,6 +61,7 @@ export class CodexBackend implements WorkerBackend {
       );
     this.frames.push(frame);
   }
+  // oxlint-disable-next-line max-lines-per-function
   private receive(frame: RpcFrame) {
     this.lastFrameAt = Date.now();
     const { state, save, spec } = this.context;
@@ -234,6 +235,7 @@ export class CodexBackend implements WorkerBackend {
     );
     this.peer.write({ method: 'initialized' });
   }
+  // oxlint-disable-next-line max-lines-per-function
   async start() {
     const { spec, state, save } = this.context;
     const version = await executableVersion(spec);
@@ -527,6 +529,7 @@ export class CodexBackend implements WorkerBackend {
       reply_confirmations: [...this.confirmed],
     };
   }
+  // oxlint-disable-next-line max-lines-per-function
   async reply(input: InputRequest, answer: Answer): Promise<'uncertain'> {
     const pending = this.pending.get(input.id);
     invariant(pending, 'INPUT', 'Native request is no longer pending.');

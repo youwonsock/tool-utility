@@ -382,7 +382,7 @@ export class Store {
       this.flushMetrics();
     }
     await this.flushCheckpoint();
-    await Promise.allSettled([...this.helpers]);
+    await Promise.allSettled(this.helpers);
   }
   isArchived(id: string) {
     return Object.hasOwn(this.state.archived_runs, id);
