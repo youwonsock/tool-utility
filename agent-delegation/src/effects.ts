@@ -13,6 +13,7 @@ import {
   type AttemptState,
   type Run,
   type Task,
+  type Validation,
   type TaskSpec,
   type WorkerSpec,
   type WorkerState,
@@ -472,217 +473,218 @@ export class EffectRunner extends EngineBase {
     });
   }
   async effectCollect(run: Run) {
-    for (const attempt of this.allAttempts(run).filter((a) => holdsResources(a))) {
-      if (
-        run.state === 'cancelling' &&
-        attempt.state !== 'resource_wait' &&
-        !fs.existsSync(path.join(attempt.job_dir, 'cancel.json'))
-      )
-        writeJson(path.join(attempt.job_dir, 'cancel.json'), { at: Date.now() });
-      const state = this.workerState(attempt);
-      if (!state) continue;
-      const progress = (w?: WorkerState) =>
-        digest(
-          w && {
-            phase: w.phase,
-            inputs: w.inputs,
-            session_id: w.session_id,
-            prompt_intent: w.prompt_intent,
-            prompt_accepted: w.prompt_accepted,
-            model: w.model,
-            shell_intent: w.shell_intent,
-            verification: w.verification,
-          },
+    for (const attempt of this.allAttempts(run).filter((a) => holdsResources(a)))
+      await this.collectAttempt(run, attempt);
+    if (run.state === 'cancelling' && !this.allAttempts(run).some(holdsResources)) {
+      moveRun(run, 'cancelled');
+      await this.emit(run.id, 'cancelled', {}, false);
+    }
+  }
+  private async collectAttempt(run: Run, attempt: Attempt) {
+    if (
+      run.state === 'cancelling' &&
+      attempt.state !== 'resource_wait' &&
+      !fs.existsSync(path.join(attempt.job_dir, 'cancel.json'))
+    )
+      writeJson(path.join(attempt.job_dir, 'cancel.json'), { at: Date.now() });
+    const state = this.workerState(attempt);
+    if (!state) return;
+    const progress = (w?: WorkerState) =>
+      digest(
+        w && {
+          phase: w.phase,
+          inputs: w.inputs,
+          session_id: w.session_id,
+          prompt_intent: w.prompt_intent,
+          prompt_accepted: w.prompt_accepted,
+          model: w.model,
+          shell_intent: w.shell_intent,
+          verification: w.verification,
+        },
+      );
+    const prior = progress(attempt.worker);
+    attempt.worker = state;
+    attempt.model = state.model;
+    attempt.usage = state.usage;
+    attempt.last_activity_at = state.last_activity_at;
+    attempt.inputs = state.inputs;
+    const ownerTask = run.tasks.find((t) => t.attempts.includes(attempt));
+    if (ownerTask && state.model && ownerTask.worker.model === undefined) {
+      ownerTask.worker.model = state.model;
+      if (attempt.execution) attempt.execution.model = state.model;
+    }
+    if (ownerTask && state.verification_shell && ownerTask.worker.shell === undefined) {
+      ownerTask.worker.shell ??= JSON.parse(JSON.stringify(state.verification_shell));
+      if (attempt.execution) attempt.execution.shell ??= JSON.parse(JSON.stringify(state.verification_shell));
+      if (run.worker.config_hash === ownerTask.worker.config_hash)
+        run.worker.shell ??= JSON.parse(JSON.stringify(state.verification_shell));
+    }
+    if (!state.stopped) {
+      const observed: AttemptState =
+        state.phase === 'needs_input' ||
+        state.phase === 'delivery_uncertain' ||
+        state.phase === 'cancelling' ||
+        state.phase === 'stop_uncertain'
+          ? state.phase
+          : 'running';
+      const uncertainOwner = ['orphaned', 'stop_uncertain'].includes(attempt.state) && !(await alive(state.host));
+      if (!uncertainOwner)
+        moveAttempt(attempt, run.state === 'cancelling' && observed !== 'stop_uncertain' ? 'cancelling' : observed);
+      if (prior !== progress(state))
+        await this.emit(run.id, 'worker_state', {
+          attempt_id: attempt.id,
+          phase: state.phase,
+          input_ids: state.inputs.map((i) => i.id),
+          prompt_dispatched: !!state.prompt_intent,
+          verified_commands: state.verification.length,
+        });
+      return;
+    }
+    const spec = readJson<WorkerSpec>(path.join(attempt.job_dir, 'spec.json'));
+    if (!(await confirmedStopped(spec ?? ({ job_dir: attempt.job_dir } as WorkerSpec), state))) {
+      if (attempt.state !== 'stop_uncertain' || prior !== progress(state)) {
+        moveAttempt(attempt, 'stop_uncertain');
+        await this.emit(run.id, 'worker_stop_unverified', { attempt_id: attempt.id });
+      }
+      return;
+    }
+    attempt.error = state.error;
+    this.recordAttemptEvidence(run, attempt, state);
+    const task = run.tasks.find((t) => t.attempts.includes(attempt));
+    if (run.state === 'cancelling' || state.phase === 'cancelled') this.finishAttempt(run, attempt, 'cancelled');
+    else if (
+      [
+        'SCOPE_VIOLATION',
+        'CONTEXT_CHANGED',
+        'WORKER_CHANGED_HEAD',
+        'SCOPE_GUARD_UNKNOWN',
+        'VERIFICATION_CHANGED',
+      ].includes(state.error_code ?? '')
+    ) {
+      attempt.error = state.error?.replace(new RegExp(`^${state.error_code}:\\s*`), '');
+      const fault = new Fault(
+        state.error_code!,
+        attempt.error ?? 'Worker scope protection rejected the result.',
+        state.error_details,
+      );
+      attempt.artifacts.push(...(await rejectedEvidence(this.store, run.id, attempt, fault)));
+      this.finishAttempt(run, attempt, 'scope_or_context_error');
+    } else if (state.phase !== 'completed') this.finishAttempt(run, attempt, 'failed');
+    else if (task) await this.acceptTaskResult(run, task, attempt);
+    else if (run.validation?.attempt === attempt) await this.acceptValidation(run, run.validation, attempt);
+    await this.emit(
+      run.id,
+      'attempt_finished',
+      { attempt_id: attempt.id, state: attempt.state, commit: attempt.commit, error: attempt.error },
+      false,
+    );
+  }
+  private recordAttemptEvidence(run: Run, attempt: Attempt, state: WorkerState) {
+    for (const file of [
+      'prompt.txt',
+      'transcript.json',
+      'server.log',
+      'host.log',
+      'scope-violation.json',
+      ...state.verification.flatMap((v, i) => [v.artifact, `verification-${i}.log`]),
+    ]) {
+      const source = inside(attempt.job_dir, file);
+      if (fs.existsSync(source))
+        attempt.artifacts.push(this.store.artifact(run.id, path.basename(file), fs.readFileSync(source)));
+    }
+    attempt.artifacts.push(
+      this.store.artifact(
+        run.id,
+        'worker-report.json',
+        JSON.stringify({
+          model_report: state.summary ?? null,
+          reported_usage: state.usage ?? null,
+          scope_notifications_lost: state.scope_guard?.notifications_lost ?? 0,
+          observed_verification: state.verification,
+          session_id: state.session_id,
+          model: state.model,
+        }),
+      ),
+    );
+    attempt.verification = state.verification.map((v) => ({
+      ...v,
+      artifact: attempt.artifacts.find((a) => a.endsWith(`-${v.artifact}`)) ?? v.artifact,
+    }));
+    attempt.inputs = [];
+  }
+  private async acceptTaskResult(run: Run, task: Task, attempt: Attempt) {
+    try {
+      const title = `Delegate ${task.spec.id} attempt ${attempt.number} (${attempt.id})`;
+      const current = await head(attempt.directory);
+      if (attempt.commit_intent && current !== attempt.base) {
+        invariant(
+          (await git(attempt.directory, ['show', '-s', '--format=%s', current])).stdout.trim() === title &&
+            (await git(attempt.directory, ['rev-parse', `${current}^`])).stdout.trim() === attempt.base,
+          'COMMIT_UNCERTAIN',
+          'Interrupted result commit does not match its durable intent.',
         );
-      const prior = progress(attempt.worker);
-      attempt.worker = state;
-      attempt.model = state.model;
-      attempt.usage = state.usage;
-      attempt.last_activity_at = state.last_activity_at;
-      attempt.inputs = state.inputs;
-      const ownerTask = run.tasks.find((t) => t.attempts.includes(attempt));
-      if (ownerTask && state.model && ownerTask.worker.model === undefined) {
-        ownerTask.worker.model = state.model;
-        if (attempt.execution) attempt.execution.model = state.model;
-      }
-      if (ownerTask && state.verification_shell && ownerTask.worker.shell === undefined) {
-        ownerTask.worker.shell ??= JSON.parse(JSON.stringify(state.verification_shell));
-        if (attempt.execution) attempt.execution.shell ??= JSON.parse(JSON.stringify(state.verification_shell));
-        if (run.worker.config_hash === ownerTask.worker.config_hash)
-          run.worker.shell ??= JSON.parse(JSON.stringify(state.verification_shell));
-      }
-      if (!state.stopped) {
-        const observed: AttemptState =
-          state.phase === 'needs_input' ||
-          state.phase === 'delivery_uncertain' ||
-          state.phase === 'cancelling' ||
-          state.phase === 'stop_uncertain'
-            ? state.phase
-            : 'running';
-        const uncertainOwner = ['orphaned', 'stop_uncertain'].includes(attempt.state) && !(await alive(state.host));
-        if (!uncertainOwner)
-          moveAttempt(attempt, run.state === 'cancelling' && observed !== 'stop_uncertain' ? 'cancelling' : observed);
-        if (prior !== progress(state))
-          await this.emit(run.id, 'worker_state', {
-            attempt_id: attempt.id,
-            phase: state.phase,
-            input_ids: state.inputs.map((i) => i.id),
-            prompt_dispatched: !!state.prompt_intent,
-            verified_commands: state.verification.length,
-          });
-        continue;
-      }
-      const spec = readJson<WorkerSpec>(path.join(attempt.job_dir, 'spec.json'));
-      if (!(await confirmedStopped(spec ?? ({ job_dir: attempt.job_dir } as WorkerSpec), state))) {
-        if (attempt.state !== 'stop_uncertain' || prior !== progress(state)) {
-          moveAttempt(attempt, 'stop_uncertain');
-          await this.emit(run.id, 'worker_stop_unverified', { attempt_id: attempt.id });
-        }
-        continue;
-      }
-      attempt.error = state.error;
-      for (const file of [
-        'prompt.txt',
-        'transcript.json',
-        'server.log',
-        'host.log',
-        'scope-violation.json',
-        ...state.verification.flatMap((v, i) => [v.artifact, `verification-${i}.log`]),
-      ]) {
-        const source = inside(attempt.job_dir, file);
-        if (fs.existsSync(source))
-          attempt.artifacts.push(this.store.artifact(run.id, path.basename(file), fs.readFileSync(source)));
+        await clean(
+          attempt.directory,
+          attempt.context.filter((c) => !c.tracked).map((c) => c.path),
+        );
+        checkContext(attempt.directory, attempt.context);
+        attempt.commit = current;
+      } else {
+        attempt.commit_intent = true;
+        await this.persist();
+        attempt.commit = await resultCommit(attempt.directory, attempt.base, task.spec.scope, attempt.context, title);
       }
       attempt.artifacts.push(
         this.store.artifact(
           run.id,
-          'worker-report.json',
-          JSON.stringify({
-            model_report: state.summary ?? null,
-            reported_usage: state.usage ?? null,
-            scope_notifications_lost: state.scope_guard?.notifications_lost ?? 0,
-            observed_verification: state.verification,
-            session_id: state.session_id,
-            model: state.model,
-          }),
+          'diff.patch',
+          (await git(attempt.directory, ['show', '--format=fuller', '--binary', attempt.commit])).stdout,
         ),
       );
-      attempt.verification = state.verification.map((v) => ({
-        ...v,
-        artifact: attempt.artifacts.find((a) => a.endsWith(`-${v.artifact}`)) ?? v.artifact,
-      }));
-      attempt.inputs = [];
-      const task = run.tasks.find((t) => t.attempts.includes(attempt));
-      if (run.state === 'cancelling' || state.phase === 'cancelled') this.finishAttempt(run, attempt, 'cancelled');
-      else if (
-        [
-          'SCOPE_VIOLATION',
-          'CONTEXT_CHANGED',
-          'WORKER_CHANGED_HEAD',
-          'SCOPE_GUARD_UNKNOWN',
-          'VERIFICATION_CHANGED',
-        ].includes(state.error_code ?? '')
-      ) {
-        attempt.error = state.error?.replace(new RegExp(`^${state.error_code}:\\s*`), '');
-        const fault = new Fault(
-          state.error_code!,
-          attempt.error ?? 'Worker scope protection rejected the result.',
-          state.error_details,
-        );
-        attempt.artifacts.push(...(await rejectedEvidence(this.store, run.id, attempt, fault)));
-        this.finishAttempt(run, attempt, 'scope_or_context_error');
-      } else if (state.phase !== 'completed') this.finishAttempt(run, attempt, 'failed');
-      else if (task) {
-        try {
-          const title = `Delegate ${task.spec.id} attempt ${attempt.number} (${attempt.id})`;
-          const current = await head(attempt.directory);
-          if (attempt.commit_intent && current !== attempt.base) {
-            invariant(
-              (await git(attempt.directory, ['show', '-s', '--format=%s', current])).stdout.trim() === title &&
-                (await git(attempt.directory, ['rev-parse', `${current}^`])).stdout.trim() === attempt.base,
-              'COMMIT_UNCERTAIN',
-              'Interrupted result commit does not match its durable intent.',
-            );
-            await clean(
-              attempt.directory,
-              attempt.context.filter((c) => !c.tracked).map((c) => c.path),
-            );
-            checkContext(attempt.directory, attempt.context);
-            attempt.commit = current;
-          } else {
-            attempt.commit_intent = true;
-            await this.persist();
-            attempt.commit = await resultCommit(
-              attempt.directory,
-              attempt.base,
-              task.spec.scope,
-              attempt.context,
-              title,
-            );
-          }
-          attempt.artifacts.push(
-            this.store.artifact(
-              run.id,
-              'diff.patch',
-              (await git(attempt.directory, ['show', '--format=fuller', '--binary', attempt.commit])).stdout,
-            ),
-          );
-          const unresolved = unresolvedConflicts(attempt.directory, attempt.conflicts ?? {});
-          if (unresolved.length) attempt.error = `Merge conflicts remain in: ${unresolved.join(', ')}`;
-          this.finishAttempt(run, attempt, unresolved.length ? 'conflict_unresolved' : 'needs_review');
-        } catch (e) {
-          if (this.store.uncertain) throw e;
-          attempt.error = (e as Error).message;
-          this.finishAttempt(run, attempt, 'scope_or_context_error');
-          attempt.artifacts.push(...(await rejectedEvidence(this.store, run.id, attempt, e)));
-        }
-      } else if (run.validation?.attempt === attempt) {
-        const validation = run.validation;
-        try {
-          invariant(
-            validation.state === 'running',
-            'VALIDATION_FAILED',
-            'This validation is no longer awaiting execution. Start a new validation after termination.',
-          );
-          invariant(
-            (await head(attempt.directory)) === validation.commit,
-            'VALIDATION_CHANGED',
-            'Validation changed HEAD.',
-          );
-          await clean(
-            attempt.directory,
-            attempt.context.filter((c) => !c.tracked).map((c) => c.path),
-          );
-          checkContext(attempt.directory, attempt.context);
-          invariant(
-            attempt.verification.length === run.final_verification.length &&
-              attempt.verification.every((v) => v.status === 'passed'),
-            'VALIDATION_FAILED',
-            'Final verification has failed, incomplete or unknown commands.',
-          );
-          invariant(
-            validation.revision === run.revision &&
-              validation.commands_hash === digest(run.final_verification) &&
-              validation.context_hash === contextHash(attempt.context),
-            'STALE_VALIDATION',
-            'Frozen validation inputs changed.',
-          );
-          this.finishAttempt(run, attempt, 'verified');
-        } catch (e) {
-          attempt.error = (e as Error).message;
-          this.finishAttempt(run, attempt, 'failed');
-        }
-      }
-      await this.emit(
-        run.id,
-        'attempt_finished',
-        { attempt_id: attempt.id, state: attempt.state, commit: attempt.commit, error: attempt.error },
-        false,
-      );
+      const unresolved = unresolvedConflicts(attempt.directory, attempt.conflicts ?? {});
+      if (unresolved.length) attempt.error = `Merge conflicts remain in: ${unresolved.join(', ')}`;
+      this.finishAttempt(run, attempt, unresolved.length ? 'conflict_unresolved' : 'needs_review');
+    } catch (e) {
+      if (this.store.uncertain) throw e;
+      attempt.error = (e as Error).message;
+      this.finishAttempt(run, attempt, 'scope_or_context_error');
+      attempt.artifacts.push(...(await rejectedEvidence(this.store, run.id, attempt, e)));
     }
-    if (run.state === 'cancelling' && !this.allAttempts(run).some(holdsResources)) {
-      moveRun(run, 'cancelled');
-      await this.emit(run.id, 'cancelled', {}, false);
+  }
+  private async acceptValidation(run: Run, validation: Validation, attempt: Attempt) {
+    try {
+      invariant(
+        validation.state === 'running',
+        'VALIDATION_FAILED',
+        'This validation is no longer awaiting execution. Start a new validation after termination.',
+      );
+      invariant(
+        (await head(attempt.directory)) === validation.commit,
+        'VALIDATION_CHANGED',
+        'Validation changed HEAD.',
+      );
+      await clean(
+        attempt.directory,
+        attempt.context.filter((c) => !c.tracked).map((c) => c.path),
+      );
+      checkContext(attempt.directory, attempt.context);
+      invariant(
+        attempt.verification.length === run.final_verification.length &&
+          attempt.verification.every((v) => v.status === 'passed'),
+        'VALIDATION_FAILED',
+        'Final verification has failed, incomplete or unknown commands.',
+      );
+      invariant(
+        validation.revision === run.revision &&
+          validation.commands_hash === digest(run.final_verification) &&
+          validation.context_hash === contextHash(attempt.context),
+        'STALE_VALIDATION',
+        'Frozen validation inputs changed.',
+      );
+      this.finishAttempt(run, attempt, 'verified');
+    } catch (e) {
+      attempt.error = (e as Error).message;
+      this.finishAttempt(run, attempt, 'failed');
     }
   }
   async effectReview(args: any) {
@@ -788,158 +790,179 @@ export class EffectRunner extends EngineBase {
     }
   }
   async effectReconcile(run: Run, resume = true) {
-    for (const attempt of this.allAttempts(run).filter((a) => holdsResources(a))) {
-      const stateForRuntime = this.workerState(attempt),
-        specForRuntime = readJson<WorkerSpec>(path.join(attempt.job_dir, 'spec.json'));
-      const implementation = !!run.tasks.find((task) => task.attempts.includes(attempt));
-      if (implementation && run.state !== 'cancelling') {
-        try {
-          const expected = stateForRuntime?.runtime ?? attempt.execution?.runtime;
-          invariant(
-            expected,
-            'RUNTIME_CHANGED',
-            'This unfinished attempt has no execution identity. Use the previous release to finish or cancel it; no model request was replayed.',
+    for (const attempt of this.allAttempts(run).filter((a) => holdsResources(a)))
+      await this.reconcileAttempt(run, attempt, resume);
+    await this.effectCollect(run);
+    await this.reconcileIntegrations(run);
+    await this.reconcileFinalize(run);
+    await this.emit(run.id, 'reconciled', { state: run.state }, false);
+  }
+  private async reconcileAttempt(run: Run, attempt: Attempt, resume: boolean) {
+    await this.checkAttemptRuntime(run, attempt);
+    if (attempt.state === 'resource_wait') {
+      if (run.state === 'cancelling') {
+        this.finishAttempt(run, attempt, 'cancelled');
+        return;
+      }
+      if (!resume || attempt.runtime_error) return;
+      await this.resumeWaitingAttempt(run, attempt);
+      return;
+    }
+    const state = this.workerState(attempt);
+    if (
+      !attempt.launch_boot &&
+      !state &&
+      !fs.existsSync(path.join(attempt.job_dir, 'started.json')) &&
+      !fs.existsSync(path.join(attempt.job_dir, 'launch.json'))
+    ) {
+      this.finishAttempt(run, attempt, 'interrupted');
+      attempt.error =
+        'No durable process launch intent exists; the external preparation was interrupted and was not replayed.';
+      return;
+    }
+    if (run.state === 'cancelling' && !fs.existsSync(path.join(attempt.job_dir, 'cancel.json')))
+      writeJson(path.join(attempt.job_dir, 'cancel.json'), { at: Date.now() });
+    if (attempt.launch_boot && attempt.launch_boot !== (await bootId()) && !state?.stopped) {
+      this.finishAttempt(run, attempt, 'interrupted');
+      attempt.error = 'The computer rebooted; prior processes cannot still be running. No model request was replayed.';
+      return;
+    }
+    const owner =
+      state?.host ??
+      readJson<{ host: WorkerState['host'] }>(path.join(attempt.job_dir, 'started.json'))?.host ??
+      readJson<{ host: WorkerState['host'] }>(path.join(attempt.job_dir, 'launch.json'))?.host;
+    if (state?.url && !state.stopped) await this.recordSessionEvidence(run, attempt, state);
+    if (owner && (await alive(owner))) return;
+    await this.settleLostOwner(run, attempt, state, owner);
+  }
+  private async checkAttemptRuntime(run: Run, attempt: Attempt) {
+    const stateForRuntime = this.workerState(attempt),
+      specForRuntime = readJson<WorkerSpec>(path.join(attempt.job_dir, 'spec.json'));
+    const implementation = !!run.tasks.find((task) => task.attempts.includes(attempt));
+    if (implementation && run.state !== 'cancelling') {
+      try {
+        const expected = stateForRuntime?.runtime ?? attempt.execution?.runtime;
+        invariant(
+          expected,
+          'RUNTIME_CHANGED',
+          'This unfinished attempt has no execution identity. Use the previous release to finish or cancel it; no model request was replayed.',
+        );
+        await assertRuntimeUnchanged(specForRuntime?.worker ?? attempt.execution ?? run.worker, expected);
+      } catch (error) {
+        if (!attempt.runtime_error) {
+          attempt.runtime_error = { code: 'RUNTIME_CHANGED', message: (error as Error).message };
+          attempt.artifacts.push(
+            this.store.artifact(run.id, 'runtime-change.json', JSON.stringify(attempt.runtime_error)),
           );
-          await assertRuntimeUnchanged(specForRuntime?.worker ?? attempt.execution ?? run.worker, expected);
-        } catch (error) {
-          if (!attempt.runtime_error) {
-            attempt.runtime_error = { code: 'RUNTIME_CHANGED', message: (error as Error).message };
-            attempt.artifacts.push(
-              this.store.artifact(run.id, 'runtime-change.json', JSON.stringify(attempt.runtime_error)),
-            );
-            await this.emit(run.id, 'runtime_changed', { attempt_id: attempt.id, ...attempt.runtime_error });
-          }
+          await this.emit(run.id, 'runtime_changed', { attempt_id: attempt.id, ...attempt.runtime_error });
         }
       }
-      if (attempt.state === 'resource_wait') {
-        if (run.state === 'cancelling') {
-          this.finishAttempt(run, attempt, 'cancelled');
-          continue;
-        }
-        if (!resume || attempt.runtime_error) continue;
-        const task = run.tasks.find((t) => t.attempts.includes(attempt));
-        try {
-          await this.hooks.reserveResume(run, attempt);
-          checkContext(run.repo, attempt.context);
-          checkContext(attempt.directory, attempt.context);
-          await probeResources(this.resources(run, attempt), attempt.directory);
-          invariant(
-            !fs.existsSync(path.join(attempt.job_dir, 'spec.json')),
-            'DISPATCH_UNCERTAIN',
-            'An execution intent already exists; it cannot be dispatched again.',
-          );
-          const spec = task
-            ? {
-                goal: this.attemptGoal(task, attempt),
-                acceptance: task.spec.acceptance,
-                verification: task.spec.verification,
-                scope: task.spec.scope,
-                model: task.worker.model ?? task.attempts.at(-2)?.model,
-                validation: false,
-              }
-            : {
-                goal: 'Execute the frozen final verification commands.',
-                acceptance: [],
-                verification: run.final_verification,
-                scope: [],
-                validation: true,
-              };
-          await (this.options.spawn ?? this.spawn).call(this, run, attempt, spec);
-          attempt.error = undefined;
-          if (task) moveTask(task, 'running');
-          else if (run.validation) moveValidation(run.validation, 'running');
-          await this.emit(run.id, 'resource_binding_verified', {
-            attempt_id: attempt.id,
-            directory: attempt.directory,
-          });
-        } catch (e) {
-          if (e instanceof Fault && ['CAPACITY', 'RESOURCE_BUSY'].includes(e.code)) {
-            attempt.error = e.message;
-            await this.persist();
-            continue;
+    }
+  }
+  private async resumeWaitingAttempt(run: Run, attempt: Attempt) {
+    const task = run.tasks.find((t) => t.attempts.includes(attempt));
+    try {
+      await this.hooks.reserveResume(run, attempt);
+      checkContext(run.repo, attempt.context);
+      checkContext(attempt.directory, attempt.context);
+      await probeResources(this.resources(run, attempt), attempt.directory);
+      invariant(
+        !fs.existsSync(path.join(attempt.job_dir, 'spec.json')),
+        'DISPATCH_UNCERTAIN',
+        'An execution intent already exists; it cannot be dispatched again.',
+      );
+      const spec = task
+        ? {
+            goal: this.attemptGoal(task, attempt),
+            acceptance: task.spec.acceptance,
+            verification: task.spec.verification,
+            scope: task.spec.scope,
+            model: task.worker.model ?? task.attempts.at(-2)?.model,
+            validation: false,
           }
-          await this.launchFailure(run, attempt, e);
-          if (!holdsResources(attempt) && !task && run.validation) {
-            moveValidation(run.validation, 'failed');
-            if ((run.state as string) !== 'cancelling') moveRun(run, 'active');
-          }
-        }
-        continue;
+        : {
+            goal: 'Execute the frozen final verification commands.',
+            acceptance: [],
+            verification: run.final_verification,
+            scope: [],
+            validation: true,
+          };
+      await (this.options.spawn ?? this.spawn).call(this, run, attempt, spec);
+      attempt.error = undefined;
+      if (task) moveTask(task, 'running');
+      else if (run.validation) moveValidation(run.validation, 'running');
+      await this.emit(run.id, 'resource_binding_verified', {
+        attempt_id: attempt.id,
+        directory: attempt.directory,
+      });
+    } catch (e) {
+      if (e instanceof Fault && ['CAPACITY', 'RESOURCE_BUSY'].includes(e.code)) {
+        attempt.error = e.message;
+        await this.persist();
+        return;
       }
-      const state = this.workerState(attempt);
-      if (
-        !attempt.launch_boot &&
-        !state &&
-        !fs.existsSync(path.join(attempt.job_dir, 'started.json')) &&
-        !fs.existsSync(path.join(attempt.job_dir, 'launch.json'))
-      ) {
-        this.finishAttempt(run, attempt, 'interrupted');
-        attempt.error =
-          'No durable process launch intent exists; the external preparation was interrupted and was not replayed.';
-        continue;
+      await this.launchFailure(run, attempt, e);
+      if (!holdsResources(attempt) && !task && run.validation) {
+        moveValidation(run.validation, 'failed');
+        if ((run.state as string) !== 'cancelling') moveRun(run, 'active');
       }
-      if (run.state === 'cancelling' && !fs.existsSync(path.join(attempt.job_dir, 'cancel.json')))
-        writeJson(path.join(attempt.job_dir, 'cancel.json'), { at: Date.now() });
-      if (attempt.launch_boot && attempt.launch_boot !== (await bootId()) && !state?.stopped) {
-        this.finishAttempt(run, attempt, 'interrupted');
-        attempt.error =
-          'The computer rebooted; prior processes cannot still be running. No model request was replayed.';
-        continue;
-      }
-      const owner =
-        state?.host ??
-        readJson<{ host: WorkerState['host'] }>(path.join(attempt.job_dir, 'started.json'))?.host ??
-        readJson<{ host: WorkerState['host'] }>(path.join(attempt.job_dir, 'launch.json'))?.host;
-      if (state?.url && !state.stopped) {
+    }
+  }
+  private async recordSessionEvidence(run: Run, attempt: Attempt, state: WorkerState) {
+    const spec = readJson<WorkerSpec>(path.join(attempt.job_dir, 'spec.json'));
+    if (spec) {
+      const evidence = await inspectHttpSession(spec, state).catch((e) => ({
+        error: (e as Error).message,
+        outcome: 'unverified',
+      }));
+      attempt.artifacts.push(this.store.artifact(run.id, 'session-reconciliation.json', JSON.stringify(evidence)));
+    }
+  }
+  private async settleLostOwner(
+    run: Run,
+    attempt: Attempt,
+    state: WorkerState | undefined,
+    owner: WorkerState['host'],
+  ) {
+    const evidence = state ? processEvidence(attempt.job_dir, state) : undefined;
+    const processesAlive = evidence
+      ? (await Promise.all(evidence.identities.map((identity) => treeAlive(identity)))).some(Boolean)
+      : false;
+    if (state && processesAlive) {
+      if (run.state === 'cancelling') {
         const spec = readJson<WorkerSpec>(path.join(attempt.job_dir, 'spec.json'));
-        if (spec) {
-          const evidence = await inspectHttpSession(spec, state).catch((e) => ({
-            error: (e as Error).message,
-            outcome: 'unverified',
-          }));
-          attempt.artifacts.push(this.store.artifact(run.id, 'session-reconciliation.json', JSON.stringify(evidence)));
+        const stopped = spec
+          ? await stopOwned({ spec, state, save: () => writeJson(path.join(attempt.job_dir, 'worker.json'), state) })
+          : false;
+        if (stopped) {
+          if (!workerTerminal(state)) moveWorker(state, 'cancelled');
+          state.stopped = true;
+          writeJson(path.join(attempt.job_dir, 'worker.json'), state);
         }
-      }
-      if (owner && (await alive(owner))) continue;
-      const evidence = state ? processEvidence(attempt.job_dir, state) : undefined;
-      const processesAlive = evidence
-        ? (await Promise.all(evidence.identities.map((identity) => treeAlive(identity)))).some(Boolean)
-        : false;
-      if (state && processesAlive) {
-        if (run.state === 'cancelling') {
-          const spec = readJson<WorkerSpec>(path.join(attempt.job_dir, 'spec.json'));
-          const stopped = spec
-            ? await stopOwned({ spec, state, save: () => writeJson(path.join(attempt.job_dir, 'worker.json'), state) })
-            : false;
-          if (stopped) {
-            if (!workerTerminal(state)) moveWorker(state, 'cancelled');
-            state.stopped = true;
-            writeJson(path.join(attempt.job_dir, 'worker.json'), state);
-          }
-        } else {
-          moveAttempt(attempt, 'orphaned');
-          attempt.error =
-            'Worker host exited while an owned runtime is still alive. Cancel to stop the owned process before correction; no request was replayed.';
-        }
-      } else if (state?.stopped || this.workerState(attempt)?.stopped) {
-        // OS ownership probes may outlive the worker's final atomic write. Let
-        // collection verify that newer stop record before ending the attempt.
-        continue;
-      } else if (
-        owner &&
-        evidence &&
-        !evidence.uncertain &&
-        (process.platform !== 'win32' || evidence.identities.length === 0)
-      ) {
-        this.finishAttempt(run, attempt, 'interrupted');
-        attempt.error = 'Worker process exited; no automatic retry was made.';
       } else {
         moveAttempt(attempt, 'orphaned');
         attempt.error =
-          'Launch ownership is uncertain. Resource leases remain held. Inspect the job directory/processes before cleanup.';
+          'Worker host exited while an owned runtime is still alive. Cancel to stop the owned process before correction; no request was replayed.';
       }
+    } else if (state?.stopped || this.workerState(attempt)?.stopped) {
+      // OS ownership probes may outlive the worker's final atomic write. Let
+      // collection verify that newer stop record before ending the attempt.
+      return;
+    } else if (
+      owner &&
+      evidence &&
+      !evidence.uncertain &&
+      (process.platform !== 'win32' || evidence.identities.length === 0)
+    ) {
+      this.finishAttempt(run, attempt, 'interrupted');
+      attempt.error = 'Worker process exited; no automatic retry was made.';
+    } else {
+      moveAttempt(attempt, 'orphaned');
+      attempt.error =
+        'Launch ownership is uncertain. Resource leases remain held. Inspect the job directory/processes before cleanup.';
     }
-    await this.effectCollect(run);
+  }
+  private async reconcileIntegrations(run: Run) {
     for (const task of run.tasks) {
       const a = task.attempts.at(-1);
       if (a?.state !== 'integrating') continue;
@@ -960,6 +983,8 @@ export class EffectRunner extends EngineBase {
         a.error = 'Interrupted integration requires review of the integration worktree.';
       }
     }
+  }
+  private async reconcileFinalize(run: Run) {
     if (run.finalize_intent && run.state !== 'completed') {
       const actual = await head(run.repo);
       const name = await branch(run.repo);
@@ -982,7 +1007,6 @@ export class EffectRunner extends EngineBase {
         run.error = 'Target differs from the recorded pre/post-finalize state. No reset was attempted.';
       }
     }
-    await this.emit(run.id, 'reconciled', { state: run.state }, false);
   }
   async effectValidate(run: Run) {
     invariant(

@@ -16,7 +16,7 @@ import {
   type DurableOperation,
 } from './types.js';
 import { uid, digest, readJson, writeJson, alive } from './io.js';
-import { moveRun, moveTask, holdsResources, occupiesSlot, canSchedule } from './lifecycle.js';
+import { moveRun, moveTask, holdsResources, occupiesSlot, canSchedule, reapplyCancellation } from './lifecycle.js';
 import { recoverSubmissions } from './submission.js';
 import { confirmedStopped } from './process.js';
 import { EngineBase } from './engine-base.js';
@@ -486,7 +486,13 @@ export class Engine extends EngineBase {
     }
     const updated = operation.run_id ? this.store.state.runs.find((value) => value.id === operation.run_id) : undefined;
     if (cancelling || updated?.state === 'cancelling')
-      this.reapplyCancellation(scope, updated, cancelledAttempts, cancelledTasks);
+      reapplyCancellation(
+        updated,
+        ['collect', 'reconcile_run'].includes(operation.kind),
+        cancelledAttempts,
+        cancelledTasks,
+        () => (operation.run_id ? scope.actor.getRun(operation.run_id) : undefined),
+      );
     for (const event of batch.events) {
       this.store.state.events.push({ seq: ++this.store.state.event_seq, ...event });
     }
@@ -510,42 +516,6 @@ export class Engine extends EngineBase {
       updated?.state === 'cancelling' &&
       ['launch', 'validate_run', 'submit'].includes(operation.kind)
     );
-  }
-  // Cancellation overrides what the effect just published, so these writes skip the
-  // lifecycle graph: a published terminal state may not legally move back to cancelling.
-  private reapplyCancellation(
-    { operation, actor }: OperationScope,
-    updated: Run | undefined,
-    cancelledAttempts: Set<string>,
-    cancelledTasks: Set<string>,
-  ) {
-    // A worker may finish while cancellation is waiting for this publication barrier.
-    // Its stopped outcome is evidence, not authority to revive a task/validation.
-    if (updated) {
-      for (const task of updated.tasks) {
-        const latest = task.attempts.at(-1);
-        if (latest && cancelledAttempts.has(latest.id) && !holdsResources(latest)) {
-          latest.state = 'cancelled';
-          task.state = 'cancelled';
-        } else if (cancelledTasks.has(task.spec.id)) task.state = 'cancelled';
-      }
-      const validation = updated.validation;
-      if (validation && cancelledAttempts.has(validation.attempt.id) && !holdsResources(validation.attempt)) {
-        validation.attempt.state = 'cancelled';
-        validation.state = 'cancelled';
-      }
-    }
-    const canFinish =
-      updated?.state === 'cancelled' &&
-      ['collect', 'reconcile_run'].includes(operation.kind) &&
-      !this.allAttempts(updated).some(holdsResources);
-    if (updated) {
-      updated.state = canFinish ? 'cancelled' : 'cancelling';
-      if (!canFinish) updated.ended_at = undefined;
-      for (const task of updated.tasks) if (task.state === 'queued') task.state = 'cancelled';
-    }
-    const detached = operation.run_id ? actor.getRun(operation.run_id) : undefined;
-    if (detached) detached.state = canFinish ? 'cancelled' : 'cancelling';
   }
   private async dispatchEffect({ operation, args, actor }: OperationScope, archivedRun?: Run): Promise<unknown> {
     switch (operation.kind) {

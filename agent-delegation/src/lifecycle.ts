@@ -176,10 +176,47 @@ const leased = new Set<AttemptState>([
   'stop_uncertain',
 ]);
 export const holdsResources = (a: Attempt) => leased.has(a.state);
+export const currentAttempts = (run: Run) => [
+  ...run.tasks.flatMap((task) => task.attempts),
+  ...(run.validation ? [run.validation.attempt] : []),
+];
+// Cancellation overrides what an effect just published, so these writes skip the graph above:
+// a published terminal state may not legally move back to cancelling.
+export function reapplyCancellation(
+  updated: Run | undefined,
+  mayFinish: boolean,
+  cancelledAttempts: Set<string>,
+  cancelledTasks: Set<string>,
+  detached: () => Run | undefined,
+) {
+  // A worker may finish while cancellation is waiting for this publication barrier.
+  // Its stopped outcome is evidence, not authority to revive a task/validation.
+  if (updated) {
+    for (const task of updated.tasks) {
+      const latest = task.attempts.at(-1);
+      if (latest && cancelledAttempts.has(latest.id) && !holdsResources(latest)) {
+        latest.state = 'cancelled';
+        task.state = 'cancelled';
+      } else if (cancelledTasks.has(task.spec.id)) task.state = 'cancelled';
+    }
+    const validation = updated.validation;
+    if (validation && cancelledAttempts.has(validation.attempt.id) && !holdsResources(validation.attempt)) {
+      validation.attempt.state = 'cancelled';
+      validation.state = 'cancelled';
+    }
+  }
+  const canFinish = updated?.state === 'cancelled' && mayFinish && !currentAttempts(updated).some(holdsResources);
+  if (updated) {
+    updated.state = canFinish ? 'cancelled' : 'cancelling';
+    if (!canFinish) updated.ended_at = undefined;
+    for (const task of updated.tasks) if (task.state === 'queued') task.state = 'cancelled';
+  }
+  const run = detached();
+  if (run) run.state = canFinish ? 'cancelled' : 'cancelling';
+}
 // Null cost means at least one attempt's platform did not report one, so a sum would mislead.
 export function totalUsage(run: Run) {
-  const attempts = [...run.tasks.flatMap((task) => task.attempts), ...(run.validation ? [run.validation.attempt] : [])];
-  const reported = attempts.flatMap((attempt) => (attempt.usage ? [attempt.usage] : []));
+  const reported = currentAttempts(run).flatMap((attempt) => (attempt.usage ? [attempt.usage] : []));
   if (!reported.length) return undefined;
   return {
     input_tokens: reported.reduce((sum, usage) => sum + usage.input_tokens, 0),
