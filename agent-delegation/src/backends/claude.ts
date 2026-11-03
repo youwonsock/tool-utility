@@ -66,7 +66,6 @@ export class ClaudeBackend implements WorkerBackend {
   private confirmed = new Set<string>();
   private initialization?: any;
   constructor(private context: BackendContext) {}
-  // oxlint-disable-next-line max-lines-per-function
   async start() {
     const { spec, state, save } = this.context;
     const sdk = await loadSdk(spec.worker, state.runtime!);
@@ -75,27 +74,58 @@ export class ClaudeBackend implements WorkerBackend {
     state.session_id = sessionID;
     state.native_request_id = crypto.randomUUID();
     save();
+    const resources = new Set(spec.resources.map((r) => r.connection.name));
+    const options = this.options(sessionID, resources);
+    const launchIntent = beginProcess(this.context);
+    let claimed = false;
+    const spawnConfigured = options.spawnClaudeCodeProcess as (options: any) => ChildProcessWithoutNullStreams;
+    options.spawnClaudeCodeProcess = (options: any) => {
+      const first = !claimed;
+      claimed = true;
+      return spawnConfigured({ ...options, ...(first ? { delegationIntent: launchIntent } : {}) });
+    };
+    this.query = callSdkFactory(sdk, spec.worker, { prompt: this.queue, options });
+    requireSdkMethods(
+      this.query,
+      ['initializationResult', 'getContextUsage', 'setModel', 'interrupt', 'close'],
+      spec.worker,
+    );
+    if (typeof this.query?.[Symbol.asyncIterator] !== 'function')
+      throw runtimeFault('SDK_INCOMPATIBLE', spec.worker, 'Claude SDK query does not provide an async message stream.');
+    void this.follow(resources);
+    this.initialization = await this.query.initializationResult();
+    await Promise.all(this.registrations);
+    invariant(
+      claimed && state.processes?.length,
+      'SDK_INCOMPATIBLE',
+      'Claude SDK did not use the required owned CLI spawn hook.',
+    );
+    await this.resolveModel(this.query);
+  }
+  private policy(resources: Set<string>, name: string, input: Record<string, unknown>) {
+    const { spec, state } = this.context;
+    if (!scopeMonitorHealthy(spec, state)) return 'deny';
+    if (name.startsWith('mcp__') && !resources.has(name.split('__')[1]!)) return 'deny';
+    return toolPolicy(
+      name,
+      input,
+      spec.directory,
+      spec.context.map((c) => c.path),
+      spec.scope,
+    );
+  }
+  private options(sessionID: string, resources: Set<string>): Options {
+    const { spec } = this.context;
     const env = {
       ...workerEnvironment(spec.worker!),
       CLAUDE_CODE_RESUME_INTERRUPTED_TURN: '0',
       CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1',
     };
-    const resources = new Set(spec.resources.map((r) => r.connection.name));
     const mcpServers = Object.fromEntries(
       spec.resources.map((r) => [r.connection.name, connection(r, spec.directory)]),
     );
-    const policy = (name: string, input: Record<string, unknown>) => {
-      if (!scopeMonitorHealthy(spec, state)) return 'deny';
-      if (name.startsWith('mcp__') && !resources.has(name.split('__')[1]!)) return 'deny';
-      return toolPolicy(
-        name,
-        input,
-        spec.directory,
-        spec.context.map((c) => c.path),
-        spec.scope,
-      );
-    };
-    const options: Options = {
+    const policy = (name: string, input: Record<string, unknown>) => this.policy(resources, name, input);
+    return {
       cwd: spec.directory,
       sessionId: sessionID,
       model: typeof spec.worker.model === 'string' ? spec.worker.model : undefined,
@@ -139,143 +169,136 @@ export class ClaudeBackend implements WorkerBackend {
           },
         ],
       },
-      canUseTool: async (name: string, input: Record<string, unknown>, details: any) => {
-        const decision = policy(name, input);
-        if (decision === 'deny')
-          return { behavior: 'deny', message: 'Operation is forbidden by the delegation worker policy.' };
-        if (decision === 'allow' && name !== 'AskUserQuestion') return { behavior: 'allow', updatedInput: input };
-        const nativeID = details.toolUseID ?? digest({ name, input });
-        const id = `input_${digest({ sessionID, nativeID }).slice(0, 32)}`;
-        const question = name === 'AskUserQuestion';
-        const request: InputRequest = {
-          id,
-          kind: question ? 'question' : 'permission',
-          details: question ? { questions: input.questions } : { tool: name, input },
-          supported_decisions: question ? ['answer', 'reject'] : ['once', 'always', 'reject'],
-          ...(question ? {} : { grant_key: workerPermissionKey(spec, name, input) }),
-        };
-        return new Promise<PermissionResult>((resolve) => {
-          this.pending.set(id, { input: request, resolve, native: input, native_id: nativeID, tool: name });
-          details.signal.addEventListener(
-            'abort',
-            () => {
-              this.pending.delete(id);
-              resolve({ behavior: 'deny', message: 'Execution was cancelled.', interrupt: true });
-            },
-            { once: true },
-          );
-        });
-      },
-      spawnClaudeCodeProcess: (options: any) => {
-        const intent = options.delegationIntent ?? beginProcess(this.context);
-        const same = (a: string | undefined, b: string) => {
-          try {
-            return !!a && fs.realpathSync.native(a) === fs.realpathSync.native(b);
-          } catch {
-            return false;
-          }
-        };
-        const command = findExecutable(options.command, options.env, options.cwd);
-        const direct = same(command, spec.worker.executable),
-          javascript = same(command, process.execPath) && same(options.args[0], spec.worker.executable);
-        if (!direct && !javascript) {
-          writeJson(path.join(spec.job_dir, 'process-records', `${intent}.json`), { failed: true, stopped: true });
-          throw runtimeFault('CLI_INCOMPATIBLE', spec.worker, 'Claude SDK tried to launch a different CLI.');
-        }
-        const args = javascript
-          ? [options.args[0], ...spec.worker.executable_args, ...options.args.slice(1)]
-          : [...spec.worker.executable_args, ...options.args];
-        const child = spawn(options.command, args, {
-          cwd: options.cwd,
-          env: options.env,
-          detached: process.platform !== 'win32',
-          windowsHide: true,
-          stdio: ['pipe', 'pipe', 'pipe'],
-        });
-        const log = fs.createWriteStream(path.join(spec.job_dir, 'server.log'), { flags: 'a', mode: 0o600 });
-        child.stderr!.on('data', (data) => log.write(data));
-        child.once('close', () => log.end());
-        this.registrations.push(
-          registerProcess(this.context, child, intent).catch((error) => {
-            this.error = (error as Error).message;
-          }),
-        );
-        return child as ChildProcessWithoutNullStreams;
-      },
+      canUseTool: (name: string, input: Record<string, unknown>, details: any) =>
+        this.requestInput(sessionID, policy(name, input), name, input, details),
+      spawnClaudeCodeProcess: (options: any) => this.spawnClaude(options),
     };
-    const launchIntent = beginProcess(this.context);
-    let claimed = false;
-    const spawnConfigured = options.spawnClaudeCodeProcess as (options: any) => ChildProcessWithoutNullStreams;
-    options.spawnClaudeCodeProcess = (options: any) => {
-      const first = !claimed;
-      claimed = true;
-      return spawnConfigured({ ...options, ...(first ? { delegationIntent: launchIntent } : {}) });
+  }
+  private async requestInput(
+    sessionID: string,
+    decision: string,
+    name: string,
+    input: Record<string, unknown>,
+    details: any,
+  ): Promise<PermissionResult> {
+    const { spec } = this.context;
+    if (decision === 'deny')
+      return { behavior: 'deny', message: 'Operation is forbidden by the delegation worker policy.' };
+    if (decision === 'allow' && name !== 'AskUserQuestion') return { behavior: 'allow', updatedInput: input };
+    const nativeID = details.toolUseID ?? digest({ name, input });
+    const id = `input_${digest({ sessionID, nativeID }).slice(0, 32)}`;
+    const question = name === 'AskUserQuestion';
+    const request: InputRequest = {
+      id,
+      kind: question ? 'question' : 'permission',
+      details: question ? { questions: input.questions } : { tool: name, input },
+      supported_decisions: question ? ['answer', 'reject'] : ['once', 'always', 'reject'],
+      ...(question ? {} : { grant_key: workerPermissionKey(spec, name, input) }),
     };
-    this.query = callSdkFactory(sdk, spec.worker, { prompt: this.queue, options });
-    requireSdkMethods(
-      this.query,
-      ['initializationResult', 'getContextUsage', 'setModel', 'interrupt', 'close'],
-      spec.worker,
-    );
-    if (typeof this.query?.[Symbol.asyncIterator] !== 'function')
-      throw runtimeFault('SDK_INCOMPATIBLE', spec.worker, 'Claude SDK query does not provide an async message stream.');
-    void (async () => {
+    return new Promise<PermissionResult>((resolve) => {
+      this.pending.set(id, { input: request, resolve, native: input, native_id: nativeID, tool: name });
+      details.signal.addEventListener(
+        'abort',
+        () => {
+          this.pending.delete(id);
+          resolve({ behavior: 'deny', message: 'Execution was cancelled.', interrupt: true });
+        },
+        { once: true },
+      );
+    });
+  }
+  private spawnClaude(options: any) {
+    const { spec } = this.context;
+    const intent = options.delegationIntent ?? beginProcess(this.context);
+    const same = (a: string | undefined, b: string) => {
       try {
-        for await (const message of this.query!) {
-          this.messages.push(message);
-          const m = message as any;
-          if (m.type === 'system' && m.subtype === 'init') {
-            invariant(
-              !m.tools?.some((name: string) => /^(Agent|Task|Skill|CronCreate|TeamCreate|SendMessage)$/.test(name)),
-              'MCP_POLICY',
-              'Forbidden tools remain available.',
-            );
-            invariant(
-              !m.mcp_servers?.some((s: any) => !resources.has(s.name)),
-              'MCP_POLICY',
-              'An undeclared MCP server remains available.',
-            );
-            if (m.model) {
-              invariant(
-                state.model === undefined || state.model === m.model,
-                'MODEL_UNAVAILABLE',
-                'Claude changed the resolved worker model.',
-              );
-              state.model = m.model;
-              save();
-            }
-          }
-          if (m.type === 'user' && m.uuid === state.native_request_id) this.accepted = true;
-          if (m.type === 'assistant') this.accepted = true;
-          if (m.type === 'user')
-            for (const block of Array.isArray(m.message?.content) ? m.message.content : [])
-              if (block.type === 'tool_result')
-                for (const [id, nativeID] of this.answered) if (nativeID === block.tool_use_id) this.confirmed.add(id);
-          if (m.type === 'result') {
-            this.accepted = true;
-            this.complete = true;
-            if (m.is_error || m.subtype !== 'success') this.error = m.errors?.join('\n') ?? m.subtype;
-            else for (const id of this.answered.keys()) this.confirmed.add(id);
-          }
-        }
-      } catch (e) {
-        this.error = (e as Error).message;
+        return !!a && fs.realpathSync.native(a) === fs.realpathSync.native(b);
+      } catch {
+        return false;
       }
-    })();
-    this.initialization = await this.query.initializationResult();
-    await Promise.all(this.registrations);
-    invariant(
-      claimed && state.processes?.length,
-      'SDK_INCOMPATIBLE',
-      'Claude SDK did not use the required owned CLI spawn hook.',
+    };
+    const command = findExecutable(options.command, options.env, options.cwd);
+    const direct = same(command, spec.worker.executable),
+      javascript = same(command, process.execPath) && same(options.args[0], spec.worker.executable);
+    if (!direct && !javascript) {
+      writeJson(path.join(spec.job_dir, 'process-records', `${intent}.json`), { failed: true, stopped: true });
+      throw runtimeFault('CLI_INCOMPATIBLE', spec.worker, 'Claude SDK tried to launch a different CLI.');
+    }
+    const args = javascript
+      ? [options.args[0], ...spec.worker.executable_args, ...options.args.slice(1)]
+      : [...spec.worker.executable_args, ...options.args];
+    const child = spawn(options.command, args, {
+      cwd: options.cwd,
+      env: options.env,
+      detached: process.platform !== 'win32',
+      windowsHide: true,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    const log = fs.createWriteStream(path.join(spec.job_dir, 'server.log'), { flags: 'a', mode: 0o600 });
+    child.stderr!.on('data', (data) => log.write(data));
+    child.once('close', () => log.end());
+    this.registrations.push(
+      registerProcess(this.context, child, intent).catch((error) => {
+        this.error = (error as Error).message;
+      }),
     );
+    return child as ChildProcessWithoutNullStreams;
+  }
+  private async follow(resources: Set<string>) {
+    try {
+      for await (const message of this.query!) this.record(message, resources);
+    } catch (e) {
+      this.error = (e as Error).message;
+    }
+  }
+  private record(message: any, resources: Set<string>) {
+    const { state, save } = this.context;
+    this.messages.push(message);
+    const m = message as any;
+    if (m.type === 'system' && m.subtype === 'init') {
+      invariant(
+        !m.tools?.some((name: string) => /^(Agent|Task|Skill|CronCreate|TeamCreate|SendMessage)$/.test(name)),
+        'MCP_POLICY',
+        'Forbidden tools remain available.',
+      );
+      invariant(
+        !m.mcp_servers?.some((s: any) => !resources.has(s.name)),
+        'MCP_POLICY',
+        'An undeclared MCP server remains available.',
+      );
+      if (m.model) {
+        invariant(
+          state.model === undefined || state.model === m.model,
+          'MODEL_UNAVAILABLE',
+          'Claude changed the resolved worker model.',
+        );
+        state.model = m.model;
+        save();
+      }
+    }
+    if (m.type === 'user' && m.uuid === state.native_request_id) this.accepted = true;
+    if (m.type === 'assistant') this.accepted = true;
+    if (m.type === 'user')
+      for (const block of Array.isArray(m.message?.content) ? m.message.content : [])
+        if (block.type === 'tool_result')
+          for (const [id, nativeID] of this.answered) if (nativeID === block.tool_use_id) this.confirmed.add(id);
+    if (m.type === 'result') {
+      this.accepted = true;
+      this.complete = true;
+      if (m.is_error || m.subtype !== 'success') this.error = m.errors?.join('\n') ?? m.subtype;
+      else for (const id of this.answered.keys()) this.confirmed.add(id);
+    }
+  }
+  // Claude must report the model it resolved; an alias counts only when Claude lists it.
+  private async resolveModel(query: Query) {
+    const { spec, state, save } = this.context;
     reportedVersion(this.initialization.claude_code_version, 'Claude Code');
     invariant(
       this.initialization.hooks_applied === true,
       'MCP_POLICY',
       'Claude did not confirm worker hook registration.',
     );
-    const usage = await this.query.getContextUsage({ detail: 'summary' });
+    const usage = await query.getContextUsage({ detail: 'summary' });
     invariant(
       typeof usage.model === 'string' && usage.model.length > 0,
       'MODEL_UNAVAILABLE',
@@ -292,7 +315,7 @@ export class ClaudeBackend implements WorkerBackend {
       'MODEL_UNAVAILABLE',
       'Requested Claude model was not resolved. Use a resolved model ID when its alias cannot be verified. No fallback was used.',
     );
-    await this.query.setModel(usage.model);
+    await query.setModel(usage.model);
     state.backend = 'claude-code';
     state.backend_version = this.initialization.claude_code_version;
     state.model = usage.model;
