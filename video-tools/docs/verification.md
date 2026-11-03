@@ -1,153 +1,48 @@
-# 무설치 배포 완료 검증
+# 검증 기록
 
-검증일: 2026-10-14. 지원 기준: Windows 10 이상 x64, macOS 15 이상 Apple Silicon.
+현재 런타임은 2026-10-31 의존성 갱신본이며, 같은 날 두 OS의 CI와 macOS 새 clone에서 모든 검사를 통과했습니다. 지원 기준은 Windows 10 이상 x64, macOS 15 이상 Apple Silicon입니다.
 
-## 검증 대상
+## 현재 런타임
 
-- 실행 소스·런타임 커밋: `999b2ac7d687578bffe841d057f7a3a4f091f940` (재작성 전 `9f6580fb77b4bf4275a165b8966a6c24336b5a98`)
-- 공용 소스 및 OS 어댑터 트리: `27b2daa2d731480e63bfe17d2ad0ec72fe6e2bc9` (재작성 전 값)
-- 두 런타임 트리: `0cec2479fa288962d077d22dd20abfa506beca73` (재작성 전 값)
-- CPython: 3.14.8, python-build-standalone 20261013, 일반 GIL 빌드. 두 공급자 메타데이터의 `Py_GIL_DISABLED=0` 확인.
-- Tcl/Tk: 9.0.4 / 9.0.4. Pillow 12.3.0, MCP SDK 1.30.0, imageio-ffmpeg 0.6.0 및 전이 의존성 잠금.
-- FFmpeg: Windows 7.1 essentials / Mac 7.1. 제공 휠과 원본 FFmpeg의 SHA-256은 각 manifest에 기록.
-- 런타임 생성 입력 SHA-256: `19dbd1edbcf91cb6d3270d515889cab38d1dcff540315896afc644c939787f80`
-- 실제 GitHub Code ZIP SHA-256: `ae0a534e0f27abc37fc79ec1bac273f34d38ae81a2d4f1546a4f2a51cf0c16be`
+- Python 3.14.10 / python-build-standalone 20261026, Tcl/Tk 9.0.4, MCP SDK 1.30.0, certifi 2026.10.23
+- FFmpeg 7.1.5 최소 정적 빌드: [Release `video-tools-ffmpeg-7.1.5-1`](https://github.com/youwonsock/tool-utility/releases/tag/video-tools-ffmpeg-7.1.5-1). x264, dav1d, zlib을 포함한 원본 소스를 함께 게시했습니다.
+- Pillow, imageio-ffmpeg, cryptography, cffi, pycparser, PyJWT는 경량화 때 뺐습니다.
+- 새 clone은 약 370MB이고 그중 `.git`이 83MB입니다.
+- 버전·파일 해시·권한은 각 런타임의 `manifest.json`에 있습니다.
 
-| 런타임 | 파일 수 | 압축 해제 크기 | 가장 큰 파일 | manifest SHA-256 |
-| --- | ---: | ---: | ---: | --- |
-| windows-x64 | 2,441 | 176.11 MiB | FFmpeg 83.58 MiB | `22fbcae8acac2394a8666d5e1381afa2a37d8941ac5f2b170cbe6ed375fb95e2` |
-| macos-arm64 | 2,107 | 140.88 MiB | FFmpeg 47.08 MiB | `242df113de75b870462fab5eed27403a31db4990c17a2b628647eb46ec851cd8` |
+## 검증 결과 (2026-10-31)
 
-Windows의 네이티브 `.pyd` 96개가 Git에 포함되어 있다. Mac Mach-O 41개는 서명 검사를 통과했고, 실행 권한과 심볼릭 링크 4개가 clone·ZIP에서 보존되었다. 두 런타임의 전체 파일 해시·크기·Git 모드를 검증했으며 모든 파일은 100 MiB 미만이다. 런타임에는 줄바꿈 변환을 적용하지 않는다.
+| 환경 | 확인 내용 | 결과 |
+| --- | --- | --- |
+| CI: Windows Server 2025, macOS 15.8.2 | `--audit --git`, 단위 테스트, smoke 검사, 코덱 샘플 14개, GUI 검사 46개 항목, 이동·오프라인 검사 | 통과 |
+| macOS 26.6.2 ARM64, 한글·공백 경로에 새 clone | `run_mac.command` 창 실행, `run_mcp.command` 초기화·종료 코드 0, audit, smoke 18개 항목, 코덱 샘플 14개, 실행 후 Git 상태 깨끗함 | 통과 |
+| macOS 26.6.2 실제 마우스·키보드 조작 | 화면 배치, 스크롤, 파일 선택·저장 창, 경고·완료 알림, 격자 추출(1920 × 1080 1장, 112장), 취소 후 출력 없음, 크롭·2배속 편집, MCP 설정 창, 설정 복원 | 통과 |
 
-Python 공급자가 선언한 네이티브 의존성 고지, 패키지 고지, FFmpeg 라이선스 출력·GPLv2 전문·출처를 동봉했다. 프로젝트의 테스트·픽스처·자가 테스트·이전 검증기와 설정 마이그레이션, PyInstaller 배포·설치 코드는 제거되었다.
+- clone한 파일에는 격리 속성이 없어 브라우저 다운로드의 보안 승인을 거치지 않습니다.
+- 단위 테스트가 실제로 오류를 잡는지 핵심 규칙 12곳을 일부러 바꿔 확인했습니다.
+- 실제 조작에서 찾아 고친 문제는 세 가지입니다: 시작 버튼 글자가 배경과 같은 흰색, 작업 시작 후 탭 내용이 사라짐, MCP 설정 창이 런타임 오류를 알리지 않음. 앞의 두 가지는 `verify_gui.py`가 이제 검사합니다.
 
-## 실제 실행 결과
+실행 기록:
 
-| 환경 | 새 clone | GitHub ZIP | 임시 기능 검증 | 네이티브 런처 |
-| --- | --- | --- | --- | --- |
-| Windows Server 2025 x64, 10.0.26100 | 통과 | 통과 | 각각 45/45, 제외 0 | run.bat / run_mcp.bat 통과 |
-| macOS 15.7.9 ARM64 | 통과 | 통과 | 각각 45/45, 제외 0 | run_mac.command / run_mcp.command 통과 |
-| macOS 26.6.2 ARM64, 로컬 Mac | 통과 | 통과 | 각각 45/45, 제외 0 | run_mac.command / run_mcp.command 통과 |
+- [FFmpeg 빌드](https://github.com/youwonsock/tool-utility/actions/runs/41170129103): 두 OS에서 smoke 18개 항목, 코덱 샘플 14개 통과
+- [FFmpeg 재빌드 경로 확인](https://github.com/youwonsock/tool-utility/actions/runs/41193825550): [`video-tools-codec-samples-1`](https://github.com/youwonsock/tool-utility/releases/tag/video-tools-codec-samples-1) 샘플로 통과 (게시하지 않음)
+- [런타임 재생성](https://github.com/youwonsock/tool-utility/actions/runs/41171551818)과 [커밋된 런타임](https://github.com/youwonsock/tool-utility/actions/runs/41172190715): 두 OS에서 통과
 
-각각 다운로드한 폴더를 한글·공백을 포함한 다른 경로로 이동한 뒤 실행했다. ZIP은 Windows의 Expand-Archive, Mac의 ditto로 운영체제 기본 압축 해제 동작을 사용했다. 실행 중 PATH에는 제품 Python·FFmpeg와 외부 Python·FFmpeg를 넣지 않았다. Mac은 OS 기본 dirname·uname·sysctl만 제공한 경로를 사용했고 Windows는 System32만 사용했다.
+## 확인하지 않은 범위
 
-Mac 프로세스와 자식 프로세스는 sandbox-exec의 outbound network 차단 아래 실행했다. Windows는 동봉 Python과 FFmpeg의 outbound firewall 차단 아래 실행했다. 동봉 Python의 실제 외부 TCP 연결 실패를 확인했다. 다운로드·clone은 이 오프라인 실행 단계 전에 완료했다.
+- **Windows:** 실제 GUI 조작과 새 clone 실행은 하지 않았고 CI 결과만 확인했습니다. Windows 10 클라이언트 실기기도 확인하지 않았습니다.
+- **실제 입력:** Mac 외에는 실제 마우스 입력, 화면 배치, 파일 선택·알림 창을 확인하지 않았습니다. CI GUI 검사는 이 창들을 코드로 대체합니다. 버튼의 실제 색도 검사하지 않습니다.
+- **`read_image`:** RGBA·팔레트·16비트 PNG와 JPG의 축소만 확인했고 색은 비교하지 않았습니다. JPEG 설정이 Pillow 85에서 FFmpeg `-q:v 4`로 바뀌어 결과 바이트가 이전과 다릅니다.
+- **지원 형식:** [지원 목록](runtime-management.md#최소-ffmpeg) 밖 코덱의 영상은 열리지 않습니다. 목록에 없는 오디오 코덱은 추출은 되지만 음소거하지 않은 편집은 실패합니다.
+- **설정:** 크기 모드와 출력 방식의 저장값이 바뀌어, 이전 설정 파일의 두 값은 한 번 기본값으로 돌아갑니다.
 
-실제 GUI 런처로 창을 열고 OS 창 닫기 동작으로 종료한 뒤 설정 저장과 종료 코드 0을 확인했다. MCP 런처로 초기화 응답과 stdin 종료 후 종료 코드 0을 확인했다. MCP 클라이언트 설정은 Windows·Mac 모두 동봉 console Python과 공용 launch.py의 절대 경로로 생성되었다.
+## 남은 개선 후보
 
-GUI 검증은 개별 PNG 추출, JPG 격자, 미리보기·크기, 구간·크롭·크기 조절·회전·반전·배속·음소거·CRF 편집, 취소, 잘못된 입력, 스크롤, 설정 저장·재시작 복원을 포함했다. MCP는 9개 도구 목록, 연결, 조회·추출·편집 작업, 이미지 읽기, 경로 경계, 중복 출력, 취소, 정상 종료를 확인했다. 현재 설정 형식의 저장·읽기와 유효하지 않은 값의 기본값 복원도 통과했다.
+- **MSYS2 환경:** Windows FFmpeg 빌드에 MINGW64 사용 중단 경고가 나옵니다. UCRT64로 옮기면 FFmpeg를 다시 검증해야 합니다.
+- **Windows 경로 길이:** 최장 경로가 181자라 clone 위치가 깊으면 Git 경로 길이 제한에 걸릴 수 있습니다. `licenses/python-build-standalone/install` 아래 중복된 pip 고지를 정리하면 줄일 수 있습니다.
 
-실행 후 배포 폴더에 bytecode·설정·출력 파일이 생기지 않았고 clone의 Git 상태는 깨끗했다. 실제 사용자의 설정·미디어 파일은 정리 대상에 포함하지 않았다.
+## 이전 기록
 
-## GUI·MCP 결과 비교
-
-각 OS에서 GUI와 MCP에 같은 입력과 설정을 전달하고 PNG 4개, 2 × 2 JPG 격자 1개, 편집 영상의 전체 디코딩 RGB 바이트를 비교했다. 개수·크기·전체 RGB SHA-256이 모두 일치했다. clone과 ZIP의 결과도 각각 일치했다.
-
-| 출력 | 크기·개수 | Windows GUI = MCP SHA-256 | Mac GUI = MCP SHA-256 |
-| --- | --- | --- | --- |
-| PNG 1 | 64 × 36, 각 1개 | `7831901bbd89cf6c3c36b09328dd6689a3544a6b77b44f399cd36e048b1d6be0` | `7831901bbd89cf6c3c36b09328dd6689a3544a6b77b44f399cd36e048b1d6be0` |
-| PNG 2 | 64 × 36, 각 1개 | `dade433fd09c6d3e79c719a00cbc200916d40d6a27aa8686a5bcc828d922338f` | `dade433fd09c6d3e79c719a00cbc200916d40d6a27aa8686a5bcc828d922338f` |
-| PNG 3 | 64 × 36, 각 1개 | `13721664fe8b04e18c554ab3b0f2a90c70e1f065d1de34250ee828d81ec0144e` | `13721664fe8b04e18c554ab3b0f2a90c70e1f065d1de34250ee828d81ec0144e` |
-| PNG 4 | 64 × 36, 각 1개 | `df3a2dc7a5719883a9fbd3a04db9f01a06bf9f071d308e5ca0076d5274be8b1f` | `df3a2dc7a5719883a9fbd3a04db9f01a06bf9f071d308e5ca0076d5274be8b1f` |
-| JPG 격자 | 146 × 90, 1개 | `d29bff91e401729c76082c76afc37e0caabc75b5cb030717c758c74c975e8634` | `ca35592fb51cbb6411066e253847231dc4bb279e0c9fa606ae622288538cca81` |
-| 편집 영상 | 128 × 72, 10프레임 | `b486b8f984006717c3b5e57557a3d2befce8e9bc9e44ac17ddd81b038409ba1b` | `4458510c13f7bcb0748a483ba0b8ebd99f5dfe56c39a2fbfab3e022a8a070cfc` |
-
-플랫폼별 네이티브 코덱의 JPG·영상 RGB 해시는 표와 같이 별도로 기록했다. PNG 4개의 RGB는 두 OS에서도 동일했다. 편집 영상의 시간·프레임률·오디오 제거 결과도 GUI와 MCP 간 일치했다.
-
-## 검증 기록과 범위
-
-- [Windows 네이티브 clone·ZIP 기능 검증](https://github.com/youwonsock/tool-utility/actions/runs/38522182617): 전체 통과.
-- [Mac 네이티브 clone·ZIP 기능 검증](https://github.com/youwonsock/tool-utility/actions/runs/38521357680): macOS 작업 전체 통과.
-- [두 OS의 상시 배포 파일 CI](https://github.com/youwonsock/tool-utility/actions/runs/38521361049): 전체 통과.
-- [두 OS 최종 런타임 재생성·동기화](https://github.com/youwonsock/tool-utility/actions/runs/38520736707): 전체 통과.
-
-기능 검증 소스는 임시 환경·검증 브랜치에서만 사용했다. main에는 검증 소스 대신 이 결과 기록을 남긴다. 이 실행 커밋 이후 완료 기록·사용 안내만 갱신하며 병합 전 공용 소스 및 두 런타임 트리의 동일성을 확인한다.
-
-실제 Windows 검증 OS는 위에 명시한 Server 2025이다. Windows 10 클라이언트 실기기 검증과 Mac의 브라우저 quarantine 보안 승인 화면은 이 자동 검증에 포함하지 않았다. 첫 실행 시 필요한 OS 보안 승인은 사용 안내에 따른다.
-
-## 경량화 재검증
-
-검증일: 2026-10-31. 위 기록은 경량화 전 런타임의 증거이며 이 절이 현재 런타임의 기록이다. 배포 방식은 저장소 clone 하나로 정리해 OS별 ZIP과 앱 Release를 만들지 않는다.
-
-### 검증 대상
-
-- 런타임 커밋: `c0f3a8c4e225cc5ccb48b04d3c9d5524dbf17323` (재작성 전 `ffa92ec669fdf4afe40a667c7fa0b13a7bfff683`), 런타임 입력 SHA-256: `58e26b1e9efbad2eef24ffa2f2e6e31e815e69c4d250452c4effdb63aa67b6e1`
-- CPython 3.14.8, Tcl/Tk 9.0.4, MCP SDK 1.30.0. Pillow, imageio-ffmpeg, cryptography, cffi, pycparser, PyJWT는 제거했다.
-- FFmpeg 7.1.5 최소 정적 빌드: [Release `video-tools-ffmpeg-7.1.5-1`](https://github.com/youwonsock/tool-utility/releases/tag/video-tools-ffmpeg-7.1.5-1). x264, dav1d, zlib을 포함한 원본 소스를 함께 게시했다.
-
-| 런타임 | 파일 수 | 저장소 크기 | FFmpeg 아카이브 SHA-256 | manifest SHA-256 |
-| --- | ---: | --- | --- | --- |
-| windows-x64 | 1,631 | 182MB → 68MB | `bdd09d6f26f6222e01dc6b6c20d80f110a690954cf343eb3f4e58e3751c57fce` | `c5d51c974c9d19a4a674f18a3836db1249a0c4d48ec871a5da79464a5af6546a` |
-| macos-arm64 | 1,714 | 146MB → 80MB | `f03e43acd223c60fef6ddb990753289bc219e7f2aa86a22436b9a604a64888f5` | `c59173c7cb28cec3f6ac861c2c01d9a629bd002a6b04ea3ba1fc4b99bb5f360c` |
-
-경량화 브랜치의 새 clone은 약 513MB이고, 이 중 `.git`이 130MB, `video-tools`가 149MB, `path-analysis-tools`가 234MB다. `--depth 1` clone은 약 467MB다.
-
-### 실행 결과
-
-CI는 Windows Server 2025와 macOS 15.8.2에서 실행했다.
-
-- [FFmpeg 빌드](https://github.com/youwonsock/tool-utility/actions/runs/41170129103): 두 OS의 새 FFmpeg로 smoke 검사 18개 항목과 코덱 샘플 14개 통과
-- [런타임 재생성](https://github.com/youwonsock/tool-utility/actions/runs/41171551818): 두 OS의 `--refresh`와 smoke 검사 17개 항목 통과
-- [커밋된 런타임](https://github.com/youwonsock/tool-utility/actions/runs/41172190715): 두 OS의 `--audit --git`과 smoke 검사 17개 항목 통과
-
-macOS 26.6.2 ARM64에서 원격 저장소를 한글·공백이 포함된 경로에 새로 clone해 다음을 확인했다.
-
-- `run_mac.command` 창 실행, `run_mcp.command` 초기화와 stdin 종료 후 종료 코드 0
-- `--audit --git`, smoke 검사 18개 항목, 코덱 샘플 14개. 실행 후 Git 상태는 깨끗했다.
-- clone한 파일에 격리 속성이 없어 브라우저 다운로드의 보안 승인 절차를 거치지 않는다.
-- 실제 창의 위젯을 코드로 조작한 GUI 검사 19개 항목: PNG 추출, JPG 격자, 기존 파일 건너뛰기, 잘못된 입력, 추출 취소, 크롭·회전·반전·크기·배속·CRF 편집, 회전 영상, 음소거, 덮어쓰기 거부, 창 닫기, 설정 저장·복원
-
-### 검증하지 않은 범위
-
-- Windows의 실제 GUI 조작과 새 clone 실행은 결정에 따라 제외했다. Windows는 위 CI 결과만 확인했다.
-- Mac의 실제 입력은 아래 [Mac 실제 조작 확인](#mac-실제-조작-확인)에서 따로 확인했다. CI의 GUI 검사에서는 두 대화 상자를 코드로 대체한다.
-- `read_image`는 RGBA·팔레트·16비트 PNG와 JPG의 축소 동작만 확인했다. 색 비교는 하지 않았고, JPEG 설정이 Pillow 85에서 FFmpeg `-q:v 4`로 바뀌어 결과 바이트가 다르다.
-
-### 지원 범위 변경
-
-[런타임 관리](runtime-management.md#최소-ffmpeg) 목록 밖 코덱의 영상은 더 이상 열리지 않는다. 목록에 없는 오디오 코덱은 추출은 가능해도 음소거하지 않은 편집이 실패한다.
-
-### 유지보수 개선 재검증
-
-검증일: 2026-10-31. FFmpeg 재빌드 경로, 회귀 검사, 역할 분리를 정리했다. 런타임 입력이 바뀌지 않아 런타임은 다시 생성하지 않았다.
-
-- [FFmpeg 재빌드](https://github.com/youwonsock/tool-utility/actions/runs/41193825550): [`video-tools-codec-samples-1`](https://github.com/youwonsock/tool-utility/releases/tag/video-tools-codec-samples-1)의 샘플을 받아 두 OS의 새 빌드가 smoke 검사와 코덱 샘플 14개를 통과했다. 이 빌드는 게시하지 않았다.
-- 상시 CI에 `run_tests.py`와 `verify_gui.py`를 추가했다. 두 OS에서 `--audit --git`, smoke 검사 17개 항목, 단위 테스트, GUI 검사 24개 항목을 통과한다. 경량화 런타임의 Windows 창을 이 검사로 처음 열었다.
-- 단위 테스트가 실제로 오류를 잡는지 핵심 규칙 12곳을 일부러 바꿔 확인했다.
-- `sync_runtime.py`로 커밋된 런타임을 만든 아카이브를 다시 풀어 Git 상태가 깨끗하고 실행 권한이 일치함을 확인했다.
-
-Windows 실기기와 양쪽 OS의 실제 마우스 입력, 화면 배치, 파일 선택 창과 알림 창은 여전히 확인하지 않았다. 크기 모드와 출력 방식의 저장값이 내부 값으로 바뀌어, 이전 설정 파일의 두 값은 한 번 기본값으로 돌아간다.
-
-### Mac 실제 조작 확인
-
-검증일: 2026-10-31, macOS 26.6.2 ARM64. 동봉 Python을 임시 앱 번들로 감싸 실제 마우스·키보드 입력으로 조작했다. 임시 번들은 저장소에 넣지 않았다. 실행 스크립트 자체는 위 clone 검증에서 따로 확인했다.
-
-- 확인한 항목: 화면 배치와 스크롤, 실제 파일 선택 창과 저장 창, 경고 창과 완료 알림, 콤보박스 선택, 격자 추출(1920 × 1080 1장, 112장), 실행 중 취소 후 출력 없음, 크롭과 2배속 편집(640 × 360, 2초), MCP 설정 창, 창 닫기 후 설정 복원
-- 찾아서 고친 문제: 시작 버튼 글자가 흰 배경에 흰색으로 표시되었다. 작업을 시작하면 탭 내용이 사라지고 끝나도 돌아오지 않았다. MCP 설정 창이 런타임 오류를 알림으로 보여 주지 않았다.
-
-위젯을 코드로 조작하는 검사는 앞의 두 문제를 잡지 못했다. 이제 `verify_gui.py`가 탭 내용 표시와 시작 버튼 스타일을 검사한다. 버튼의 실제 색과 Windows의 실제 입력은 검사에 포함되지 않는다.
-
-### Git 기록 재작성
-
-검증일: 2026-10-31. 최신 커밋에 없는 과거 런타임 파일 817개를 Git 기록에서 제거했다. 모든 커밋 해시가 바뀌었지만 최신 커밋의 트리 해시 `f33032652accc04fc2025f23fa93b3c67c36ae29`는 그대로다. 새 clone은 약 514MB에서 약 348MB로, `.git`은 약 130MB에서 60MB로 줄었다.
-
-- 재작성 전 커밋에서는 런타임 파일 일부가 빠져 실행과 `--audit`이 불가능하다. 이 문서의 이전 기록은 당시 실행의 증거로만 남는다.
-- Release 태그 2개는 같은 이름으로 옮겼고 파일 주소는 그대로 동작한다.
-- GitHub의 PR 참조가 예전 커밋을 계속 보관하므로 서버 저장 용량은 바로 줄지 않는다. 일반 clone에는 영향이 없다.
-- 런타임을 다시 생성할 때마다 기록은 다시 늘어난다.
-
-### 의존성 갱신
-
-검증일: 2026-10-31. Dependency check가 보고한 항목을 반영해 두 툴의 런타임을 다시 생성했고, 이슈 #28이 자동으로 닫혔다. 위 기록의 버전은 갱신 전 값이다.
-
-- 두 툴: Python 3.14.10 / 20261026, certifi 2026.10.23. FFmpeg 아카이브와 Tcl/Tk 9.0.4는 그대로다.
-- Path Analysis: Pillow 13.0.0. 12.3.0에는 13.0.0에서 고쳐진 권고 59건이 있었다.
-- 새 clone은 약 370MB, `.git`은 83MB로 약 23MB 늘었다.
-- 두 OS CI와 macOS 26.6.2 새 clone에서 audit, 단위 테스트, smoke, 코덱 샘플 14개, GUI 46개 항목, 이동·오프라인 검사, 실행 스크립트를 통과했다. GUI 도구 버전이 그대로여서 실제 입력 확인은 반복하지 않았다.
-
-### 남은 개선 후보
-
-- **MSYS2 환경:** `ffmpeg` 작업의 Windows 빌드에 MINGW64 사용 중단 경고가 나온다. 지금은 빌드에 영향이 없으며, UCRT64로 옮기면 FFmpeg를 다시 검증해야 한다.
-
-- **Windows 경로 길이:** 저장소의 최장 경로가 181자여서 clone 위치가 깊으면 Git의 경로 길이 제한에 걸릴 수 있다. 배포하지 않는 pip의 고지가 `licenses/python-build-standalone/install` 아래에 중복되어 있어 줄일 수 있다.
+- **2026-10-14 무설치 배포 검증 (경량화 전 런타임):** CPython 3.14.8, FFmpeg 7.1 기반이었습니다. Windows Server 2025, macOS 15.7.9, macOS 26.6.2에서 새 clone과 GitHub ZIP을 한글·공백 경로로 옮겨 오프라인으로 실행해 기능 검증 45/45를 통과했습니다. GUI와 MCP에 같은 입력을 주어 PNG·JPG 격자·편집 영상의 디코딩 결과가 같음을 확인했습니다. 기록: [Windows](https://github.com/youwonsock/tool-utility/actions/runs/38522182617), [Mac](https://github.com/youwonsock/tool-utility/actions/runs/38521357680), [상시 CI](https://github.com/youwonsock/tool-utility/actions/runs/38521361049), [런타임 재생성](https://github.com/youwonsock/tool-utility/actions/runs/38520736707).
+- **2026-10-31 경량화:** 런타임 저장소 크기를 Windows 182MB → 68MB, Mac 146MB → 80MB로 줄이고, OS별 ZIP과 앱 Release 대신 저장소 clone 하나로 배포하도록 정리했습니다.
+- **2026-10-31 Git 기록 재작성:** 최신 커밋에 없는 과거 런타임 파일 817개를 기록에서 지웠습니다. 모든 커밋 해시가 바뀌었고 최신 트리 해시 `f33032652accc04fc2025f23fa93b3c67c36ae29`는 그대로입니다. 새 clone은 약 514MB에서 348MB로 줄었습니다. 재작성 전 커밋은 런타임 파일 일부가 없어 실행할 수 없습니다. Release 태그 2개는 같은 이름으로 옮겼습니다.

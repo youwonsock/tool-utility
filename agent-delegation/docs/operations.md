@@ -1,151 +1,126 @@
 # 운영·복구 계약
 
-## 상태와 소유권
+사용법은 [README](../README.md)에 있습니다. 이 문서는 장애가 났을 때의 판단과 안전 장치의 세부 동작을 정리합니다.
 
-서비스는 localhost에만 바인딩하고 매 시작 시 발급한 bearer 암호를 사용자 데이터 파일에 저장합니다. 브라우저 Origin 요청은 받지 않습니다. OpenCode·Kilo는 워커별 임의 포트와 Basic 인증을 사용하고 Codex·Claude는 소유한 STDIO 프로세스를 사용합니다. 인증 값은 MCP 응답에 포함하지 않습니다.
-
-서비스 소유자는 PID와 프로세스 생성 시각으로 확인합니다. 새 서비스는 살아 있는 소유자를 교체하지 않습니다. 죽은 소유자의 잠금만 단일 회수 절차로 정리합니다. 소유 기록이 없거나 손상되어 실행 여부를 확인할 수 없으면 중복 실행보다 중단을 선택합니다. 그런 경우 `service.log`, `jobs/<attempt>/launch.json`, `started.json`, `worker.json`을 확인해야 합니다. PID 숫자만으로 임의 프로세스를 종료하지 마세요. 회수 도중 프로세스가 죽어 `service-reaping.lock`이 남으면 시작이 `SERVICE_RECOVERY`로 멈추며 오류에 그 경로가 표시됩니다. 실행 중인 서비스가 없음을 확인한 뒤 해당 폴더를 지웁니다.
-
-상태 변경은 이전·다음 revision과 체크섬이 있는 증분 journal 트랜잭션에 fsync한 뒤 확정합니다. 요청 응답·관련 이벤트도 같은 트랜잭션에 포함합니다. 매 저장마다 전체 상태를 snapshot에 쓰지 않습니다. 재시작 시 선택된 체크포인트 뒤의 완전한 journal 레코드를 순차 복구합니다. 마지막 불완전 레코드는 제거하고 중간 레코드 손상·revision 누락은 오류로 처리합니다.
-
-실행·작업·시도·검증·워커 상태는 공통 전환 규칙으로 검사합니다. 기존 상태 이름을 그대로 읽으며 알 수 없는 저장/워커 상태는 `STATE_CORRUPT`, 허용하지 않는 전환은 `STATE_TRANSITION`입니다. 손상된 기록 때문에 프로세스가 멈췄다고 추정하거나 자원 잠금을 해제하지 않습니다. journal 또는 snapshot 쓰기가 실패하면 현재 서비스의 새 작업 dispatch를 중단하고 `REQUEST_UNCERTAIN`을 반환합니다. 서비스를 재시작해 완전한 journal을 복구한 뒤 실행 상태를 대조하세요.
-
-제출은 모든 입력과 context 내용을 검증하고, `submissions/<request_id>/manifest.json`에 생성물 소유권을 기록한 뒤 준비합니다. task metadata와 context 파일은 원자적인 배타적 hard link로 게시하므로 같은 사용자 데이터 파일을 덮어쓰지 않습니다. 모든 준비가 끝난 뒤 실행/작업과 제출 이벤트를 함께 journal에 등록합니다. 등록 전 오류는 이번 제출이 만든 변경 없는 생성물만 정리합니다. 재시작 시 journal에 등록된 제출은 기존 응답을 복구하고, 미등록 준비는 worktree/브랜치/파일 소유권과 내용이 일치할 때만 정리합니다. 사용자 변경이나 불확실한 생성물은 보존하며 같은 모델 요청을 다시 보내지 않습니다. 이 과정에서 `submissions/` 기록을 수동 삭제해 불확실한 요청을 다시 제출하지 마세요.
-
-모델 전송 전 실행·시도·세션·메시지 ID와 의도를 저장합니다. worker 시작은 독립적인 배타적 기록으로 보호합니다. prompt 응답 유실 시 동일 세션에서 해당 메시지를 찾으며 재전송하지 않습니다. 실제 사용자 메시지, 해당 메시지를 부모로 가진 완료 응답, pending tool 부재, idle 상태를 함께 확인합니다. 서버의 idle 상태만으로 성공을 판정하지 않습니다.
-
-검증 명령도 실행 의도, 실제 셸, 환경 설정 식별자와 프로세스 소유권을 먼저 기록합니다. 별도 command-host가 실제 종료 코드와 로그를 저장하고, 소유한 프로세스 트리를 종료한 뒤 결과를 소비합니다. 알 수 없는 종료 코드는 `unknown`이며 같은 명령을 자동 재실행하지 않습니다. 최종 검증은 모델을 호출하지 않습니다. 질문/권한 응답은 전송 의도와 확인 결과를 별도로 기록하며 전달 불확실 상태에서 자동 반복하지 않습니다.
-
-## 판단표
+## 장애 판단표
 
 | 상황 | 동작 |
 | --- | --- |
-| 지시자/MCP 연결 종료 | 서비스·워커 계속 실행; 재연결 후 `list_runs` |
-| 서비스만 종료, 워커 생존 | 같은 워커 기록을 다시 관찰; 모델 요청을 새로 보내지 않음 |
-| worker 종료, 네이티브 프로세스 생존 | `orphaned`; 자원 잠금 유지; 읽기 전용 증거 대조 후 명시적으로 취소·수정 결정 |
-| 재부팅으로 이전 프로세스 소멸 | `interrupted`; 기존 요청 재전송 금지; 지시자의 수정 지시로 새 시도 |
-| 시작 여부/프로세스 소유권 불명 | `orphaned`/`stop_uncertain`; 자원 재할당 금지 |
-| 자원 연결 불일치 | `resource_wait`; 동일 worktree와 자원 잠금 유지. 연결을 맞춘 뒤 `reconcile_run`으로 최초 실행을 이어감 |
-| 모델/검증 실패 | `needs_review`; 지시자의 지시 전 재시도 없음 |
-| 범위·문맥 위반 | 결과 증거 보존, 승인 차단 |
-| 수정 시도의 재적용 충돌 | 구현자에게 해결 지시. 미해결이면 `conflict_unresolved`로 승인 차단, 수정 지시로 이어감 |
-| 수정 시도의 재적용 실패 | `CORRECTION_APPLY_FAILED`; 모델 호출 없음, 수정 횟수 미사용. 반복되면 새 작업 제출 |
-| 통합 도중 서비스 종료 | 실제 HEAD·부모·diff를 대조; 입증되지 않으면 재검수 |
-| 반영 뒤 응답 유실 | 대상 HEAD가 승인 커밋이고 브랜치·작업폴더가 일치하면 완료 복구 |
-| 대상에 사용자 변경 발견 | 보존하고 `finalize_uncertain` 또는 사전 조건 오류 반환 |
+| 지시자·MCP 연결 종료 | 서비스와 워커는 계속 실행. 다시 연결해 `list_runs`로 확인 |
+| 서비스만 종료, 워커 생존 | 같은 워커를 다시 관찰. 모델 요청을 새로 보내지 않음 |
+| 워커 종료, 네이티브 프로세스 생존 | `orphaned`. 자원 잠금 유지. 증거를 대조한 뒤 취소나 수정을 명시적으로 결정 |
+| 재부팅으로 이전 프로세스 소멸 | `interrupted`. 기존 요청을 다시 보내지 않음. 수정 지시로 새 시도 |
+| 시작 여부·프로세스 소유권 불명 | `orphaned` 또는 `stop_uncertain`. 자원을 다시 할당하지 않음 |
+| 자원 연결 불일치 | `resource_wait`. 같은 worktree와 잠금 유지. 연결을 맞춘 뒤 `reconcile_run` |
+| 모델·검증 실패 | `needs_review`. 지시자가 정하기 전에는 재시도하지 않음 |
+| 범위·문맥 위반 | 증거를 보존하고 승인을 막음 |
+| 수정 시도의 재적용 충돌 | 구현자에게 해결 지시. 남아 있으면 `conflict_unresolved`로 승인을 막고 `request_changes`로 이어 감 |
+| 수정 시도의 재적용 실패 | `CORRECTION_APPLY_FAILED`. 모델 호출 없음, 수정 횟수 미사용 |
+| 통합 중 서비스 종료 | 실제 HEAD·부모·diff를 대조. 입증되지 않으면 다시 검수 |
+| 반영 뒤 응답 유실 | 대상 HEAD가 승인 커밋이고 브랜치·작업폴더가 맞으면 완료로 복구 |
+| 대상 저장소에 사용자 변경 | 보존하고 `finalize_uncertain` 또는 사전 조건 오류 반환 |
 
-명시적 중단은 `cancel_run`입니다. `cancelling`은 완료가 아니며, 실제 프로세스 종료 확인 전 자원 잠금을 해제하지 않습니다. macOS의 소유 프로세스 그룹, Windows의 `taskkill /T`로 OpenCode 하위 프로세스 종료를 처리합니다. 작업이 스스로 OS 서비스나 완전히 독립된 프로세스를 설치하는 동작은 허용된 작업 범위로 간주하지 않습니다.
+불확실한 외부 작업은 자동으로 반복하지 않습니다. 실제 프로세스와 Git 증거로 대조한 뒤 다음 동작을 정합니다.
 
-진단·자원 probe·Git·프로세스 종료 대기는 짧은 상태 변경 큐 밖에서 실행합니다. 실행 의도를 저장하고 슬롯·자원·실행/대상 저장소를 예약한 뒤 외부 작업을 시작하며, 결과는 작업 ID·revision·취소 세대가 맞을 때만 적용합니다. 1초 이상 걸리는 변경은 `in_progress`, `operation_id`, `operation_status`, 선택적 `run_id`로 먼저 응답할 수 있습니다. 같은 요청 ID·내용으로 진행/최종 결과를 확인하고 `get_run.operations`를 조회합니다. 최종 결과 전에는 요청을 완료 처리하지 않습니다. 재시작에서 소유자를 잃은 작업은 `uncertain`으로 유지하고 실제 프로세스·Git 증거로 대조합니다. 불확실한 효과를 자동 반복하지 마세요.
+## 서비스와 기록
 
-취소는 의도를 먼저 저장하고 종료 대기를 분리해 응답합니다. 완료가 늦게 도착해도 취소 세대를 넘어 적용하지 않습니다. 최종 반영의 durable `finalizing` 경계 전 취소는 반영을 막으며, 경계 이후의 취소는 `RUN_FROZEN`입니다. 이미 반영을 시작한 Git 작업을 취소했다고 보고하지 않습니다.
+- **접속:** 서비스는 localhost에만 열리고, 시작할 때마다 새 bearer 암호를 사용자 데이터 파일에 씁니다. 브라우저 Origin 요청은 받지 않습니다. OpenCode·Kilo는 워커별 임의 포트와 Basic 인증, Codex·Claude는 소유한 STDIO 프로세스를 씁니다. 인증 값은 MCP 응답에 넣지 않습니다.
+- **소유자 확인:** 서비스 소유자는 PID와 프로세스 생성 시각으로 확인합니다. 새 서비스는 살아 있는 소유자를 교체하지 않고, 죽은 소유자의 잠금만 회수합니다. 확인할 수 없으면 중복 실행보다 중단을 택합니다. 이때는 `service.log`와 `jobs/<attempt>/`의 `launch.json`, `started.json`, `worker.json`을 확인하고, PID 숫자만 보고 프로세스를 종료하지 마세요.
+- **회수 잠금:** 회수 중 프로세스가 죽어 `service-reaping.lock`이 남으면 시작이 `SERVICE_RECOVERY`로 멈춥니다. 서비스가 없는 것을 확인한 뒤 그 폴더를 지웁니다.
+- **저장:** 상태 변경은 revision과 체크섬이 있는 증분 journal에 fsync한 뒤 확정합니다. 요청 응답과 이벤트도 같은 트랜잭션에 넣습니다. 재시작하면 체크포인트 뒤의 journal을 차례로 복구합니다. 마지막 불완전 레코드는 버리고, 중간 손상이나 revision 누락은 오류입니다.
+- **상태 오류:** 알 수 없는 상태는 `STATE_CORRUPT`, 허용되지 않는 전환은 `STATE_TRANSITION`입니다. 저장이 실패하면 새 작업 시작을 멈추고 `REQUEST_UNCERTAIN`을 반환합니다. 서비스를 재시작해 복구한 뒤 상태를 대조하세요.
+- **제출:** 모든 입력과 문맥을 검증하고 `submissions/<request_id>/manifest.json`에 생성물 소유권을 기록한 뒤 준비합니다. 작업 파일은 배타적 hard link로 게시하고, 준비가 끝나면 실행과 제출 이벤트를 한 번에 등록합니다. 등록 전 오류는 이번 제출이 만든 변경 없는 생성물만 정리합니다. `submissions/` 기록을 지워 불확실한 요청을 다시 제출하지 마세요.
+- **규칙 변경:** 문맥으로 쓴 규칙·명세를 바꿨다면 기존 실행을 조용히 갱신하지 않습니다. 현재 작업을 검토하고 새 실행을 계획하세요.
+- **모델 요청:** 보내기 전에 실행·시도·세션·메시지 ID와 의도를 저장합니다. 응답을 잃으면 같은 세션에서 그 메시지를 찾고, 다시 보내지 않습니다. 완료는 실제 메시지, 그 메시지에 대한 완료 응답, 대기 중 도구 없음, idle 상태를 함께 보고 판단합니다.
+- **검증 명령:** 실행 의도, 실제 셸, 환경 식별자와 프로세스 소유권을 먼저 기록합니다. 별도 command-host가 종료 코드와 로그를 저장하고 프로세스 트리를 정리합니다. 종료 코드를 알 수 없으면 `unknown`이며 자동으로 다시 실행하지 않습니다.
+- **변경 요청:** 1초 넘게 걸리면 `{in_progress, operation_id, operation_status, run_id?}`로 먼저 응답합니다. 같은 `request_id`와 내용으로 결과를 다시 확인하거나 `get_run.operations`를 봅니다.
+- **응답 크기:** 일반 응답은 4 KiB, 산출물 응답은 16 KiB 이내입니다. `next_cursor`, `after`, `next_offset`으로 이어 읽습니다. 페이지에 들어가지 않는 작업 항목은 요약(`task_id`, 상태, 시도 ID·상태·커밋, 검사 결과)과 전체를 가리키는 `artifact_id`로 돌려줍니다.
+- **데이터 권한:** POSIX에서는 데이터·인증 기록을 사용자 전용 권한으로 만들고, Windows는 사용자 프로필 ACL을 씁니다. 데이터·연결 암호·로그는 Git에 넣지 마세요.
 
-취소 의도는 워커 제어 파일보다 먼저 저장합니다. 이후 늦게 도착한 완료/실패 기록은 실행을 `active`나 최종 검수 상태로 되돌리지 못합니다. 취소 대상 검증은 `cancelled`이며, 종료를 입증할 때까지 실행은 `cancelling`과 자원 잠금을 유지합니다. 이미 통합된 작업과 증거는 보존합니다.
+## 취소와 수정 지시
 
-수정 지시가 수락된 작업은 `queued`로 바뀌며 이전 결과는 즉시 검수 대상에서 제외됩니다. 새 시도가 아직 시작되지 않았거나 서비스를 재시작했더라도 같은 이전 결과를 승인하거나 새 ID로 수정 지시를 중복 제출할 수 없습니다. 원래 ID와 같은 내용의 재전송은 기록된 응답을 반환합니다.
-
-범위/문맥 거절에는 tracked diff와 `rejected-result.json`이 포함됩니다. 구조화 증거는 오류 코드/상세 정보와 변경 파일 목록을 보존하며, 미추적 UTF-8 파일 미리보기는 64 KiB 이하입니다. 크기·SHA-256·잘림 여부를 확인하세요. 바이너리는 메타데이터만 제공하고, 심볼릭 링크 대상은 읽지 않으며 인증 파일의 본문은 제외합니다. 증거 수집 오류는 원래 거절 이유를 대체하지 않습니다.
-
-## 모델·자원 점검
-
-`get_run`은 시도별 `usage`와 실행 합계 `usage`를 돌려줍니다. 값은 플랫폼이 보고한 입력·출력·캐시 토큰과 `cost_usd`입니다. Codex처럼 비용을 보고하지 않으면 `cost_usd`는 `null`이고, 합계도 한 시도라도 비용이 없으면 `null`입니다. 구독형 요금제의 실제 청구액과는 다를 수 있습니다.
-
-`get_run`의 `last_activity_at`은 구현자의 기록이 마지막으로 바뀐 시각이며, 작업이 멈췄는지 판단할 때 씁니다. 모델 출력은 응답에 넣지 않습니다.
-
-`get_run`의 작업 항목이 4 KiB 페이지에 들어가지 않으면 `task_id`, `state`, 시도의 `id`·`state`·`commit`, 검사 결과만 남기고 전체 내용은 `artifact_id`로 돌려줍니다. 검사 로그와 결과는 `verification[].artifact`로 찾으며 `artifacts`에는 중복해서 넣지 않습니다.
-
-서비스 전체 동시 실행 수는 `AGENT_DELEGATION_CONCURRENCY`(기본 2)로 정하며, 실행의 `settings.concurrency`는 이 값을 넘지 못합니다. 넘게 지정하면 `create_run` 응답의 `service_concurrency_limit`으로 알리고, `get_run`의 `effective_concurrency`로 실제 값을 보여 줍니다. 값을 바꾸면 `stop` 후 서비스를 다시 시작해야 합니다. 워커 하나의 메모리는 측정에서 약 115MB였습니다.
-
-`doctor.connection.model_warning`은 기본 모델을 쓸 수 없을 때의 경고입니다. 모델을 지정하지 않아도 진단은 가능하므로 `compatible`은 그대로이며, 실제 실행에서는 이 모델로 실패합니다. 구독 부족처럼 호출해 봐야 아는 문제는 잡지 못합니다.
-
-`doctor.connection.healthy`는 선택한 런타임의 초기화·정책·세션 연결 확인을 뜻합니다. 모델 기본값이 없는 HTTP 런타임도 모델 호출 없이 진단할 수 있습니다. 공급자 인증 유효성은 실제 모델 작업으로 확인하며, doctor는 이를 검증했다고 주장하지 않습니다. 인증 오류는 선택한 플랫폼의 네이티브 설정에서 해결합니다. 다른 공급자의 자격 증명을 탐색해 대체하지 않습니다.
-
-서비스는 시작할 때의 환경 변수를 유지합니다. `AGENT_DELEGATION_*_EXECUTABLE`이나 `AGENT_DELEGATION_*_SDK_ROOT`를 바꾼 뒤에는 `stop`을 호출하고 `doctor`를 다시 실행합니다. Claude Code의 `CLI_INCOMPATIBLE` "did not report a runtime version"은 CLI가 초기화 응답에 버전을 보내지 않는 경우입니다. 2.1.223에서 재현됐고, SDK 0.3.316과 CLI 2.1.316 조합은 통과했습니다. 전역 폴더에 쓸 권한이 없으면 사용자 폴더에 CLI와 SDK를 설치하고 데이터 폴더의 `profiles.json`에서 `executable`과 `sdk_root`로 지정합니다. OpenCode와 Kilo 워커는 사용자 설정의 권한 중 정책에 없는 항목을 `deny`로 덮어쓰므로, 전역 설정의 허용 항목은 워커에 적용되지 않습니다.
-
-자원 프로파일은 같은 서비스 전체에서 동일 키에 동일 정의를 요구합니다. probe를 실행하는 시점은 잠금 획득 뒤, 모델 호출 전입니다. project-bound 자원은 실제 worktree 경로를 realpath로 비교합니다. 프로파일은 외부 서버를 자동 시작하거나 Editor 프로젝트를 자동 전환하는 명령이 아닙니다.
-
-기존 규칙/명세를 바꾸었다면 이전 해시의 실행을 조용히 갱신하지 않습니다. 현재 작업을 검토하고 새 실행을 계획하세요. 작업의 목표, 검증 명령과 승인 자체도 재현 가능한 기록의 일부입니다.
-
-## 업데이트와 정리
-
-설치본은 버전·내용 해시를 가진 디렉터리에 도구 자체의 MCP·공통 라이브러리만 포함합니다. 플랫폼 SDK·CLI·GUI는 사용자가 설치·업데이트하며 도구가 복사하거나 설치하지 않습니다. 과거 release와 현재 실행의 job/spec 파일은 업데이트가 덮어쓰지 않습니다. 살아 있는 이전 서비스, 종료 불확실 시도, 다른 프로토콜·저장 형식은 `UPDATE_PENDING`으로 등록 전환을 막습니다.
-
-현재 배포물로 실행을 완료하거나 `stop --cancel`로 소유 워커 종료를 확인한 뒤 새 배포물을 등록합니다. Codex와 Claude Code 중 설치된 CLI에 등록하며, 등록 실패 시 두 플랫폼의 이전 marketplace·플러그인 등록을 복구합니다. 새 MCP 연결과 종료 확인 후 실제 서비스의 배포 버전·경로를 확인합니다. 사용자 CLI·SDK·인증·GUI·프로필·실행 기록은 보존합니다.
-
-플러그인 등록 변경은 기존 대화의 MCP 프로세스를 교체하지 않습니다. 열려 있는 대화는 이전 설치본을 계속 사용하므로, 새 설치본을 쓰려면 MCP를 다시 연결하거나 대화를 새로 시작합니다.
-
-MCP 초기화의 `serverInfo.version`은 연결된 브리지의 설치 버전이고, `doctor.deployment.version`·`doctor.deployment.executable`은 실제 서비스의 배포물입니다. 호스트 연결이 끊긴 경우 프로세스만 종료하면 `Transport closed`가 남을 수 있습니다. Codex의 `config/mcpServer/reload`는 설정을 다시 읽고 로드된 대화의 갱신을 예약하는 호스트 API입니다. 호스트가 이 제어 경로를 제공하지 않으면 앱에서 재연결하거나 재시작해야 하며, 다른 작업이 실행 중일 때 백엔드를 임의로 종료하지 마세요.
-
-## 저장 형식
-
-저장 형식이 다르거나 형식 번호가 없는 데이터, 프로토콜이 다른 서비스는 변환 없이 거절하며, 시작과 설치 전환을 `UPDATE_PENDING`으로 멈춥니다.
-
-상태·워커 기록은 임시 파일에 쓰고 동기화한 뒤 원자적으로 교체합니다. Windows의 일시적인 파일 잠금은 최대 230 ms의 제한된 재시도로 처리합니다. 잠금이 지속되거나 다른 저장 오류가 나면 기존 기록을 보존하고 오류를 반환하며, 저널·snapshot 등록이 불확실하면 `REQUEST_UNCERTAIN` 처리를 유지합니다.
-
-## 7일 보관과 체크포인트
-
-실행의 최초 `completed`·`cancelled` 전환에 `ended_at`을 기록합니다. 종료 후 7일이 지난 실행을 서비스 시작과 매시간 검색해 직렬 큐에서 한 건씩 `archives/runs/`로 보관합니다. 자원 잠금, 종료 불확실·생존 프로세스, 미해결 제출 준비가 있으면 보류합니다. 요청 응답은 응답 완료 후 7일이 지나면 `archives/requests/`로 이동하고, 미해결 요청 의도는 기본 상태에 유지합니다.
-
-보관 파일은 내용 해시를 이름으로 사용하고 체크섬을 검사합니다. 파일을 먼저 원자적으로 저장한 뒤 journal에 색인 추가와 기본 상태의 상세 제거를 함께 기록합니다. 파일 작성이 실패하면 기본 기록을 유지하고, journal·snapshot·체크포인트 반영이 불확실하면 `REQUEST_UNCERTAIN`으로 실행을 중단합니다. 보관 파일이 없거나 손상되면 `STATE_CORRUPT`이며 동일 ID를 신규 요청으로 실행하지 않습니다.
-
-`list_runs`는 현재·보관 기록을 생성 시각과 ID 순으로 함께 표시합니다. `list_runs`·`get_run`에 `archived`, `archived_at`, `ended_at`이 추가됩니다. 보관된 실행의 `get_run`에는 `effective_concurrency`와 `operations`가 없으며, 실행 합계 `usage`는 합계를 저장한 뒤 보관된 실행에만 있습니다. `get_run`·`wait_run`·`get_artifact`는 기존 ID와 페이지·이벤트 커서를 유지합니다. 보관된 실행의 새 변경은 `RUN_ARCHIVED`로 거절하고, 동일 요청 ID·내용의 재전송은 저장된 응답을 우선 반환합니다. `cleanup`은 보관된 실행에도 사용할 수 있으며 정리 이벤트도 보관합니다. 프로세스 시작 시에는 보관 파일 본문을 읽지 않고 목록 색인만 읽습니다.
-
-journal은 256개 레코드 또는 `max(32 MiB, 최신 레코드 바이트 수 × 4)`에 도달하면 새 세대로 전환합니다. 먼저 빈 tail을 동기화하고, 별도 `storage-worker.mjs`가 변경되지 않는 이전 체크포인트와 journal을 읽어 `checkpoints/<id>/state.json`을 만듭니다. `checkpoint.json`은 선택한 snapshot의 경로·해시·revision과 tail 목록을 담는 원자적 manifest입니다. 생성 중 추가된 `journals/<id>.jsonl`을 유지한 채 manifest를 게시하며, 읽기 작업이 끝난 이전 세대 파일만 정리합니다. 초기 `state.json`은 형식 검사와 최초 snapshot 역할을 하고 정상 저장마다 재작성하지 않습니다. `state.json` 하나만 복사해서는 최신 상태를 백업할 수 없습니다.
-
-실행 보관은 체크섬 manifest와 작업·시도·검증 이력 및 최대 128개/128 KiB 이벤트 청크를 사용합니다. 필요한 페이지와 이벤트 구간만 읽습니다. `get_artifact`도 요청한 바이트 구간과 UTF-8 경계 확인에 필요한 소량만 읽습니다. 복구는 전체 journal 대신 레코드를 순차 읽기하며, 전역 이벤트 순번과 서비스 전체 자원 설정 해시는 보관 이후에도 유지합니다. 보관 기록·증거·로그·worktree·이전 백업은 자동 삭제하지 않습니다.
-
-## 백업과 복원
-
-데이터를 백업할 때는 서비스·워커 종료를 확인한 뒤 **데이터 폴더 전체**를 같은 시점에 보존합니다. `checkpoint.json`과 그 manifest가 참조하는 `checkpoints/`·`journals/`, `archives/`, `jobs/`, `artifacts/`, 문맥·제출 준비·worktree까지 함께 보존해야 합니다. `state.json` 하나만으로는 최신 상태와 증거를 복원할 수 없습니다.
-
-복원할 때도 현재 서비스·워커를 먼저 종료하고 현재 데이터 전체를 별도 보존합니다. 같은 백업의 전체 데이터를 **원래 절대 데이터 경로**에 복원하고 해당 형식을 지원하는 배포물로 조회·소유권을 대조하세요. 기록과 Git worktree에는 절대 경로가 있으므로 상태 파일만 다른 위치로 복사하는 데이터 경로 이전은 지원하지 않습니다. 서로 다른 시점의 snapshot·journal·보관 색인이나 형식이 다른 배포물을 혼합하지 마세요. 필요한 원본 증거나 일관된 백업이 없으면 복원을 진행하지 않습니다. 설치 스크립트는 자동 복원하거나 사용자 데이터를 삭제하지 않습니다.
-
-## 지시자 연결과 지원 수준
-
-`export-host <opencode|codex|claude-code|kilo> <새 출력 경로>`는 MCP 설정과 delegate-agents 스킬·도구 계약을 생성하며 전역 설정을 등록하지 않습니다. Kilo는 CLI/runtime용 kilo.json과 IDE용 ide-mcp.json을 구분합니다. 같은 데이터 폴더에 연결하면 같은 서비스가 작업과 자원을 관리합니다.
-
-자동화된 16개 조합은 네 지시자 설정과 모의 네이티브 워커를 사용하는 MCP 계약 검사입니다. 실제 CLI/SDK 연결 검사는 별도 임시 경로에 준비한 테스트 설치본을 사용합니다. 실제 모델 작업과 IDE·데스크톱 GUI는 확인하지 않았다면 미확인으로 유지합니다. `npm run e2e -- [haiku-kilo|haiku-luna|luna-haiku]`는 실제 지시자가 MCP 도구로 계획·검토·최종 반영을 하고 다른 플랫폼이 구현하는 흐름을 임시 저장소에서 실행합니다. 기본값 `haiku-kilo`는 Claude Code Haiku와 Kilo `kilo/kilo-auto/free`, `haiku-luna`는 Haiku와 Codex `gpt-6-luna`, `luna-haiku`는 Codex `gpt-6-luna`와 Claude Code Haiku 조합입니다. `--user-data`를 붙이면 실제 데이터 폴더의 서비스를 쓰며, 통과하면 해당 실행의 worktree만 정리하고 실행 기록과 증거는 남깁니다. `npm run e2e:platform -- <플랫폼> [모델]`은 지시자 없이 스크립트가 도구를 호출해 플랫폼별 병렬 작업, 충돌, 수정 지시, 최종 반영을 실행합니다. `--restart`를 붙이면 구현자가 모델 요청을 수락한 뒤 서비스를 강제 종료하고 다시 연결해, 같은 워커가 요청을 다시 보내지 않고 끝까지 완료하는지 확인합니다. `--cancel`을 붙이면 같은 시점에 `cancel_run`을 호출해, 실행과 작업이 `cancelled`로 끝나고 워커 프로세스가 종료되며 원래 체크아웃이 바뀌지 않고 `cleanup`이 성공하는지 확인합니다. 모두 모델 비용이 들어 `npm run check`에는 포함하지 않습니다. 실패하면 로그 경로를 출력하고 임시 폴더를 남기며, `--installed`를 붙이면 빌드 대신 설치본을 검사합니다. OpenCode와 Kilo 모델은 `공급자/모델` 형식입니다. 2026-11-03 macOS에서 실제 모델로 충돌 수정부터 `finalize_run`까지, 서비스 재시작, 취소를 모두 확인한 조합은 Codex 0.166.0, OpenCode 1.19.0 + SDK 1.19.5, Claude Code 2.1.316 + SDK 0.3.316, Kilo 7.4.23 + SDK 7.8.18입니다. 같은 날 지시자 조합 `haiku-kilo`, `haiku-luna`, `luna-haiku`도 통과했습니다. `npm run e2e`는 임시 내보내기 설정을 쓰므로 등록된 플러그인 경로를 검사하지 않습니다. 플러그인 경로의 실제 실행 결과는 README의 실제 사용 화면에 있습니다. GUI 구현자 자동 제어는 제공하지 않습니다. Codex app-server는 실험 연동입니다. SDK·CLI 버전 일치 대신 필수 API·권한 정책·세션 연결을 검사합니다. `doctor.compatible`은 초기화 검사와 종료 확인 결과이며 유료 모델 작업의 성공을 보장하지 않습니다. `backend_version`은 실제 CLI 버전입니다. `doctor.runtime`은 SDK와 CLI의 경로·해시·버전이고, `get_run`의 `runtime`은 버전만 담습니다. 실행에 쓴 전체 식별 정보는 `jobs/<attempt-id>/worker.json`에 남습니다.
-
-## 외부 설치본과 재시도
-
-OpenCode·Kilo·Claude는 사용자 설치 CLI와 해당 플랫폼 SDK가 필요하며 Codex는 CLI만 필요합니다. SDK는 절대 `sdk_root` 프로필 → `AGENT_DELEGATION_{OPENCODE,CLAUDE,KILO}_SDK_ROOT` → 선택한 CLI 패키지 → 현재 Node/npm 전역 패키지 순서로 탐색합니다. 잘못된 지정 경로는 수정할 때까지 중단하며 프로젝트·worktree·다른 도구의 내부 SDK로 대체하지 않습니다. 원래 패키지의 ESM 공개 진입점과 의존성을 사용합니다.
-
-`SDK_NOT_FOUND`, `SDK_INCOMPATIBLE`, `CLI_NOT_FOUND`, `CLI_INCOMPATIBLE`에는 검사 경로·필수 API·설정 안내가 포함됩니다. 제출 전 경로 검사가 실패하면 작업·worktree를 등록하지 않습니다. 워커 API 초기화가 실패하면 모델 요청을 보내지 않고 소유 프로세스를 정리합니다. 설정·초기화 실패는 수정 모델 횟수에 포함하지 않으며 전달 의도를 기록한 요청은 불확실해도 포함합니다. 지시자의 `request_changes`만 새 수정 시도를 시작합니다.
-
-진행 중인 시도의 설치본이 삭제·변경됐거나 식별 정보가 없으면 `RUNTIME_CHANGED`를 증거와 이벤트로 기록합니다. 살아 있는 기존 워커를 관찰할 수 있지만 다른 SDK로 교체하거나 모델 요청을 재전송하지 않습니다. SDK 없이 소유 PID·생성 시각·프로세스 기록과 Git 증거를 대조하고 취소할 수 있습니다. 종료가 불확실하면 자원 잠금을 유지합니다. 새로운 수정 시도는 고정한 프로필·모델로 현재 설치본을 다시 검사합니다.
-
-종료 기록과 워커 기록은 SDK 없이 조회할 수 있습니다. 소유 런타임의 프로세스 의도·식별 기록이 누락되면 종료를 추정하지 않고 불확실 상태와 잠금을 유지합니다. 최종 검증은 플랫폼 SDK 없이 공통 명령 실행기를 사용합니다.
-
-Codex 워커는 `on-request` 승인 정책과 `workspace-write` 샌드박스를 사용하며 검증 기준 CLI는 0.166.0입니다. 모델 호출 없이 초기 설정을 검사하고, 상속된 훅·신뢰 상태를 제외한 소유 `PreToolUse` 훅 하나를 `hooks/list`로 찾습니다. 해당 key와 currentHash만 실행 인자의 `hooks.state`에 등록해 다시 시작한 뒤, 같은 명령·동기 실행·matcher와 `trusted` 상태를 확인합니다. 전역 설정의 훅 신뢰는 바꾸지 않습니다. `code_mode_host`를 활성화한 실행 서버에서 이 훅·feature·승인 설정·샌드박스·MCP 설정이 확인되기 전에는 모델 요청을 보내지 않습니다. 확인한 key·해시는 `jobs/<attempt>/hook-policy.json`에 남습니다. 필수 동기·신뢰 정보를 제공하지 않는 구형 CLI는 모델 호출 전에 거절하며, 사용자 CLI를 자동 업데이트하지 않습니다.
-
-Windows에서 구현을 선택하지 않으면 Codex가 요청한 `workspace-write`를 `read-only`로 바꾸므로, 워커는 소유한 실행 인자에서만 `windows.sandbox=unelevated`를 기본 선택합니다. 명시적인 `windows.sandbox`의 `mxc`·`elevated`·`unelevated` 값은 유지합니다. 관리자 설정 절차나 전역 설정 쓰기는 실행하지 않습니다. 적용된 Windows 구현과 thread 응답의 `workspaceWrite`를 모두 확인하며, 읽기 전용·전체 접근·외부 또는 불명확한 응답으로 검사를 완화하지 않습니다. 불일치 진단에는 요청·관찰한 정책 종류만 남깁니다.
-
-사용자 `.cmd` 래퍼가 인자를 다시 해석할 때 설정 값·사전 키가 환경 변수나 리디렉션으로 실행되지 않도록, Codex 설정 문자열의 CMD 연산 문자는 TOML Unicode escape로 전달합니다. Codex가 해석한 원래 값과 `<session-flags>` 훅 키·신뢰 해시는 유지하며, 종료를 확인할 수 없는 실행은 계속 실패로 처리합니다.
-
-Codex의 네이티브 셸·exec·write_stdin은 명시적으로 거절합니다. 파일·문맥은 `delegate_read_file`로 범위 안의 일반 UTF-8 파일을 한 번에 최대 64 KiB씩 읽고, 심볼릭 링크·Git 메타데이터·외부 경로는 거절합니다. 직접 수정은 `apply_patch`의 `tool_input.command`에 담긴 모든 변경·이동 경로를 검사합니다. 셸 작업은 `delegate_run_command`의 소유한 app-server 요청을 대기시킨 채 기존 `respond_to_request`의 `once`·`always`·`reject`로 결정하며, 실행 직전 범위·문맥·감시 상태를 다시 검사합니다. 별도 command-host가 의도·종료 코드·로그와 `supervised-<id>-result.json`을 기록하고 해당 명령의 프로세스 트리만 종료하므로 Codex 서버의 소유권은 유지됩니다. 취소는 대기 작업을 새로 실행하지 않고 실행 중 명령도 소유 기록으로 종료합니다.
-
-현재 Codex `PreToolUse`의 `ask`는 파싱되지만 지원되지 않아 훅 오류 뒤 도구가 계속 실행될 수 있습니다. 따라서 소유 훅은 `allow`·`deny`만 출력하며, 두 동적 도구·범위가 확인된 `apply_patch`·기존 질문 응답으로 연결되는 `request_user_input`만 허용합니다. 나머지 네이티브 도구는 거절합니다. 선언된 MCP 도구도 네이티브 승인이 필요한 호출은 거절되며, 이 게이트웨이는 MCP 도구 승인을 아직 제공하지 않습니다. 자원 연결 진단 성공이 Codex에서 해당 도구를 실행할 수 있다는 뜻은 아닙니다.
-
-Codex 세션은 스트림이 멈췄을 때 다시 읽을 수 있도록 소유한 비임시 thread를 씁니다. 완료 여부는 app-server 이벤트 스트림으로 판단합니다. `thread/turns/list`는 스트림이 전달 확인 전 5초, 확인 후 30초 동안 조용할 때만 최근 턴을 읽습니다. 읽기가 실패하면 무시하고 스트림이나 시도 제한 시간이 결과를 정합니다. 이 읽기 관찰은 취소를 지연하지 않습니다. 세션 생성·요청 의도와 소유권을 유지하며 관찰 실패를 이유로 모델 요청을 다시 보내지 않습니다.
+- `cancel_run`은 취소 의도를 먼저 저장하고, 종료 대기와 분리해 바로 응답합니다.
+- `cancelling`은 완료가 아닙니다. 실제 종료를 확인하기 전에는 자원 잠금을 풀지 않습니다. macOS는 소유 프로세스 그룹, Windows는 `taskkill /T`로 하위 프로세스까지 종료합니다.
+- 늦게 도착한 완료·실패 기록은 취소된 실행을 되돌리지 못합니다. 취소된 검증은 `cancelled`입니다.
+- 최종 반영의 `finalizing` 경계 전 취소는 반영을 막고, 경계 뒤의 취소는 `RUN_FROZEN`으로 거절합니다.
+- 수정 지시가 수락되면 이전 결과는 즉시 검수 대상에서 빠집니다. 재시작해도 그 결과를 승인하거나 수정 지시를 중복 제출할 수 없습니다.
+- 통합된 작업은 고치지 않고 후속 작업을 추가합니다. 아직 통합하지 않은 결과의 수정은 가장 최근 시도의 커밋을 적용한 새 시도로 진행합니다.
+- 범위·문맥 거절에는 tracked diff와 `rejected-result.json`이 남습니다. 미추적 UTF-8 파일은 64 KiB까지 미리보기를 주고, 바이너리·인증 파일 본문과 심볼릭 링크 대상은 넣지 않습니다.
 
 ## 실행 중 범위 보호
 
-공통 경로 규칙은 정확한 파일, 끝이 `/` 또는 `/**`인 디렉터리, `**`를 지원합니다. 직접 편집·삭제·이름 변경·다중 파일 패치는 모든 경로와 이름 변경 전후 경로를 검사합니다. 보호 문맥의 부모 디렉터리 삭제, `.git` 및 공유 Git 메타데이터, traversal·대소문자·Windows short-name 별칭과 ADS·끝점/공백, symlink/junction 우회를 거절합니다. 새 파일도 존재하는 부모의 native realpath를 확인합니다. 알 수 없는 네이티브 변경 경로나 wildcard 승인 payload는 실패로 닫습니다.
+- **경로 검사:** 직접 편집·삭제·이름 변경·다중 파일 패치는 실행 전에 모든 경로를 검사합니다. 범위 밖 경로, 문맥, `.git`, traversal, 대소문자·Windows short-name 별칭, ADS, 심볼릭 링크·junction 우회는 권한 승인으로도 풀리지 않습니다.
+- **플랫폼별 확인:** 모델 요청 전에 OpenCode·Kilo는 edit/bash ask 정책과 permission API, Codex는 신뢰 해시가 확인된 훅과 명령 게이트웨이, Claude는 훅 등록과 SDK callback을 확인합니다. 확인할 수 없는 설치본은 실행하지 않습니다.
+- **셸 명령:** 일반 셸·exec·write_stdin은 지시자 승인을 받습니다. 재위임, 백그라운드 실행, 소유권을 바꾸는 Git 명령은 거절합니다. `always` 승인은 정확한 명령·작업 폴더·시도·범위 해시에 묶이고 현재 시도에서만 유효합니다.
+- **감시:** 워커가 소유하는 파일 알림과 주기적 Git·문맥 검사는 MCP나 서비스가 끊겨도 유지됩니다. 문맥을 제외한 ignored 빌드 출력은 허용합니다. 위반이나 감시 상태 불명은 `scope-violation.json`에 남기고 소유 프로세스를 중단한 뒤, 종료를 확인하고 `scope_or_context_error`로 검수에 올립니다. 파일을 자동 복원하거나 삭제하지 않습니다.
+- **한계:** 이 보호는 OS 격리가 아닙니다. 승인한 프로그램의 모든 외부 부작용을 막지는 못하므로 셸 승인 때 명령과 작업 폴더를 검토하세요.
 
-OpenCode·Kilo는 유효한 edit/bash ask 정책과 필수 permission API, Codex는 신뢰 해시가 확인된 훅·feature·승인 설정과 동적 명령 게이트웨이, Claude는 훅 등록과 SDK callback을 모델 전달 전에 확인합니다. 일반 셸·exec·write_stdin은 승인 대기이며 Codex에서는 위 동적 게이트웨이를 사용합니다. 재위임·백그라운드 실행·소유권을 바꾸는 Git 명령은 거절합니다. 직접 보호 경로나 문맥을 참조하는 명령도 권한 승인으로 해제하지 않습니다. grant는 정확한 요청·명령·cwd·시도와 범위/문맥 해시에 묶고, 늦은 응답은 현재 pending 요청과 정책을 다시 확인합니다. Codex 동적 요청은 소유 thread·turn·call ID와 도구 이름도 확인합니다. `always`는 현재 시도 안에서만 사용하며 전역 설정에 저장하지 않습니다.
+## 공유 자원
 
-워커가 소유하는 파일 알림과 주기적인 Git·HEAD/브랜치·문맥 검사는 MCP·서비스 연결이 끊겨도 유지됩니다. 선언된 검증 시작 때 소스를 고정하고 검증 중 변경도 실패 처리합니다. 보호 문맥을 제외한 ignored 빌드 출력은 허용합니다. 감시 누락·오류·오래된 health는 실패로 닫고, 재시작 후 새 워커로 기존 모델 요청을 반복하지 않습니다.
+- 자원 프로파일은 연결 설정, `resource_key`, 읽기 전용 probe 명령, 예상 인스턴스 ID를 가집니다. 같은 키는 서비스 전체에서 같은 정의여야 합니다.
+- probe는 잠금을 얻은 뒤, 모델 호출 전에 실행합니다. 실제 시스템을 조회해 `instance_id`와 필요하면 `project_path`를 JSON으로 돌려줘야 합니다. 기대값을 그대로 출력하는 스크립트는 쓸 수 없습니다.
+- Unity Editor 같은 프로젝트 종속 자원은 작업 worktree와 최종 검증 worktree 각각에 연결해야 합니다. 경로가 맞지 않으면 `resource_wait`로 기다리며, 연결한 뒤 `reconcile_run`을 호출하면 같은 시도를 이어 갑니다.
+- OpenCode는 기존 설정의 MCP 연결을 모두 끄고 명시한 자원만 켜며, 외부 플러그인은 `--pure`로 끕니다. 사용자 인증 파일은 복사하지 않습니다.
+- 워커의 재위임과 이 위임 MCP 호출은 금지됩니다.
 
-위반은 bounded `scope-violation.json`과 원래 오류 코드에 남기고 소유 프로세스를 중단합니다. 증거 파일 저장 실패가 원래 위반을 대체하지 않습니다. 파일을 자동 복원·삭제하지 않고, 실제 종료를 확인한 뒤 `scope_or_context_error`로 검수에 올려 승인을 막습니다. 종료가 불확실하면 워커와 감시를 유지하며 제한된 간격으로 소유 프로세스 종료만 재확인합니다. 워커 자체가 죽었다면 기존 소유권 불명 복구 경계가 적용되어 명시적인 대조와 종료 확인 전 잠금을 해제하지 않습니다.
+## 구현자 설치본과 SDK
 
-이 보호는 승인된 임의 프로그램의 모든 외부 부작용을 차단하는 OS 격리가 아닙니다. 셸 승인 시 실제 명령과 작업 디렉터리를 검토하세요. 선언된 검증은 신뢰한 고정 명령을 별도 공통 실행기에서 수행하며 실제 종료 코드·로그와 소스/문맥 변경 검사를 남깁니다.
+- Codex는 CLI만, OpenCode·Kilo·Claude는 CLI와 SDK가 필요합니다.
+- SDK 탐색 순서는 `profiles.json`의 절대 `sdk_root` → `AGENT_DELEGATION_{OPENCODE,CLAUDE,KILO}_SDK_ROOT` → 선택한 CLI 패키지 → 현재 Node/npm 전역 패키지입니다. 프로젝트나 다른 도구의 SDK로 대체하지 않습니다.
+- CLI 경로는 `profiles.json`의 `executable` 또는 `AGENT_DELEGATION_{OPENCODE,CODEX,CLAUDE,KILO}_EXECUTABLE`(`_EXECUTABLE_ARGS`)로 지정합니다. 서비스는 시작할 때의 환경 변수를 유지하므로, 바꾼 뒤에는 `stop` 후 `doctor`를 다시 실행합니다.
+- `doctor`의 오류는 `SDK_NOT_FOUND`, `SDK_INCOMPATIBLE`, `CLI_NOT_FOUND`, `CLI_INCOMPATIBLE`이며 검사 경로와 안내가 함께 옵니다. 성공은 초기화·정책·세션 연결을 확인했다는 뜻이고, 공급자 인증이나 모델 작업 성공을 보장하지 않습니다.
+- 설정·초기화 실패는 수정 횟수에 포함하지 않습니다. 전달 의도를 기록한 요청은 불확실해도 포함합니다.
+- 진행 중인 시도의 설치본이 바뀌면 `RUNTIME_CHANGED`를 남기고 요청을 다시 보내지 않습니다. SDK가 없어도 기록 조회, 검수, 소유 프로세스 취소, 최종 검증은 됩니다.
+- OpenCode 기본 모델은 설정, 최근 모델 기록, 공급자 기본 모델 순으로 정하고 시도에 고정합니다. `doctor.connection.model_warning`은 기본 모델을 쓸 수 없다는 경고입니다.
+- Claude 모델 별칭의 실제 계열을 확인할 수 없으면 `MODEL_UNAVAILABLE`입니다. 정확한 모델 ID를 지정하세요.
+- Claude Code 2.1.223은 초기화 응답에 버전을 보내지 않아 `CLI_INCOMPATIBLE`이 됩니다. CLI 2.1.316과 SDK 0.3.316은 통과했습니다. 전역 폴더에 쓸 수 없으면 사용자 폴더에 설치하고 `profiles.json`으로 지정합니다.
+- OpenCode·Kilo 워커는 사용자 설정의 권한 중 정책에 없는 항목을 `deny`로 덮어씁니다.
 
-`cleanup`은 서비스가 만든 완료/취소 실행 worktree만 제거합니다. 적용된 사용자 브랜치와 원래 checkout은 제거하지 않습니다. 원본 로그에는 코드·모델 대화·도구 출력 등 프로젝트 정보가 있으므로 Git에 추가하거나 공유할 때 주의해야 합니다.
+## Codex 워커
 
-서비스를 제거할 때는 먼저 실행 상태를 확인하고 필요한 작업을 완료/취소한 뒤 `stop`을 호출합니다. `codex plugin remove agent-delegation@personal`과 `claude plugin uninstall agent-delegation@personal`로 플러그인을 제거할 수 있습니다. 데이터와 과거 설치본 삭제는 사용자 관리 대상입니다.
+- **정책:** `on-request` 승인과 `workspace-write` 샌드박스를 씁니다. 검증 기준 CLI는 0.166.0입니다.
+- **훅:** 모델 호출 없이 설정을 읽고, 소유한 `PreToolUse` 훅 하나를 `hooks/list`로 찾습니다. 그 key와 해시만 실행 인자의 `hooks.state`에 등록해 다시 시작한 뒤, 같은 명령·동기 실행·`trusted` 상태를 확인합니다. 확인한 값은 `jobs/<attempt>/hook-policy.json`에 남고, 전역 훅 신뢰는 바꾸지 않습니다.
+- **도구:** 파일은 `delegate_read_file`로 범위 안의 UTF-8 파일을 64 KiB씩 읽고, 수정은 `apply_patch`의 모든 경로를 검사합니다. 셸은 `delegate_run_command`로 지시자 승인을 받아 별도 프로세스에서 실행합니다. 네이티브 셸·exec·write_stdin은 거절합니다.
+- **`ask` 미지원:** Codex의 `PreToolUse`는 `ask`를 처리하지 못하므로 훅은 `allow`·`deny`만 씁니다. 네이티브 승인이 필요한 MCP 도구 호출은 거절되며, 자원 진단이 성공해도 그 도구를 Codex에서 쓸 수 있다는 뜻은 아닙니다.
+- **세션:** 완료는 app-server 이벤트로 판단합니다. 스트림이 전달 확인 전 5초, 확인 후 30초 조용할 때만 `thread/turns/list`로 최근 턴을 읽고, 실패해도 요청을 다시 보내지 않습니다.
+- **Windows:** `workspace-write`가 `read-only`로 바뀌지 않도록 실행 인자에서만 `windows.sandbox=unelevated`를 기본 선택합니다. 명시한 `mxc`·`elevated`·`unelevated`는 유지합니다. `.cmd` 래퍼가 인자를 다시 해석해도 명령으로 실행되지 않도록 CMD 연산 문자를 TOML Unicode escape로 넘깁니다.
+- Codex app-server 연동은 실험 기능입니다.
 
-## 셸 실행과 모델 진단
+## 업데이트와 제거
 
-검증 셸의 선택·Bash/Zsh 초기화는 [OpenCode 1.18.30 소스](https://github.com/anomalyco/opencode/blob/v1.18.30/packages/core/src/shell.ts)를 기준으로 합니다. 실행 기록에는 실제 argv와 종료 코드가 남습니다. 네이티브 플러그인의 shell.env 훅은 공통 검증기에서 실행하지 않으므로 필요한 환경 값은 신뢰한 프로필의 env_refs로 명시합니다. 수정 시도와 최종 검증은 이미 확정한 셸을 유지합니다.
+- 설치본은 버전과 내용 해시가 붙은 폴더에 만들어지고, 이전 설치본은 지우지 않습니다.
+- 살아 있는 서비스, 종료가 불확실한 시도, 다른 프로토콜·저장 형식이 있으면 `UPDATE_PENDING`으로 전환을 보류합니다. 형식이 다른 데이터는 변환하지 않습니다.
+- 등록이 실패하면 Codex와 Claude Code 모두 이전 등록을 복구합니다. 사용자 CLI·SDK·인증·프로필·실행 기록은 그대로 둡니다.
+- 열린 대화는 이전 설치본을 계속 씁니다. MCP 초기화의 `serverInfo.version`은 연결된 브리지, `doctor.deployment.version`과 `doctor.deployment.executable`은 실제 서비스의 배포물입니다. 호스트가 재연결 경로를 주지 않으면 앱에서 다시 연결하거나 재시작하고, 다른 작업이 실행 중일 때 백엔드를 임의로 종료하지 마세요.
+- 제거: 작업을 끝내거나 취소하고 `stop`한 뒤 `codex plugin remove agent-delegation@personal`, `claude plugin uninstall agent-delegation@personal`을 실행합니다. 데이터와 이전 설치본은 직접 지웁니다.
+- `cleanup`은 서비스가 만든 끝난 실행의 worktree만 지우고 증거와 기록은 남깁니다. 원본 로그에는 코드와 모델 대화가 있으니 공유할 때 주의하세요.
 
-Claude 모델 별칭의 실제 모델 계열을 확인할 수 없으면 MODEL_UNAVAILABLE을 반환합니다. 이 경우 정확한 네이티브 모델 ID를 지정합니다.
+## 보관과 저장 형식
+
+- 실행이 처음 `completed`·`cancelled`가 될 때 `ended_at`을 기록합니다. 7일이 지나면 서비스 시작 때와 매시간 한 건씩 `archives/runs/`로 옮깁니다. 자원 잠금, 살아 있는 프로세스, 미해결 제출이 있으면 미룹니다. 요청 응답도 7일 뒤 `archives/requests/`로 옮깁니다.
+- 보관된 실행도 `list_runs`·`get_run`·`wait_run`·`get_artifact`·`cleanup`으로 볼 수 있고 `archived`, `archived_at`, `ended_at`이 붙습니다. 새 변경은 `RUN_ARCHIVED`로 거절합니다. 보관된 `get_run`에는 `effective_concurrency`와 `operations`가 없습니다.
+- 보관 파일은 내용 해시를 이름으로 쓰고 체크섬을 검사합니다. 없거나 손상되면 `STATE_CORRUPT`입니다. 보관 기록·증거·로그는 자동으로 지우지 않습니다.
+- journal은 256개 레코드 또는 `max(32 MiB, 최신 레코드 × 4)`에서 새 세대로 바뀝니다. 별도 `storage-worker.mjs`가 체크포인트를 만들고, `checkpoint.json`이 현재 snapshot과 journal 목록을 가리킵니다. `state.json` 하나로는 최신 상태를 알 수 없습니다.
+- Windows의 일시적인 파일 잠금은 최대 230 ms까지 재시도합니다.
+
+## 백업과 복원
+
+- 백업은 서비스와 워커가 멈춘 것을 확인한 뒤 데이터 폴더 전체를 같은 시점에 복사합니다. `checkpoint.json`, `checkpoints/`, `journals/`, `archives/`, `jobs/`, `artifacts/`, 제출 준비 기록, worktree가 모두 필요합니다.
+- 복원도 서비스와 워커를 먼저 멈추고 현재 데이터를 따로 보존합니다. 같은 백업 전체를 원래 절대 경로에 복원하고, 그 형식을 지원하는 배포물로 확인합니다.
+- 기록과 worktree에 절대 경로가 있으므로 다른 위치로 옮기는 복원은 지원하지 않습니다. 시점이 다른 파일이나 형식이 다른 배포물을 섞지 마세요.
+
+## 사용량과 동시 실행
+
+- `get_run`은 시도별·실행 합계 `usage`(입력·출력·캐시 토큰, `cost_usd`)를 돌려줍니다. 비용을 보고하지 않는 플랫폼은 `cost_usd`가 `null`이고, 합계도 한 시도라도 없으면 `null`입니다. 구독 요금과는 다를 수 있습니다.
+- `last_activity_at`은 구현자 기록이 마지막으로 바뀐 시각입니다. 작업이 멈췄는지 판단할 때 씁니다.
+- 서비스 전체 동시 실행 수는 `AGENT_DELEGATION_CONCURRENCY`(기본 2)이고, 실행의 `settings.concurrency`는 이를 넘지 못합니다. 실제 값은 `get_run.effective_concurrency`에 나옵니다. 워커 하나는 약 115MB를 씁니다.
+- 검증 셸 선택과 Bash·Zsh 초기화는 [OpenCode 1.18.30 규칙](https://github.com/anomalyco/opencode/blob/v1.18.30/packages/core/src/shell.ts)을 따릅니다. macOS는 Zsh, Windows는 PowerShell·Git Bash·cmd 순이며, PowerShell은 인용을 보존하는 인코딩된 명령으로 실행해 마지막 종료 코드를 기록합니다. 수정 시도와 최종 검증은 처음 정한 셸을 유지합니다. 네이티브 플러그인의 shell.env 훅은 실행하지 않으므로 필요한 환경 값은 프로필의 `env_refs`로 지정합니다.
+
+## 검증 범위
+
+- **자동 테스트:** 네 플랫폼의 모의 네이티브 프로토콜과 실제 임시 Git 저장소로 16개 지시자·구현자 조합의 MCP 계약을 검사합니다.
+- **연결 검사:** `npm run check:connections`는 모델 호출 없이 실제 CLI·SDK 초기화를 검사합니다. 인수가 없으면 사용자의 현재 설치본, `node scripts/prepare-connections.mjs <임시 경로>`로 준비한 경로를 주면 그 테스트 설치본을 검사합니다.
+- **CI:** macOS·Windows 회귀 검사와 네이티브 초기화 검사를 실행합니다. `scripts/ci-check.mjs`는 크기를 제한한 진단 로그만 실패 시 7일 아티팩트로 올리고, 원본 기록·암호·인증·네이티브 로그는 올리지 않습니다.
+- **실제 모델:** `e2e`와 `e2e:platform`은 임시 저장소에서 실행하며, 실패하면 로그 경로를 출력하고 임시 폴더를 남깁니다. `--installed`는 빌드 대신 설치본을 씁니다. `e2e`에 `--user-data`를 붙이면 실제 데이터 폴더를 쓰고, 통과하면 그 실행의 worktree만 정리합니다. `e2e`는 임시 내보내기 설정을 쓰므로 등록된 플러그인 경로는 검사하지 않습니다.
+- **2026-11-03 확인 결과 (macOS):** Codex 0.166.0, OpenCode 1.19.0 + SDK 1.19.5, Claude Code 2.1.316 + SDK 0.3.316, Kilo 7.4.23 + SDK 7.8.18에서 충돌 수정부터 반영까지, 서비스 재시작, 취소가 모두 통과했습니다. 지시자 조합 `haiku-kilo`, `haiku-luna`, `luna-haiku`도 통과했습니다.
+- **확인하지 않은 범위:** IDE·데스크톱 GUI 지시자, Windows 실기기, GUI 구현자 자동 제어(제공하지 않음)입니다.
