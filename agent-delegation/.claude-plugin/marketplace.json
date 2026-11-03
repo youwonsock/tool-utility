@@ -1,0 +1,13 @@
+{
+  "name": "personal",
+  "owner": {
+    "name": "youwonsock"
+  },
+  "plugins": [
+    {
+      "name": "agent-delegation",
+      "source": "./plugins/agent-delegation",
+      "description": "Plan and review in your current agent; delegate implementation to persistent local workers."
+    }
+  ]
+}

@@ -65,6 +65,7 @@ for (const kind of kinds)
         AGENT_DELEGATION_HOME: data,
         AGENT_DELEGATION_INSTALL_ROOT: install,
         AGENT_DELEGATION_CODEX_EXECUTABLE: path.join(root, 'must-not-run-cli'),
+        AGENT_DELEGATION_CLAUDE_EXECUTABLE: path.join(root, 'must-not-run-cli'),
       },
       timeout: 30000,
     });

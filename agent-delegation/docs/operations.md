@@ -70,7 +70,7 @@
 
 설치본은 버전·내용 해시를 가진 디렉터리에 도구 자체의 MCP·공통 라이브러리만 포함합니다. 플랫폼 SDK·CLI·GUI는 사용자가 설치·업데이트하며 도구가 복사하거나 설치하지 않습니다. 과거 release와 현재 실행의 job/spec 파일은 업데이트가 덮어쓰지 않습니다. 살아 있는 이전 서비스, 종료 불확실 시도, 다른 프로토콜·저장 형식은 `UPDATE_PENDING`으로 등록 전환을 막습니다.
 
-현재 배포물로 실행을 완료하거나 `stop --cancel`로 소유 워커 종료를 확인한 뒤 새 배포물을 등록합니다. 등록 실패 시 이전 marketplace·플러그인 등록을 복구합니다. 새 MCP 연결과 종료 확인 후 실제 서비스의 배포 버전·경로를 확인합니다. 사용자 CLI·SDK·인증·GUI·프로필·실행 기록은 보존합니다.
+현재 배포물로 실행을 완료하거나 `stop --cancel`로 소유 워커 종료를 확인한 뒤 새 배포물을 등록합니다. Codex와 Claude Code 중 설치된 CLI에 등록하며, 등록 실패 시 두 플랫폼의 이전 marketplace·플러그인 등록을 복구합니다. 새 MCP 연결과 종료 확인 후 실제 서비스의 배포 버전·경로를 확인합니다. 사용자 CLI·SDK·인증·GUI·프로필·실행 기록은 보존합니다.
 
 플러그인 등록 변경은 기존 대화의 MCP 프로세스를 교체하지 않습니다. 열려 있는 대화는 이전 설치본을 계속 사용하므로, 새 설치본을 쓰려면 MCP를 다시 연결하거나 대화를 새로 시작합니다.
 
@@ -104,7 +104,7 @@ journal은 256개 레코드 또는 `max(32 MiB, 최신 레코드 바이트 수 �
 
 `export-host <opencode|codex|claude-code|kilo> <새 출력 경로>`는 MCP 설정과 delegate-agents 스킬·도구 계약을 생성하며 전역 설정을 등록하지 않습니다. Kilo는 CLI/runtime용 kilo.json과 IDE용 ide-mcp.json을 구분합니다. 같은 데이터 폴더에 연결하면 같은 서비스가 작업과 자원을 관리합니다.
 
-자동화된 16개 조합은 네 지시자 설정과 모의 네이티브 워커를 사용하는 MCP 계약 검사입니다. 실제 CLI/SDK 연결 검사는 별도 임시 경로에 준비한 테스트 설치본을 사용합니다. 실제 모델 작업과 IDE·데스크톱 GUI는 확인하지 않았다면 미확인으로 유지합니다. `npm run e2e -- [haiku-kilo|haiku-luna|luna-haiku]`는 실제 지시자가 MCP 도구로 계획·검토·최종 반영을 하고 다른 플랫폼이 구현하는 흐름을 임시 저장소에서 실행합니다. 기본값 `haiku-kilo`는 Claude Code Haiku와 Kilo `kilo/kilo-auto/free`, `haiku-luna`는 Haiku와 Codex `gpt-6-luna`, `luna-haiku`는 Codex `gpt-6-luna`와 Claude Code Haiku 조합입니다. `--user-data`를 붙이면 실제 데이터 폴더의 서비스를 쓰며, 통과하면 해당 실행의 worktree만 정리하고 실행 기록과 증거는 남깁니다. `npm run e2e:platform -- <플랫폼> [모델]`은 지시자 없이 스크립트가 도구를 호출해 플랫폼별 병렬 작업, 충돌, 수정 지시, 최종 반영을 실행합니다. `--restart`를 붙이면 구현자가 모델 요청을 수락한 뒤 서비스를 강제 종료하고 다시 연결해, 같은 워커가 요청을 다시 보내지 않고 끝까지 완료하는지 확인합니다. 둘 다 모델 비용이 들어 `npm run check`에는 포함하지 않습니다. 실패하면 로그 경로를 출력하고 임시 폴더를 남기며, `--installed`를 붙이면 빌드 대신 설치본을 검사합니다. OpenCode와 Kilo 모델은 `공급자/모델` 형식입니다. macOS에서 충돌 수정부터 `finalize_run`까지 실제 모델로 확인한 조합은 Codex 0.162.1, OpenCode 1.19.0 + SDK 1.19.5, Claude Code 2.1.316 + SDK 0.3.316, Kilo 7.4.23 + SDK 7.8.18입니다. GUI 구현자 자동 제어는 제공하지 않습니다. Codex app-server는 실험 연동입니다. SDK·CLI 버전 일치 대신 필수 API·권한 정책·세션 연결을 검사합니다. `doctor.compatible`은 초기화 검사와 종료 확인 결과이며 유료 모델 작업의 성공을 보장하지 않습니다. `backend_version`은 실제 CLI 버전입니다. `doctor.runtime`은 SDK와 CLI의 경로·해시·버전이고, `get_run`의 `runtime`은 버전만 담습니다. 실행에 쓴 전체 식별 정보는 `jobs/<attempt-id>/worker.json`에 남습니다.
+자동화된 16개 조합은 네 지시자 설정과 모의 네이티브 워커를 사용하는 MCP 계약 검사입니다. 실제 CLI/SDK 연결 검사는 별도 임시 경로에 준비한 테스트 설치본을 사용합니다. 실제 모델 작업과 IDE·데스크톱 GUI는 확인하지 않았다면 미확인으로 유지합니다. `npm run e2e -- [haiku-kilo|haiku-luna|luna-haiku]`는 실제 지시자가 MCP 도구로 계획·검토·최종 반영을 하고 다른 플랫폼이 구현하는 흐름을 임시 저장소에서 실행합니다. 기본값 `haiku-kilo`는 Claude Code Haiku와 Kilo `kilo/kilo-auto/free`, `haiku-luna`는 Haiku와 Codex `gpt-6-luna`, `luna-haiku`는 Codex `gpt-6-luna`와 Claude Code Haiku 조합입니다. `--user-data`를 붙이면 실제 데이터 폴더의 서비스를 쓰며, 통과하면 해당 실행의 worktree만 정리하고 실행 기록과 증거는 남깁니다. `npm run e2e:platform -- <플랫폼> [모델]`은 지시자 없이 스크립트가 도구를 호출해 플랫폼별 병렬 작업, 충돌, 수정 지시, 최종 반영을 실행합니다. `--restart`를 붙이면 구현자가 모델 요청을 수락한 뒤 서비스를 강제 종료하고 다시 연결해, 같은 워커가 요청을 다시 보내지 않고 끝까지 완료하는지 확인합니다. 둘 다 모델 비용이 들어 `npm run check`에는 포함하지 않습니다. 실패하면 로그 경로를 출력하고 임시 폴더를 남기며, `--installed`를 붙이면 빌드 대신 설치본을 검사합니다. OpenCode와 Kilo 모델은 `공급자/모델` 형식입니다. macOS에서 충돌 수정부터 `finalize_run`까지 실제 모델로 확인한 조합은 Codex 0.162.1, OpenCode 1.19.0 + SDK 1.19.5, Claude Code 2.1.316 + SDK 0.3.316, Kilo 7.4.23 + SDK 7.8.18입니다. `npm run e2e`는 임시 내보내기 설정을 쓰므로 등록된 플러그인 경로를 검사하지 않습니다. 플러그인 경로의 실제 실행 결과는 README의 실제 사용 화면에 있습니다. GUI 구현자 자동 제어는 제공하지 않습니다. Codex app-server는 실험 연동입니다. SDK·CLI 버전 일치 대신 필수 API·권한 정책·세션 연결을 검사합니다. `doctor.compatible`은 초기화 검사와 종료 확인 결과이며 유료 모델 작업의 성공을 보장하지 않습니다. `backend_version`은 실제 CLI 버전입니다. `doctor.runtime`은 SDK와 CLI의 경로·해시·버전이고, `get_run`의 `runtime`은 버전만 담습니다. 실행에 쓴 전체 식별 정보는 `jobs/<attempt-id>/worker.json`에 남습니다.
 
 ## 외부 설치본과 재시도
 
@@ -142,7 +142,7 @@ OpenCode·Kilo는 유효한 edit/bash ask 정책과 필수 permission API, Codex
 
 `cleanup`은 서비스가 만든 완료/취소 실행 worktree만 제거합니다. 적용된 사용자 브랜치와 원래 checkout은 제거하지 않습니다. 원본 로그에는 코드·모델 대화·도구 출력 등 프로젝트 정보가 있으므로 Git에 추가하거나 공유할 때 주의해야 합니다.
 
-서비스를 제거할 때는 먼저 실행 상태를 확인하고 필요한 작업을 완료/취소한 뒤 `stop`을 호출합니다. `codex plugin remove agent-delegation@personal`로 플러그인을 제거할 수 있습니다. 데이터와 과거 설치본 삭제는 사용자 관리 대상입니다.
+서비스를 제거할 때는 먼저 실행 상태를 확인하고 필요한 작업을 완료/취소한 뒤 `stop`을 호출합니다. `codex plugin remove agent-delegation@personal`과 `claude plugin uninstall agent-delegation@personal`로 플러그인을 제거할 수 있습니다. 데이터와 과거 설치본 삭제는 사용자 관리 대상입니다.
 
 ## 셸 실행과 모델 진단
 

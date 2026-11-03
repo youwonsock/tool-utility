@@ -92,7 +92,7 @@ test('installed bundle works after its source is moved, without source node_modu
     install = path.join(dir, '설치본'),
     data = path.join(dir, 'state');
   fs.mkdirSync(source);
-  for (const entry of ['dist', 'plugins', '.agents', 'scripts', 'package.json'])
+  for (const entry of ['dist', 'plugins', '.agents', '.claude-plugin', 'scripts', 'package.json'])
     fs.cpSync(path.join(root, entry), path.join(source, entry), {
       recursive: true,
       mode: fs.constants.COPYFILE_FICLONE,

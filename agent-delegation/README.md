@@ -51,17 +51,72 @@ Windows PowerShell:
 ./install.ps1
 ```
 
-스크립트는 도구 자체의 의존성을 설치하고 사용자 설치 폴더에 **독립 배포물**을 만듭니다. 플랫폼 SDK·CLI는 내려받지 않으며 SDK 누락도 플러그인 설치를 막지 않습니다. 설치본을 Codex CLI로 등록하고 `codex plugin add agent-delegation@personal`로 설치합니다. 이후 **새 Codex 대화**에서 다음과 같이 요청합니다.
+스크립트는 도구 자체의 의존성을 설치하고 사용자 설치 폴더에 **독립 배포물**을 만듭니다. 플랫폼 SDK·CLI는 내려받지 않으며 SDK 누락도 플러그인 설치를 막지 않습니다. 설치된 CLI를 찾아 Codex와 Claude Code에 `agent-delegation@personal` 플러그인으로 등록합니다. 없는 CLI는 건너뛰고, 결과의 `registered`에 등록한 플랫폼을 표시합니다. 한 플랫폼의 등록이 실패하면 두 플랫폼 모두 이전 설치본으로 되돌립니다.
 
-> $delegate-agents를 사용해 이 변경을 계획하고, 선택한 구현자에게 위임한 뒤 증거를 검수해 반영해줘.
+| 지시자 | 등록 확인 | 새 대화에서 요청 |
+| --- | --- | --- |
+| Codex | `codex plugin marketplace list --json` | `$delegate-agents를 사용해 이 변경을 계획하고, 선택한 구현자에게 위임한 뒤 증거를 검수해 반영해줘.` |
+| Claude Code | `claude plugin list` | `delegate-agents 스킬을 사용해 이 변경을 계획하고, 선택한 구현자에게 위임한 뒤 증거를 검수해 반영해줘.` |
 
-다른 지시자용 MCP·스킬 설정은 설치 산출물의 `hosts/`에 있으며 `node "<cli>" export-host <platform> <새 출력 경로>`로 별도 생성할 수 있습니다. 내보내기는 전역 등록을 수행하지 않습니다. Kilo의 CLI/runtime과 IDE 설정은 별도 파일입니다.
+플러그인의 쓰기 도구(`create_run`, `approve_task`, `finalize_run` 등)는 각 플랫폼의 승인 정책을 따릅니다.
+
+- **Codex:** `approval_policy = "never"`이면 쓰기 도구가 `MCP tool call requires approval, but approval policy is never` 오류로 막힙니다. 이 플러그인의 도구만 승인 없이 쓰려면 `~/.codex/config.toml`에 다음을 추가합니다. 설치 스크립트는 이 설정을 바꾸지 않습니다.
+
+  ```toml
+  [plugins."agent-delegation@personal".mcp_servers.agent-delegation]
+  default_tools_approval_mode = "approve"
+  ```
+
+- **Claude Code:** 도구 호출마다 승인을 묻지 않으려면 권한 규칙에 `mcp__plugin_agent-delegation_agent-delegation`을 허용합니다.
+
+OpenCode와 Kilo를 포함한 다른 지시자 설정은 설치 산출물의 `hosts/`에 있으며 `node "<cli>" export-host <platform> <새 출력 경로>`로 별도 생성할 수 있습니다. 내보내기는 전역 등록을 수행하지 않습니다. Kilo의 CLI/runtime과 IDE 설정은 별도 파일입니다.
 
 개발 저장소를 옮기거나 삭제해도 도구 설치본은 독립적으로 동작합니다. 선택한 사용자 CLI와 SDK는 외부 설치 경로에 유지해야 합니다. 플랫폼 SDK와 네이티브 CLI는 배포물에 포함하지 않습니다. 소스 플러그인의 `runtime/`은 설치 때 채우므로 설치 스크립트를 사용하세요.
 
 재설치한 뒤 이미 열려 있는 대화의 MCP 프로세스는 이전 설치본을 계속 사용합니다. 새 설치본을 쓰려면 MCP를 다시 연결하거나 대화를 새로 시작합니다. `doctor.deployment.version`과 `doctor.deployment.executable`에서 실제 서비스의 설치 버전·실행 경로를 확인할 수 있습니다.
 
 등록 없이 배포물만 생성하려면 `sh install.sh --no-register` 또는 `./install.ps1 -NoRegister`를 사용합니다. 설치 결과 JSON에 실제 배포 경로와 CLI 경로가 표시됩니다.
+
+## 실제 사용 화면
+
+2026-11-03 macOS에서 각 CLI 대화로 플러그인을 호출해 임시 저장소에 `math.js`, `greet.js`를 구현한 화면입니다. 설치본은 `1.0.0-39996483464d`입니다.
+
+| 지시자 | 구현자 | 실행 상태 | 작업 | 최종 검증 | 실행 시간 | 구현자 토큰 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Claude Code 2.1.223, `haiku` | Codex 0.162.1, `gpt-6-luna` | `completed` | 2개 통합 | `node check.js` 종료 코드 0 | 51초 | 입력 116,755(캐시 91,392), 출력 1,154 |
+| Codex 0.162.1, `gpt-6-luna` | Claude Code 2.1.316, `claude-haiku-5-5` | `completed` | 2개 통합 | `node check.js` 종료 코드 0 | 45초 | 입력 14, 캐시 56,341, 출력 1,602 |
+
+실행 시간은 실행 생성부터 최종 반영까지입니다. 캡처를 위해 승인 없이 진행하도록 Claude Code는 `--permission-mode dontAsk --allowedTools ...`, Codex는 위 승인 설정을 해당 세션에만 지정했습니다.
+
+### Claude Code에서 Codex로 위임
+
+플러그인 스킬 `agent-delegation:delegate-agents`를 불러온 뒤, 플러그인 MCP 도구로 작업을 만듭니다.
+
+![Claude Code가 플러그인 스킬을 불러와 작업을 만드는 화면](docs/images/claude-code-plugin-start.jpg)
+
+구현자가 권한을 요청하면 지시자가 답하고 작업을 이어 갑니다.
+
+![Claude Code가 구현자의 요청에 답하며 기다리는 화면](docs/images/claude-code-plugin-progress.jpg)
+
+두 작업을 승인하고 최종 검증과 반영까지 끝낸 결과입니다.
+
+![Claude Code가 최종 반영 후 결과를 요약한 화면](docs/images/claude-code-plugin-result.jpg)
+
+### Codex에서 Claude Code로 위임
+
+`$delegate-agents`로 플러그인의 스킬을 읽습니다.
+
+![Codex가 플러그인 스킬을 읽는 화면](docs/images/codex-plugin-start.jpg)
+
+`wait_run`, `get_run`으로 진행을 보고 `respond_to_request`로 구현자의 요청에 답합니다.
+
+![Codex가 플러그인 도구로 진행을 확인하는 화면](docs/images/codex-plugin-progress.jpg)
+
+`approve_task`, `validate_run`, `finalize_run` 순서로 끝낸 결과입니다.
+
+![Codex가 최종 반영 후 결과를 요약한 화면](docs/images/codex-plugin-result.jpg)
+
+데스크톱 앱과 IDE, Windows에서의 플러그인 사용은 이 화면으로 확인하지 않았습니다.
 
 ## 저장 위치와 실행 수명
 
