@@ -180,16 +180,11 @@ export async function recoverSubmissions(store: Store, onRollback?: (requestID: 
   }
 }
 
-// oxlint-disable-next-line max-lines-per-function
-export async function submitTasks(
-  store: Store,
-  args: SubmitArgs,
-  validateGraph: (specs: TaskSpec[]) => void,
-  resolve: (selection: WorkerSelection) => WorkerConfig = (selection) => resolveWorker(store.root, selection),
-  publish: (result?: unknown) => Promise<void> = async () => undefined,
-  bindRepository: (commonDir: string) => Promise<void> = async () => undefined,
-) {
-  const specs = structuredClone(args.tasks);
+type StagedFile = { path: string; hash: string; data: Buffer };
+type Resolve = (selection: WorkerSelection) => WorkerConfig;
+
+// The run to extend, or a new run built from the request, before anything is written.
+async function candidateRun(store: Store, args: SubmitArgs, resolve: Resolve) {
   let existing: Run | undefined, candidate: Run;
   if ('run_id' in args) {
     existing = store.state.runs.find((r) => r.id === args.run_id);
@@ -220,27 +215,31 @@ export async function submitTasks(
       worker: resolve(args.worker),
       settings: { concurrency: 2, timeout_ms: 3600000, max_retries: 3, ...args.settings },
     };
-    const keys = candidate.resources.map((r) => r.resource_key);
-    invariant(new Set(keys).size === keys.length, 'RESOURCE', 'Duplicate resource key.');
-    for (const profile of candidate.resources) {
-      const priorHash = store.state.resource_hashes[profile.resource_key];
-      invariant(
-        !priorHash || priorHash === digest(profile),
-        'RESOURCE_PROFILE',
-        'The same resource_key must refer to the same profile service-wide.',
-      );
-      for (const other of store.state.runs.flatMap((r) => r.resources))
-        if (other.resource_key === profile.resource_key) {
-          invariant(
-            digest(other) === digest(profile),
-            'RESOURCE_PROFILE',
-            'The same resource_key must refer to the same profile service-wide.',
-          );
-        }
-    }
+    checkResourceProfiles(store, candidate);
   }
-  await bindRepository(candidate.common_dir);
-  validateGraph([...candidate.tasks.map((t) => t.spec), ...specs]);
+  return { existing, candidate };
+}
+function checkResourceProfiles(store: Store, candidate: Run) {
+  const keys = candidate.resources.map((r) => r.resource_key);
+  invariant(new Set(keys).size === keys.length, 'RESOURCE', 'Duplicate resource key.');
+  for (const profile of candidate.resources) {
+    const priorHash = store.state.resource_hashes[profile.resource_key];
+    invariant(
+      !priorHash || priorHash === digest(profile),
+      'RESOURCE_PROFILE',
+      'The same resource_key must refer to the same profile service-wide.',
+    );
+    for (const other of store.state.runs.flatMap((r) => r.resources))
+      if (other.resource_key === profile.resource_key) {
+        invariant(
+          digest(other) === digest(profile),
+          'RESOURCE_PROFILE',
+          'The same resource_key must refer to the same profile service-wide.',
+        );
+      }
+  }
+}
+async function resolveTaskWorkers(candidate: Run, specs: TaskSpec[], resolve: Resolve) {
   for (const spec of specs)
     invariant(
       spec.resources.every((key) => candidate.resources.some((r) => r.resource_key === key)),
@@ -272,9 +271,19 @@ export async function submitTasks(
       );
     }
   }
+  return workers;
+}
+// Captures context and builds each task's metadata file. Changes only the candidate copy.
+async function prepareTasks(
+  candidate: Run,
+  existing: Run | undefined,
+  args: SubmitArgs,
+  specs: TaskSpec[],
+  workers: Map<string, WorkerConfig>,
+) {
   const shared = 'run_id' in args ? existing!.context.map((c) => c.path) : args.context_files;
   const captures = await captureContext(candidate.repo, [...shared, ...specs.flatMap((s) => s.context_files)]);
-  const files: { path: string; hash: string; data: Buffer }[] = [];
+  const files: StagedFile[] = [];
   const contexts = new Map<string, ContextFile>();
   for (const { data, ...context } of captures) {
     const old = existing?.context.find((c) => c.path === context.path);
@@ -307,6 +316,9 @@ export async function submitTasks(
   }
   if (args.final_verification) candidate.final_verification = args.final_verification;
   moveRun(candidate, 'active');
+  return files;
+}
+async function checkCollisions(store: Store, candidate: Run, existing: Run | undefined, files: StagedFile[]) {
   for (const file of files)
     invariant(
       !fs.existsSync(inside(store.root, file.path)),
@@ -322,6 +334,50 @@ export async function submitTasks(
       'Prepared branch already exists.',
     );
   }
+}
+function stageFiles(store: Store, directory: string, files: StagedFile[]) {
+  for (let index = 0; index < files.length; index++) {
+    const file = files[index]!,
+      staged = path.join(directory, 'files', String(index)),
+      destination = inside(store.root, file.path);
+    durableWrite(staged, file.data);
+    mkdir(path.dirname(destination));
+    // Exclusive hard-link publication cannot overwrite metadata and never exposes a partial file.
+    fs.linkSync(staged, destination);
+    syncDirectory(path.dirname(destination));
+  }
+}
+// Applies the prepared candidate to the store, once every file and worktree exists.
+function applyCandidate(store: Store, args: SubmitArgs, existing: Run | undefined, candidate: Run) {
+  if (existing) {
+    const appended = candidate.tasks.slice(existing.tasks.length);
+    existing.tasks.push(...appended);
+    existing.revision = candidate.revision;
+    if (existing.validation && !candidate.validation) {
+      moveValidation(existing.validation, 'invalidated');
+      (existing.validation_history ??= []).push(existing.validation);
+      existing.validation = undefined;
+    }
+    if (args.final_verification) existing.final_verification = candidate.final_verification;
+    moveRun(existing, 'active');
+  } else store.state.runs.push(candidate);
+}
+
+export async function submitTasks(
+  store: Store,
+  args: SubmitArgs,
+  validateGraph: (specs: TaskSpec[]) => void,
+  resolve: Resolve = (selection) => resolveWorker(store.root, selection),
+  publish: (result?: unknown) => Promise<void> = async () => undefined,
+  bindRepository: (commonDir: string) => Promise<void> = async () => undefined,
+) {
+  const specs = structuredClone(args.tasks);
+  const { existing, candidate } = await candidateRun(store, args, resolve);
+  await bindRepository(candidate.common_dir);
+  validateGraph([...candidate.tasks.map((t) => t.spec), ...specs]);
+  const workers = await resolveTaskWorkers(candidate, specs, resolve);
+  const files = await prepareTasks(candidate, existing, args, specs, workers);
+  await checkCollisions(store, candidate, existing, files);
   const result = { run_id: candidate.id, revision: candidate.revision, tasks: specs.map((s) => s.id) };
   const m: Manifest = {
     protocol: STORE_FORMAT,
@@ -345,31 +401,11 @@ export async function submitTasks(
   writeJson(path.join(directory, 'manifest.json'), m);
   let publishing = false;
   try {
-    for (let index = 0; index < files.length; index++) {
-      const file = files[index]!,
-        staged = path.join(directory, 'files', String(index)),
-        destination = inside(store.root, file.path);
-      durableWrite(staged, file.data);
-      mkdir(path.dirname(destination));
-      // Exclusive hard-link publication cannot overwrite metadata and never exposes a partial file.
-      fs.linkSync(staged, destination);
-      syncDirectory(path.dirname(destination));
-    }
+    stageFiles(store, directory, files);
     if (!existing)
       await worktree(candidate.repo, candidate.integration_dir, candidate.base, candidate.integration_branch);
     publishing = true;
-    if (existing) {
-      const appended = candidate.tasks.slice(existing.tasks.length);
-      existing.tasks.push(...appended);
-      existing.revision = candidate.revision;
-      if (existing.validation && !candidate.validation) {
-        moveValidation(existing.validation, 'invalidated');
-        (existing.validation_history ??= []).push(existing.validation);
-        existing.validation = undefined;
-      }
-      if (args.final_verification) existing.final_verification = candidate.final_verification;
-      moveRun(existing, 'active');
-    } else store.state.runs.push(candidate);
+    applyCandidate(store, args, existing, candidate);
     store.event(candidate.id, 'tasks_submitted', { ...result, request_id: args.request_id });
     await publish(result);
   } catch (e) {
