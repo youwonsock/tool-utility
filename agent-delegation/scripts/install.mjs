@@ -60,6 +60,7 @@ function fingerprint(directory) {
 }
 fingerprint(path.join(source, 'plugins'));
 fingerprint(path.join(source, '.agents'));
+fingerprint(path.join(source, '.claude-plugin'));
 fingerprint(path.join(source, 'dist', 'skills'));
 checksum.update(fs.readFileSync(path.join(source, 'dist', 'workflow.md')));
 checksum.update(fs.readFileSync(path.join(source, 'dist', 'contract.md')));
@@ -76,12 +77,18 @@ if (!fs.existsSync(release)) {
     const copyOptions = { recursive: true, mode: fs.constants.COPYFILE_FICLONE, filter: () => true };
     fs.cpSync(path.join(source, 'plugins'), path.join(staging, 'plugins'), copyOptions);
     fs.cpSync(path.join(source, '.agents'), path.join(staging, '.agents'), copyOptions);
+    fs.cpSync(path.join(source, '.claude-plugin'), path.join(staging, '.claude-plugin'), copyOptions);
     const plugin = path.join(staging, 'plugins', 'agent-delegation');
-    const pluginManifestFile = path.join(plugin, '.codex-plugin/plugin.json');
-    const pluginManifest = JSON.parse(fs.readFileSync(pluginManifestFile));
     // Each immutable deployment has its own cache version even between source releases.
-    pluginManifest.version = `${pluginManifest.version.split('+')[0]}+codex.${stamp}`;
-    fs.writeFileSync(pluginManifestFile, JSON.stringify(pluginManifest, null, 2));
+    for (const [folder, host] of [
+      ['.codex-plugin', 'codex'],
+      ['.claude-plugin', 'claude'],
+    ]) {
+      const pluginManifestFile = path.join(plugin, folder, 'plugin.json');
+      const pluginManifest = JSON.parse(fs.readFileSync(pluginManifestFile));
+      pluginManifest.version = `${pluginManifest.version.split('+')[0]}+${host}.${stamp}`;
+      fs.writeFileSync(pluginManifestFile, JSON.stringify(pluginManifest, null, 2));
+    }
     fs.mkdirSync(path.join(plugin, 'runtime'), { recursive: true });
     fs.writeFileSync(path.join(plugin, 'runtime', 'cli.mjs'), bundle);
     fs.copyFileSync(
@@ -120,36 +127,71 @@ if (!fs.existsSync(release)) {
     throw error;
   }
 }
+// Each host keeps its own marketplace list, with the same steps under different commands.
+const hosts = [
+  {
+    name: 'codex',
+    executable: process.env.AGENT_DELEGATION_CODEX_EXECUTABLE || 'codex',
+    installCommand: 'add',
+    marketplaces: (output) => JSON.parse(output).marketplaces ?? [],
+    location: (entry) => entry.root,
+  },
+  {
+    name: 'claude-code',
+    executable: process.env.AGENT_DELEGATION_CLAUDE_EXECUTABLE || 'claude',
+    installCommand: 'install',
+    marketplaces: (output) => JSON.parse(output),
+    location: (entry) => entry.path,
+  },
+];
+const name = JSON.parse(fs.readFileSync(path.join(release, '.agents/plugins/marketplace.json'))).name;
+async function run(host, args) {
+  const r = await exec(host.executable, args, { timeout: 120000 });
+  process.stdout.write(r.stdout);
+  process.stderr.write(r.stderr);
+  if (r.code !== 0) throw new Error(`${host.name} ${args.join(' ')} failed (${r.code})`);
+}
+const register = async (host, location) => {
+  await run(host, ['plugin', 'marketplace', 'add', location]);
+  await run(host, ['plugin', host.installCommand, `agent-delegation@${name}`]);
+};
 const noRegister = process.argv.includes('--no-register');
+const registered = [];
 if (!noRegister) {
-  const codex = process.env.AGENT_DELEGATION_CODEX_EXECUTABLE || 'codex';
-  const run = async (args) => {
-    const r = await exec(codex, args, { timeout: 120000 });
-    process.stdout.write(r.stdout);
-    process.stderr.write(r.stderr);
-    if (r.code !== 0) throw new Error(`codex ${args.join(' ')} failed (${r.code})`);
-  };
-  const name = JSON.parse(fs.readFileSync(path.join(release, '.agents/plugins/marketplace.json'))).name;
-  const listed = await exec(codex, ['plugin', 'marketplace', 'list', '--json']);
-  if (listed.code !== 0) throw new Error('Could not inspect existing Codex marketplace registrations.');
-  const existing = JSON.parse(listed.stdout).marketplaces?.find((entry) => entry.name === name);
-  if (existing) {
-    const relative = path.relative(root, existing.root);
+  const available = [];
+  for (const host of hosts)
+    if (
+      await exec(host.executable, ['--version'], { timeout: 120000 }).then(
+        (r) => r.code === 0,
+        () => false,
+      )
+    )
+      available.push(host);
+  // Check every host before changing any, so another source's marketplace stops the whole update.
+  const previous = new Map();
+  for (const host of available) {
+    const listed = await exec(host.executable, ['plugin', 'marketplace', 'list', '--json'], { timeout: 120000 });
+    if (listed.code !== 0) throw new Error(`Could not inspect existing ${host.name} marketplace registrations.`);
+    const existing = host.marketplaces(listed.stdout).find((entry) => entry.name === name);
+    if (!existing) continue;
+    const location = host.location(existing);
+    const relative = location ? path.relative(root, location) : '..';
     if (relative.startsWith('..') || path.isAbsolute(relative))
       throw new Error(
-        `Marketplace ${name} belongs to another source (${existing.root}). Choose a distinct marketplace with plugin-creator before installing; the existing source was preserved.`,
+        `Marketplace ${name} in ${host.name} belongs to another source (${location ?? 'not a local folder'}). Remove or rename it before installing; the existing source was preserved.`,
       );
+    previous.set(host, location);
   }
-  const replacing = existing && path.resolve(existing.root) !== path.resolve(release);
-  if (replacing) await run(['plugin', 'marketplace', 'remove', name]);
   try {
-    await run(['plugin', 'marketplace', 'add', release]);
-    await run(['plugin', 'add', `agent-delegation@${name}`]);
+    for (const host of available) {
+      registered.push(host.name);
+      if (previous.has(host)) await run(host, ['plugin', 'marketplace', 'remove', name]);
+      await register(host, release);
+    }
   } catch (error) {
-    if (replacing) {
-      await exec(codex, ['plugin', 'marketplace', 'remove', name]);
-      await run(['plugin', 'marketplace', 'add', existing.root]);
-      await run(['plugin', 'add', `agent-delegation@${name}`]);
+    for (const host of hosts.filter((candidate) => registered.includes(candidate.name))) {
+      await exec(host.executable, ['plugin', 'marketplace', 'remove', name], { timeout: 120000 });
+      if (previous.has(host)) await register(host, previous.get(host));
     }
     throw error;
   }
@@ -164,7 +206,7 @@ fs.writeFileSync(
       release,
       cli: installedCli,
       marketplace: path.join(release, '.agents/plugins/marketplace.json'),
-      registered: !noRegister,
+      registered,
     },
     null,
     2,
@@ -176,8 +218,8 @@ console.log(
     {
       installed: release,
       cli: installedCli,
-      registered: !noRegister,
-      next: 'Open a new Codex conversation and use $delegate-agents.',
+      registered,
+      next: 'Open a new conversation in a registered host and use the delegate-agents skill.',
     },
     null,
     2,
