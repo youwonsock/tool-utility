@@ -4,7 +4,7 @@ import spawn from 'cross-spawn';
 import type { ChildProcess } from 'node:child_process';
 import { invariant, type ProcessIdentity } from './types.js';
 import { writeJson, readJson, uid, processIdentity, terminate, treeAlive } from './io.js';
-import type { BackendContext } from './backends/contract.js';
+import type { BackendContext } from './worker-backend.js';
 
 export function beginProcess(context: BackendContext) {
   const id = uid('process');

@@ -5,7 +5,7 @@ import { Fault, invariant } from './types.js';
 import { digest, writeJson, sleep } from './io.js';
 import { git, head, checkContext, ignoredPaths, status } from './git.js';
 import { checkedMutationPath, scopeAllows, workerPolicyHash } from './scope.js';
-import type { BackendContext } from './backends/contract.js';
+import type { BackendContext } from './worker-backend.js';
 
 async function fileDigest(file: string): Promise<string> {
   const stat = fs.lstatSync(file);

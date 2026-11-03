@@ -1,4 +1,4 @@
-import type { InputDecision, InputRequest, UsageSummary, WorkerSpec, WorkerState } from '../types.js';
+import type { InputDecision, InputRequest, UsageSummary, WorkerSpec, WorkerState } from './types.js';
 
 export type Observation = {
   accepted: boolean;

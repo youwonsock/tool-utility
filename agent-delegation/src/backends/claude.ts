@@ -9,7 +9,7 @@ import { writeJson, digest } from '../io.js';
 import { workerEnvironment } from '../profiles.js';
 import { connection, toolPolicy, workerPermissionKey } from '../policy.js';
 import { beginProcess, registerProcess, stopOwned } from '../process.js';
-import type { Answer, BackendContext, Observation, WorkerBackend } from './contract.js';
+import type { Answer, BackendContext, Observation, WorkerBackend } from '../worker-backend.js';
 import { reportedVersion } from './version.js';
 import { loadSdk, requireSdkMethods, runtimeFault, findExecutable, callSdkFactory } from '../runtime.js';
 import { assertScopeMonitor, scopeMonitorHealthy } from '../scope.js';
