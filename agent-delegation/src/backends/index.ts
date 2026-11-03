@@ -38,10 +38,7 @@ export function createBackend(context: BackendContext): WorkerBackend {
     try {
       await start();
     } catch (error) {
-      if (
-        error instanceof Fault &&
-        ['BACKEND_API', 'BACKEND_VERSION', 'OPENCODE_CONFIG', 'OPENCODE_HEALTH'].includes(error.code)
-      )
+      if (error instanceof Fault && ['BACKEND_API', 'BACKEND_VERSION', 'OPENCODE_CONFIG'].includes(error.code))
         throw runtimeFault('CLI_INCOMPATIBLE', spec.worker, error.message, {
           cause_code: error.code,
           path: runtime.cli.path,

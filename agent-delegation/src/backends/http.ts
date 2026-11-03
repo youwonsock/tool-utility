@@ -1,13 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { invariant, type Model, type InputRequest, type WorkerSpec } from '../types.js';
-import { sleep, writeJson, digest } from '../io.js';
+import { writeJson } from '../io.js';
 import {
   launchOpenCode,
   resolvedConfig,
   restrictions,
-  enforceHttpPolicy,
-  httpSdkMethods,
+  checkedConfig,
+  awaitEndpoint,
+  connectServer,
   inspectSession,
 } from './opencode.js';
 import { workerEnvironment } from '../profiles.js';
@@ -15,8 +16,8 @@ import { spawnRuntime, stopOwned } from '../process.js';
 import type { Answer, BackendContext, Observation, WorkerBackend } from '../worker-backend.js';
 import { workerPermissionKey, toolPolicy, mutationPaths } from '../policy.js';
 import { verificationShell } from '../shell.js';
-import { executableVersion, reportedVersion } from './version.js';
-import { loadSdk, requireSdkMethods, callSdkFactory } from '../runtime.js';
+import { executableVersion } from './version.js';
+import { loadSdk } from '../runtime.js';
 import { assertScopeMonitor, scopeMonitorHealthy } from '../scope.js';
 
 const unfinishedStepGrace = 5000;
@@ -31,7 +32,6 @@ export class HttpBackend implements WorkerBackend {
   private log?: fs.WriteStream;
   private unfinishedStep?: { id: string; at: number };
   constructor(private context: BackendContext) {}
-  // oxlint-disable-next-line max-lines-per-function
   async start() {
     const { spec, state, save } = this.context;
     if (spec.worker?.platform !== 'kilo') {
@@ -65,21 +65,7 @@ export class HttpBackend implements WorkerBackend {
       KILO_NO_DAEMON: '1',
       KILO_CONFIG_CONTENT: JSON.stringify(overlay),
     };
-    const effective = await resolvedConfig(spec.worker.executable, spec.worker.executable_args, spec.directory, env);
-    const allowed = new Set(spec.resources.map((r) => r.connection.name));
-    invariant(
-      Object.entries(effective.mcp ?? {}).every(([name, cfg]) => (cfg as any).enabled === false || allowed.has(name)),
-      'MCP_POLICY',
-      'Inherited MCP connection remains enabled.',
-    );
-    for (const name of allowed)
-      for (const [key, value] of Object.entries(overlay.mcp[name]))
-        invariant(
-          digest(effective.mcp?.[name]?.[key]) === digest(value),
-          'MCP_POLICY',
-          'Effective resource connection differs.',
-        );
-    enforceHttpPolicy(effective, overlay);
+    await checkedConfig(spec, env, overlay);
     const runtime = await spawnRuntime(
       this.context,
       spec.worker.executable,
@@ -92,35 +78,20 @@ export class HttpBackend implements WorkerBackend {
       this.log!.write(data);
       output = (output + data.toString()).slice(-65536);
     });
-    for (let i = 0; i < 300; i++) {
-      const url = output.match(/https?:\/\/127\.0\.0\.1:\d+/)?.[0];
-      if (url) {
-        state.url = url;
-        save();
-        break;
-      }
-      invariant(
-        runtime.child.exitCode === null && !state.error,
-        'BACKEND_START',
-        'Kilo exited before announcing its endpoint.',
-      );
-      await sleep(100);
-    }
-    invariant(state.url, 'BACKEND_START', 'Kilo did not announce its endpoint.');
-    this.client = callSdkFactory(sdk, worker, {
-      baseUrl: state.url,
-      directory: spec.directory,
-      headers: { authorization: `Basic ${Buffer.from(`kilo:${spec.password}`).toString('base64')}` },
-      fetch: ((input: any, init: any) =>
-        fetch(input, { ...init, signal: init?.signal ?? AbortSignal.timeout(30000) })) as typeof fetch,
-    });
-    requireSdkMethods(this.client, httpSdkMethods, worker);
-    const health = (await this.client.global.health({ throwOnError: true })).data;
-    invariant(
-      health?.healthy === true && reportedVersion(health.version, 'Kilo') === version,
-      'BACKEND_API',
-      'Kilo health API did not identify the launched runtime.',
-    );
+    await awaitEndpoint(runtime.child, () => output, state, save, 'Kilo');
+    const { client, health } = await connectServer(sdk, spec, state, version, { label: 'Kilo', user: 'kilo' });
+    this.client = client;
+    const { model, problem } = await this.selectKiloModel(initial);
+    if (problem) {
+      invariant(spec.diagnostic && spec.worker.model === undefined, 'MODEL_UNAVAILABLE', problem);
+      state.model_warning = problem;
+    } else state.model = model;
+    state.backend = 'kilo';
+    state.backend_version = health.version;
+    save();
+  }
+  private async selectKiloModel(initial: Record<string, any>) {
+    const { spec } = this.context;
     const providers = (await this.client.provider.list({}, { throwOnError: true })).data;
     invariant(
       providers &&
@@ -149,13 +120,7 @@ export class HttpBackend implements WorkerBackend {
       : known.capabilities?.toolcall === false
         ? 'Configured Kilo model cannot call tools. No fallback was used.'
         : undefined;
-    if (problem) {
-      invariant(spec.diagnostic && spec.worker.model === undefined, 'MODEL_UNAVAILABLE', problem);
-      state.model_warning = problem;
-    } else state.model = model;
-    state.backend = 'kilo';
-    state.backend_version = health.version;
-    save();
+    return { model, problem };
   }
   async createSession() {
     const { spec, state, save } = this.context;
