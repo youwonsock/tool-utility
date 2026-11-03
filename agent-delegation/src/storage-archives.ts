@@ -8,9 +8,10 @@ import {
   type Task,
   type Attempt,
   type Validation,
+  type UsageSummary,
 } from './types.js';
 import { digest, inside, readJson, writeJson } from './io.js';
-import { validateStoredRun, validateStoredTask } from './lifecycle.js';
+import { totalUsage, validateStoredRun, validateStoredTask } from './lifecycle.js';
 export type ChunkRef = { file: string; hash: string };
 export type EventChunk = ChunkRef & { first: number; last: number; count: number };
 export type TaskChunks = { task: ChunkRef; attempts: ChunkRef[] };
@@ -23,6 +24,8 @@ export type ChunkedArchive = {
   events: EventChunk[];
   validation?: ChunkRef;
   history: ChunkRef[];
+  // Task pages open only some attempts, so the run total is kept here. Older archives have none.
+  usage?: UsageSummary;
 };
 function checkRef(ref: ChunkRef) {
   invariant(
@@ -150,6 +153,8 @@ export function writeChunkedArchive(
     events: [],
   };
   if (validation) manifest.validation = writeChunk(root, id, validation);
+  const usage = totalUsage(run);
+  if (usage) manifest.usage = usage;
   let group: RunEvent[] = [],
     bytes = 0;
   const flush = () => {
@@ -221,5 +226,5 @@ export function readArchiveTaskPage(root: string, id: string, ref: ArchiveRef, s
   const run = header(root, id, value, false);
   run.validation_history = undefined;
   run.tasks = value.tasks.slice(start, start + count).map((item) => task(root, item, true));
-  return { run, total: value.tasks.length };
+  return { run, total: value.tasks.length, usage: value.usage };
 }

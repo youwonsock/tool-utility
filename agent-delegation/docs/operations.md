@@ -88,7 +88,7 @@ MCP 초기화의 `serverInfo.version`은 연결된 브리지의 설치 버전이
 
 보관 파일은 내용 해시를 이름으로 사용하고 체크섬을 검사합니다. 파일을 먼저 원자적으로 저장한 뒤 journal에 색인 추가와 기본 상태의 상세 제거를 함께 기록합니다. 파일 작성이 실패하면 기본 기록을 유지하고, journal·snapshot·체크포인트 반영이 불확실하면 `REQUEST_UNCERTAIN`으로 실행을 중단합니다. 보관 파일이 없거나 손상되면 `STATE_CORRUPT`이며 동일 ID를 신규 요청으로 실행하지 않습니다.
 
-`list_runs`는 현재·보관 기록을 생성 시각과 ID 순으로 함께 표시합니다. `list_runs`·`get_run`에 `archived`, `archived_at`, `ended_at`이 추가됩니다. `get_run`·`wait_run`·`get_artifact`는 기존 ID와 페이지·이벤트 커서를 유지합니다. 보관된 실행의 새 변경은 `RUN_ARCHIVED`로 거절하고, 동일 요청 ID·내용의 재전송은 저장된 응답을 우선 반환합니다. `cleanup`은 보관된 실행에도 사용할 수 있으며 정리 이벤트도 보관합니다. 프로세스 시작 시에는 보관 파일 본문을 읽지 않고 목록 색인만 읽습니다.
+`list_runs`는 현재·보관 기록을 생성 시각과 ID 순으로 함께 표시합니다. `list_runs`·`get_run`에 `archived`, `archived_at`, `ended_at`이 추가됩니다. 보관된 실행의 `get_run`에는 `effective_concurrency`와 `operations`가 없으며, 실행 합계 `usage`는 합계를 저장한 뒤 보관된 실행에만 있습니다. `get_run`·`wait_run`·`get_artifact`는 기존 ID와 페이지·이벤트 커서를 유지합니다. 보관된 실행의 새 변경은 `RUN_ARCHIVED`로 거절하고, 동일 요청 ID·내용의 재전송은 저장된 응답을 우선 반환합니다. `cleanup`은 보관된 실행에도 사용할 수 있으며 정리 이벤트도 보관합니다. 프로세스 시작 시에는 보관 파일 본문을 읽지 않고 목록 색인만 읽습니다.
 
 journal은 256개 레코드 또는 `max(32 MiB, 최신 레코드 바이트 수 × 4)`에 도달하면 새 세대로 전환합니다. 먼저 빈 tail을 동기화하고, 별도 `storage-worker.mjs`가 변경되지 않는 이전 체크포인트와 journal을 읽어 `checkpoints/<id>/state.json`을 만듭니다. `checkpoint.json`은 선택한 snapshot의 경로·해시·revision과 tail 목록을 담는 원자적 manifest입니다. 생성 중 추가된 `journals/<id>.jsonl`을 유지한 채 manifest를 게시하며, 읽기 작업이 끝난 이전 세대 파일만 정리합니다. 초기 `state.json`은 형식 검사와 최초 snapshot 역할을 하고 정상 저장마다 재작성하지 않습니다. `state.json` 하나만 복사해서는 최신 상태를 백업할 수 없습니다.
 

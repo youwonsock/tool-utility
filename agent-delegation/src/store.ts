@@ -10,6 +10,7 @@ import {
   type RequestRecord,
   type RunSummary,
   type RunEvent,
+  type UsageSummary,
 } from './types.js';
 import { digest, mkdir, readJson, writeJson, durableWrite, uid, inside } from './io.js';
 import { validateStoredState, validateStoredRun } from './lifecycle.js';
@@ -23,28 +24,10 @@ import {
 } from './persistence.js';
 import { StateTracker, type Delta } from './storage-delta.js';
 import { readVerified, readRunArchive, readArchiveEvents, appendArchiveEvent } from './storage-archives.js';
-import { publicWorker } from './profiles.js';
-import { runtimeVersions } from './runtime.js';
+import { runView, taskSummary, taskView } from './run-view.js';
 
 export const responseBytes = (value: unknown) =>
   Buffer.byteLength(JSON.stringify({ content: [{ type: 'text', text: JSON.stringify(value) }], isError: false }));
-// A verification entry already names its artifact, so get_run lists only the others.
-export const otherArtifacts = (attempt: { artifacts: string[]; verification?: { artifact?: string }[] }) =>
-  attempt.artifacts.filter((id) => !attempt.verification?.some((check) => check.artifact === id));
-// What a supervisor needs to keep going when a task item does not fit in a page.
-export const taskSummary = (item: any) => ({
-  task_id: item.task_id,
-  state: item.state,
-  attempt: item.attempt && {
-    id: item.attempt.id,
-    state: item.attempt.state,
-    commit: item.attempt.commit,
-    verification: item.attempt.verification?.map((check: any) => ({
-      status: check.status,
-      exit_code: check.exit_code,
-    })),
-  },
-});
 export type PreparedArchive = {
   kind: 'run' | 'request';
   id: string;
@@ -741,64 +724,22 @@ export class Store {
     const start = cursor ? Number(cursor) : 0;
     invariant(Number.isSafeInteger(start) && start >= 0 && start <= ref.summary.tasks, 'CURSOR', 'Invalid cursor.');
     // One page-sized set of task metadata/latest attempts, never the complete run history.
-    const { run, total } = await this.work<{ run: Run; total: number }>({
+    const { run, total, usage } = await this.work<{ run: Run; total: number; usage?: UsageSummary }>({
       kind: 'run_page',
       id,
       ref: JSON.parse(JSON.stringify(ref)),
       start,
       count: 16,
     });
-    const items = run.tasks.map((task) => {
-      const a = task.attempts.at(-1);
-      return {
-        task_id: task.spec.id,
-        state: task.state,
-        dependencies: task.spec.dependencies,
-        worker: publicWorker(task.worker),
-        attempt: a && {
-          id: a.id,
-          number: a.number,
-          state: a.state,
-          directory: a.directory,
-          commit: a.commit,
-          model: a.model,
-          backend: a.worker?.backend,
-          backend_version: a.worker?.backend_version,
-          runtime: runtimeVersions(a.worker?.runtime ?? a.execution?.runtime),
-          runtime_error: a.runtime_error,
-          verification: a.verification,
-          artifacts: otherArtifacts(a),
-          inputs: a.inputs,
-          error: a.error,
-          integrated_commit: a.integrated_commit,
-        },
-      };
-    });
+    const items = run.tasks.map(taskView);
     const page = this.page(
       items,
       undefined,
       {
-        run_id: id,
-        state: run.state,
-        revision: run.revision,
-        base: run.base,
-        integration_commit: run.integration_commit,
-        worker: publicWorker(run.worker),
-        ended_at: run.ended_at,
+        ...runView(run),
+        usage,
         archived: true,
         archived_at: ref.archived_at,
-        validation: run.validation && {
-          id: run.validation.id,
-          state: run.validation.state,
-          commit: run.validation.commit,
-          revision: run.validation.revision,
-          directory: run.validation.attempt.directory,
-          artifacts: otherArtifacts(run.validation.attempt),
-          verification: run.validation.attempt.verification,
-          inputs: run.validation.attempt.inputs,
-          error: run.validation.attempt.error,
-        },
-        error: run.error,
         event_cursor: ref.summary.event_cursor,
       },
       taskSummary,
