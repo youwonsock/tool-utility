@@ -109,6 +109,7 @@ export function visitJournal(file: string, visit: (item: any) => void, maximum =
   }
   return { records, completeBytes, bytes };
 }
+// oxlint-disable-next-line max-lines-per-function
 export function loadState(root: string, selected?: StorageManifest, limits?: Record<string, number>) {
   if (selected !== undefined) validateStorageManifest(root, selected);
   const manifest = selected ?? readStorageManifest(root);

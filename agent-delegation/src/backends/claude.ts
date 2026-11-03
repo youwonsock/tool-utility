@@ -66,6 +66,7 @@ export class ClaudeBackend implements WorkerBackend {
   private confirmed = new Set<string>();
   private initialization?: any;
   constructor(private context: BackendContext) {}
+  // oxlint-disable-next-line max-lines-per-function
   async start() {
     const { spec, state, save } = this.context;
     const sdk = await loadSdk(spec.worker, state.runtime!);

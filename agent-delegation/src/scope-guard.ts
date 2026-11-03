@@ -133,7 +133,7 @@ export class ScopeGuard {
     const unknown = new Set<string>();
     for (const directory of directories) unknown.add(directory);
     for (const file of paths) for (const parent of ancestors(file)) unknown.add(parent);
-    for (const directory of [...unknown])
+    for (const directory of unknown)
       if (this.ignoredDirectories.has(directory) || this.plainDirectories.has(directory)) unknown.delete(directory);
     const ignored = await ignoredPaths(
       spec.directory,

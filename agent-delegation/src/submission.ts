@@ -180,6 +180,7 @@ export async function recoverSubmissions(store: Store, onRollback?: (requestID: 
   }
 }
 
+// oxlint-disable-next-line max-lines-per-function
 export async function submitTasks(
   store: Store,
   args: SubmitArgs,
@@ -332,7 +333,7 @@ export async function submitTasks(
     new_run: !existing,
     integration_dir: candidate.integration_dir,
     integration_branch: candidate.integration_branch,
-    files: files.map(({ data, ...file }) => file),
+    files: files.map(({ data: _data, ...file }) => file),
     result,
   };
   const directory = inside(path.join(store.root, 'submissions'), args.request_id);

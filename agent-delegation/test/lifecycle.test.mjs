@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { Store, uid, sleep, digest, writeJson, processIdentity } from '../dist/index.mjs';
+import { Store, uid } from '../dist/index.mjs';
 import { fixture, task, submit, until, review, ready, finalize, git, callOk, runDefaults } from './helpers.mjs';
 
 test('parallel implementation, ignored context, correction, exact approval and final fast-forward', async (t) => {

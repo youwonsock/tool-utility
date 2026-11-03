@@ -200,6 +200,7 @@ export class StateTracker {
     this.rawValues.set(proxy, value);
     return proxy;
   }
+  // oxlint-disable-next-line max-lines-per-function
   private changed(keys: string[], value: unknown, remove: boolean, previous: unknown) {
     const [root, index, ...nested] = keys;
     if (root === 'metrics' || root === 'revision' || root === 'protocol') return;

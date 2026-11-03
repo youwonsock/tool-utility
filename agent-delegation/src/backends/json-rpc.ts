@@ -20,9 +20,8 @@ export class JsonRpcPeer {
           if (waiting) {
             this.pending.delete(key);
             clearTimeout(waiting.timer);
-            frame.error
-              ? waiting.reject(new Fault('BACKEND_RPC', 'Native request failed.', frame.error))
-              : waiting.resolve(frame.result);
+            if (frame.error) waiting.reject(new Fault('BACKEND_RPC', 'Native request failed.', frame.error));
+            else waiting.resolve(frame.result);
           }
         } else this.onFrame(frame);
       } catch (e) {

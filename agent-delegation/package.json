@@ -11,10 +11,11 @@
     "build": "node scripts/build.mjs",
     "format": "prettier --write src scripts test",
     "format:check": "prettier --check src scripts test",
+    "lint": "oxlint --deny-warnings src scripts test",
     "typecheck": "tsc --noEmit",
     "test": "npm run build && node --test --test-concurrency=1 --test-timeout=600000 test/*.test.mjs",
     "validate:plugin": "node scripts/validate-plugin.mjs",
-    "check": "npm run format:check && npm run typecheck && npm test && npm run validate:plugin",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run validate:plugin",
     "install:local": "npm run build && node scripts/install.mjs",
     "check:connections": "node scripts/connection-check.mjs",
     "e2e": "npm run build && node scripts/e2e-supervised.mjs",
@@ -29,6 +30,7 @@
     "@types/cross-spawn": "6.0.6",
     "@types/node": "22.20.5",
     "esbuild": "0.28.2",
+    "oxlint": "1.90.0",
     "prettier": "3.9.10",
     "typescript": "7.0.2"
   }

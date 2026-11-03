@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { Store, emptyState, loadState, writeJson, digest, hash, deltaRecord, ARCHIVE_AGE } from '../dist/index.mjs';
+import { Store, loadState, writeJson, digest, hash, deltaRecord, ARCHIVE_AGE } from '../dist/index.mjs';
 import * as api from '../dist/index.mjs';
 import { storageTree } from './storage-preservation.mjs';
 
@@ -239,9 +239,9 @@ test('only current typed storage entry points are exported', () => {
 
 for (const format of [2, 3, 99, undefined])
   test(`typed transaction with unsupported protocol ${format} is rejected without writes`, (t) => {
-    const dir = root(t),
-      store = new Store(dir),
-      file = activeJournal(dir);
+    const dir = root(t);
+    new Store(dir);
+    const file = activeJournal(dir);
     fs.appendFileSync(file, deltaRecord({ protocol: format, previous: 0, revision: 1, changes: [] }));
     const before = storageTree(dir);
     assert.throws(
@@ -256,9 +256,9 @@ for (const format of [2, 3, 99, undefined])
   });
 for (const value of [null, false, 0, 'text', []])
   test(`non-object transaction ${JSON.stringify(value)} fails with a typed corruption error`, (t) => {
-    const dir = root(t),
-      store = new Store(dir),
-      payload = JSON.stringify(value);
+    const dir = root(t);
+    new Store(dir);
+    const payload = JSON.stringify(value);
     fs.appendFileSync(activeJournal(dir), JSON.stringify({ hash: hash(payload), payload }) + '\n');
     const before = storageTree(dir);
     assert.throws(

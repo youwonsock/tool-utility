@@ -6,7 +6,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { remoteCall, connect, serve, Store, sleep, exec, terminate, processIdentity, uid } from '../dist/index.mjs';
+import { remoteCall, connect, serve, sleep, exec, terminate, processIdentity } from '../dist/index.mjs';
 import { fixture, task, cli, fake, root, readState, temporaryRoot, runDefaults } from './helpers.mjs';
 import { mockSdks } from './mock-sdks.mjs';
 
@@ -86,7 +86,7 @@ test('authenticated daemon survives MCP disconnect and restart without duplicate
   assert.equal(repeat.run_id, submitted.run_id);
 });
 
-test('installed bundle works after its source is moved, without source node_modules', async (t) => {
+test('installed bundle works after its source is moved, without source node_modules', async () => {
   const dir = fs.mkdtempSync(path.join(temporaryRoot, '설치 경로 space '));
   const source = path.join(dir, '개발 source'),
     install = path.join(dir, '설치본'),

@@ -198,6 +198,7 @@ export async function selectModel(
   );
   return model;
 }
+// oxlint-disable-next-line max-lines-per-function
 export async function launchOpenCode(spec: WorkerSpec, state: WorkerState, save: () => void) {
   const sdk = await loadSdk(spec.worker, state.runtime!);
   const version = await executableVersion(spec);

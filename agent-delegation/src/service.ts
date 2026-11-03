@@ -29,6 +29,7 @@ type Descriptor = {
   owner: ProcessIdentity;
   executable: string;
 };
+// oxlint-disable-next-line max-lines-per-function
 export async function serve(root: string, executableFile: string) {
   loadState(root); // Reject unsupported storage before publishing startup ownership.
   mkdir(root);

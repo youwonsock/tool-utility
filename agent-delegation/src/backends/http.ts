@@ -31,6 +31,7 @@ export class HttpBackend implements WorkerBackend {
   private log?: fs.WriteStream;
   private unfinishedStep?: { id: string; at: number };
   constructor(private context: BackendContext) {}
+  // oxlint-disable-next-line max-lines-per-function
   async start() {
     const { spec, state, save } = this.context;
     if (spec.worker?.platform !== 'kilo') {
@@ -282,7 +283,7 @@ export class HttpBackend implements WorkerBackend {
     if (
       !Array.isArray(patterns) ||
       !patterns.length ||
-      patterns.some((p) => typeof p !== 'string' || /[*?\[\]]/.test(p))
+      patterns.some((p) => typeof p !== 'string' || /[*?[\]]/.test(p))
     )
       return {};
     // Preserve both sources independently: neither a metadata key nor a native
